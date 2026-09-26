@@ -1,17 +1,27 @@
 import type { PropsWithChildren } from "react";
+import { Icon } from "../icons/Icon";
+import { NavItem } from "./NavItem";
 import "./AppShell.css";
 
 export function AppShell({ children }: PropsWithChildren) {
   return (
     <div className="app-shell">
-      <header className="app-header"><strong>🚙 Parkeren</strong><button className="icon-button" aria-label="Instellingen">⚙</button></header>
+      <header className="app-header">
+        <a className="brand" href="/"><span className="brand__mark"><Icon name="parking"/></span><strong>Parkeren</strong></a>
+        <a className="icon-button" aria-label="Instellingen" href="/instellingen"><Icon name="settings"/></a>
+      </header>
       <aside className="side-nav" aria-label="Hoofdnavigatie">
-        <strong>🚙 Parkeren</strong>
-        <a className="active" href="/">⌂ Home</a><a href="/acties">◷ Acties</a><a href="/autos">▣ Auto's</a><a href="/instellingen">⚙ Instellingen</a>
+        <a className="brand" href="/"><span className="brand__mark"><Icon name="parking"/></span><strong>Parkeren</strong></a>
+        <NavItem href="/" label="Home" icon="home" active />
+        <NavItem href="/acties" label="Acties" icon="clock" />
+        <NavItem href="/autos" label="Auto's" icon="car" />
+        <NavItem href="/instellingen" label="Instellingen" icon="settings" />
       </aside>
       <main className="app-content">{children}</main>
       <nav className="bottom-nav" aria-label="Hoofdnavigatie">
-        <a className="active" href="/">⌂<span>Home</span></a><a href="/acties">◷<span>Acties</span></a><a href="/autos">▣<span>Auto's</span></a>
+        <NavItem href="/" label="Home" icon="home" active />
+        <NavItem href="/acties" label="Acties" icon="clock" />
+        <NavItem href="/autos" label="Auto's" icon="car" />
       </nav>
     </div>
   );
