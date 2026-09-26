@@ -2,16 +2,7 @@
 
 ## Solution
 
-De backend gebruikt .NET 10 en is opgenomen in `Parkeren.slnx`. De solution volgt ADR #88:
-
-- Parkeren.Domain
-- Parkeren.Application
-- Parkeren.Infrastructure
-- Parkeren.Api
-- Parkeren.TwoParkMock
-- Domain/Application/Integration testprojecten
-
-De PWA staat in `src/Parkeren.Web` en gebruikt React, TypeScript en Vite.
+De backend gebruikt .NET 10 en is opgenomen in `Parkeren.slnx`. De solution volgt ADR #88. De PWA staat in `src/Parkeren.Web` en gebruikt React, TypeScript en Vite.
 
 ## Lokaal starten
 
@@ -32,25 +23,42 @@ npm install
 npm run dev
 ```
 
-Tijdens lokale frontend-development proxyt Vite verzoeken onder `/api` naar de lokale ASP.NET Core API.
+Tijdens lokale frontend-development proxyt Vite `/api` naar de lokale ASP.NET Core API.
+
+## PostgreSQL en EF Core
+
+`Parkeren.Infrastructure` bevat `ParkerenDbContext`. De databaseprovider is Npgsql/PostgreSQL. Migrations staan onder `Persistence/Migrations`.
+
+De initiële migration bevat bewust nog geen tabellen; de eerste domeintabellen worden toegevoegd wanneer de betreffende verticale slice wordt geïmplementeerd. Zo loopt het schema mee met daadwerkelijk domeingedrag.
+
+De health endpoint controleert ook of de DbContext/database bereikbaar is.
+
+## Dev/test Compose-stack
+
+Maak lokaal een `.env` op basis van `.env.example` en gebruik een eigen sterk development-wachtwoord.
+
+```bash
+docker compose -p parkeren-dev \
+  -f deploy/compose.yml \
+  -f deploy/compose.dev.yml \
+  up -d --build
+```
+
+Deze stack gebruikt:
+- app: localhost:5080;
+- 2Park mock: localhost:5081;
+- een eigen PostgreSQL-volume onder Compose project `parkeren-dev`;
+- `ParkingProvider:Type=TwoParkMock`.
+
+Gebruik voor productie een andere Compose projectnaam/configuratie en deel nooit het dev-volume.
 
 ## Productiebuild
 
-De app-container heeft een multi-stage build. Node bouwt `Parkeren.Web`; de resulterende `dist` wordt als `wwwroot` in de ASP.NET Core runtime-image opgenomen. ASP.NET Core serveert daardoor API en PWA vanuit dezelfde container.
-
-Client-side routes vallen terug op `index.html`; `/api/*` en `/health` blijven server-endpoints.
+De app-container heeft een multi-stage build. Node bouwt `Parkeren.Web`; `dist` wordt als `wwwroot` in ASP.NET Core opgenomen. API en PWA draaien daarmee uit dezelfde container.
 
 ## CI
 
-GitHub Actions valideert op pushes en pull requests:
-- .NET restore/build/test;
-- frontend install/build/test.
-
-De CI gebruikt dezelfde .NET- en Node-majorversies als de gekozen V1-stack.
-
-## Docker
-
-`deploy/compose.yml` bevat de productieachtige app/database-stack en een optionele 2Park mock profile. Productie en dev/test gebruiken afzonderlijke Compose-projecten, databases, volumes, netwerken en secrets volgens ADR #87.
+GitHub Actions valideert .NET restore/build/test en frontend install/build/test.
 
 ## Secrets
 
