@@ -1,0 +1,21 @@
+services:
+  app:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD}
+      ParkingProvider__Type: TwoParkMock
+      ParkingProvider__BaseUrl: http://two-park-mock:8080
+    ports:
+      - "5080:8080"
+    depends_on:
+      two-park-mock:
+        condition: service_started
+
+  db:
+    environment:
+      POSTGRES_DB: parkeren_dev
+
+  two-park-mock:
+    profiles: []
+    ports:
+      - "5081:8080"
