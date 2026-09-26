@@ -1,0 +1,6 @@
+.visit-card { border:1px solid color-mix(in srgb,var(--color-success) 25%,var(--color-border)); border-radius:var(--radius-lg); padding:var(--space-5); background:var(--color-success-soft); box-shadow:var(--shadow-card); }
+.visit-card__top,.visit-card__meta,.visit-card__actions { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); }
+.visit-card__time { margin:var(--space-5) 0; font-size:clamp(2rem,10vw,3.2rem); font-weight:800; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+.visit-card__meta { color:var(--color-text-muted); font-size:.82rem; }
+.visit-card__actions { margin-top:var(--space-5); }
+.visit-card__actions .button { flex:1; }
