@@ -35,10 +35,10 @@ De health endpoint controleert ook of de DbContext/database bereikbaar is.
 
 ## Dev/test Compose-stack
 
-Maak lokaal een `.env` op basis van `.env.example` en gebruik een eigen sterk development-wachtwoord.
+Maak lokaal een `.env` op basis van `.env.example` en gebruik een eigen sterk development-wachtwoord. Omdat de primaire Compose-file onder `deploy/` staat, geven we het repository-root `.env` expliciet mee met `--env-file .env`. De developmentstack activeert expliciet het `mock`-profile.
 
 ```bash
-docker compose -p parkeren-dev \
+docker compose --env-file .env --profile mock -p parkeren-dev \
   -f deploy/compose.yml \
   -f deploy/compose.dev.yml \
   up -d --build
