@@ -1,0 +1,2 @@
+import { Icon } from "../design/icons/Icon"; import "./VisitActions.css";
+export function VisitActions(){return <div className="visit-actions"><button className="visit-action visit-action--stop"><span className="stop-icon">■</span><strong>Stoppen</strong></button><button className="visit-action visit-action--extend"><Icon name="clock"/><span><strong>Verlengen</strong><small>Eindtijd wijzigen</small></span></button></div>}
