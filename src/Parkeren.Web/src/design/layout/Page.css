@@ -1,0 +1,1 @@
+.page{display:grid;gap:var(--space-4);max-width:44rem}.page__heading h1{margin:0 0 var(--space-1);font-size:clamp(1.65rem,6vw,2.15rem);letter-spacing:-.03em}.page__heading div{color:var(--color-text-muted)}
