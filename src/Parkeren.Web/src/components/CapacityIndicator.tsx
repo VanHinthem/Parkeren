@@ -1,15 +1,2 @@
-import "./CapacityIndicator.css";
-
-type Props = { used: number; total: number };
-
-export function CapacityIndicator({ used, total }: Props) {
-  const safeUsed = Math.min(Math.max(used, 0), total);
-  return (
-    <div className="capacity" aria-label={`${safeUsed} van ${total} parkeerplaatsen in gebruik`}>
-      <div><strong>{safeUsed} / {total}</strong><span> in gebruik</span></div>
-      <div className="capacity__slots" aria-hidden="true">
-        {Array.from({ length: total }, (_, index) => <span key={index} className={index < safeUsed ? "used" : ""} />)}
-      </div>
-    </div>
-  );
-}
+import { Icon } from "../design/icons/Icon"; import "./CapacityIndicator.css";
+export function CapacityIndicator({used,total}:{used:number;total:number}){const n=Math.min(Math.max(used,0),total);return <div className="capacity"><div className="capacity__heading"><Icon name="car"/><strong>Bezetting parkeerplaatsen</strong><span>{n} / {total}</span></div><div className="capacity__slots" aria-label={`${n} van ${total} plaatsen in gebruik`}>{Array.from({length:total},(_,i)=><i key={i} className={i<n?"used":""}/>)}</div></div>}
