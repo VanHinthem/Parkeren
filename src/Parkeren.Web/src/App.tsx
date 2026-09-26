@@ -1,8 +1,13 @@
+import { AppShell } from "./design/layout/AppShell";
+import { Card } from "./design/primitives/Card";
+
 export default function App() {
   return (
-    <main>
-      <h1>Parkeren</h1>
-      <p>De applicatie is klaar voor de eerste functionele slice.</p>
-    </main>
+    <AppShell>
+      <Card>
+        <h1>Parkeren</h1>
+        <p>Design foundation actief. De eerste functionele slice volgt hierna.</p>
+      </Card>
+    </AppShell>
   );
 }
