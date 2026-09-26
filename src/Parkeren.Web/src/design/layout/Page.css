@@ -1,1 +1,1 @@
-.page{display:grid;gap:1.1rem;max-width:47.5rem}.page__heading{margin-bottom:.1rem}.page__heading h1{margin:0 0 .25rem;font-size:clamp(1.7rem,6vw,2.15rem);line-height:1.15;letter-spacing:-.035em}.page__heading div{color:var(--color-text-muted);font-size:.98rem}
+.page{display:grid;gap:1rem;max-width:47rem}.page__heading{margin-bottom:.05rem}.page__heading h1{margin:0 0 .22rem;font-size:clamp(1.65rem,5vw,2rem);line-height:1.15;font-weight:720;letter-spacing:-.035em}.page__heading div{color:var(--color-text-muted);font-size:.94rem}
