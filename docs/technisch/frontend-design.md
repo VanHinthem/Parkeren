@@ -33,3 +33,12 @@ De PWA wordt mobile-first ontworpen en blijft bruikbaar voor beheer op grotere s
 ## Visueel ontwerp
 
 De definitieve huisstijl is nog niet vastgesteld. Kleurpalet, typografie, navigatie, iconografie en concrete schermlayouts worden vóór brede UI-implementatie als aparte designstap uitgewerkt en hier gedocumenteerd.
+
+
+## Gekozen visuele richting
+
+De V1 gebruikt de Modern & Clean-layout met één gedeelde componentstructuur en twee themes: light en dark.
+
+Themevoorkeur heeft drie standen: `system` (standaard), `light` en `dark`. `system` volgt `prefers-color-scheme`; een expliciete light/dark-keuze overschrijft dit. De voorkeur wordt lokaal persistent opgeslagen en staat volledig los van parkeer-/domeinlogica.
+
+Beide themes worden uitsluitend via semantische design tokens/CSS custom properties opgebouwd. Featurecomponenten bevatten geen aparte light/dark business- of layoutlogica. Bij initialisatie wordt het theme zo vroeg mogelijk toegepast om een verkeerde kleurflits te voorkomen.
