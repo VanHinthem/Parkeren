@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: src/Parkeren.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren;Username=parkeren;Password=${PARKEREN_DB_PASSWORD}
+      ParkingProvider__Type: TwoPark
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD}
+    volumes:
+      - parkeren_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  two-park-mock:
+    profiles: ["mock"]
+    build:
+      context: ..
+      dockerfile: src/Parkeren.TwoParkMock/Dockerfile
+    restart: unless-stopped
+
+volumes:
+  parkeren_db:
