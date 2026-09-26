@@ -16,6 +16,6 @@ services:
       POSTGRES_DB: parkeren_dev
 
   two-park-mock:
-    profiles: []
+    profiles: ["mock"]
     ports:
       - "5081:8080"
