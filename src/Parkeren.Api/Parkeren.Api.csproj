@@ -3,4 +3,7 @@
     <ProjectReference Include="../Parkeren.Application/Parkeren.Application.csproj" />
     <ProjectReference Include="../Parkeren.Infrastructure/Parkeren.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.*" />
+  </ItemGroup>
 </Project>
