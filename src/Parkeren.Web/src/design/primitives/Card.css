@@ -1,1 +1,1 @@
-.card{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);box-shadow:var(--shadow-card);padding:1.05rem}
+.card{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:linear-gradient(145deg,color-mix(in srgb,var(--color-surface) 98%,var(--color-primary-soft)),var(--color-surface));box-shadow:0 5px 16px rgb(0 0 0/7%);padding:.95rem}
