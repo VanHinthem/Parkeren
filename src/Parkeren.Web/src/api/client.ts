@@ -28,7 +28,7 @@ export async function getCurrentUser():Promise<AuthenticatedUser|null>{
 
 export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
 export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
-async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error("De bewerking is mislukt.");return response.json() as Promise<T>;}
+async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
 export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Gebruiker kon niet worden gewijzigd.");}
