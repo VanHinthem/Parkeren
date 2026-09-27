@@ -14,13 +14,16 @@ builder.Services.AddHealthChecks()
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("login", limiter =>
-    {
-        limiter.PermitLimit = 5;
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.QueueLimit = 0;
-        limiter.AutoReplenishment = true;
-    });
+    options.AddPolicy("login", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 });
 
 var app = builder.Build();
@@ -34,7 +37,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRateLimiter();
 
-const string sessionCookie = "__Host-parkeren-session";
+const string sessionCookie = "parkeren-session";
+var secureSessionCookie = !app.Environment.IsDevelopment();
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request,
@@ -49,7 +53,7 @@ app.MapPost("/api/auth/login", async (
     context.Response.Cookies.Append(sessionCookie, result.SessionToken, new CookieOptions
     {
         HttpOnly = true,
-        Secure = true,
+        Secure = secureSessionCookie,
         SameSite = SameSiteMode.Strict,
         Path = "/",
         Expires = result.ExpiresAt
@@ -69,7 +73,7 @@ app.MapPost("/api/auth/logout", async (
     context.Response.Cookies.Delete(sessionCookie, new CookieOptions
     {
         HttpOnly = true,
-        Secure = true,
+        Secure = secureSessionCookie,
         SameSite = SameSiteMode.Strict,
         Path = "/"
     });

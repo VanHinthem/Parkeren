@@ -8,7 +8,7 @@ Na een succesvolle login genereert de server 32 cryptografisch willekeurige byte
 
 Iedere authenticatiecontrole valideert zowel de sessie als `User.IsActive`. Een gedeactiveerde gebruiker verliest daardoor direct API-toegang, ook wanneer een bestaande sessie nog niet verlopen is.
 
-Login is rate-limited op de API. De huidige baseline is vijf requests per minuut per limiter-partitie; vóór productie wordt de partitionering samen met reverse-proxy/client-IP gedrag expliciet gehard en getest.
+Login is rate-limited op de API: vijf requests per minuut per door ASP.NET waargenomen client-IP. Vóór productie wordt dit samen met forwarded headers/reverse-proxy gedrag expliciet gehard en getest.
 
 ## Endpoints
 

@@ -19,6 +19,7 @@ public sealed class UserSession
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
+    public User User { get; private set; } = null!;
 
     public bool IsValidAt(DateTimeOffset now) => RevokedAt is null && ExpiresAt > now;
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now;
