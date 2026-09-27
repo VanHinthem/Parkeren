@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
+using Parkeren.Application.ParkingProvider;
+using Parkeren.Infrastructure.ParkingProvider;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.Visits;
@@ -244,6 +248,98 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(1, await verifyContext.ProviderParkingActions.CountAsync(
             action => action.VisitId == visit.Id,
             cancellationToken));
+    }
+
+
+    [Fact]
+    public async Task Unknown_provider_start_reconciles_persisted_action_after_restart()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/unknown-outcome", new { StatusCode = 504, Count = 1 }, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var user = new User(Guid.NewGuid(), "provider-unknown", "PROVIDER-UNKNOWN", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "FF-66-FF", "FF66FF", null);
+        var operationId = Guid.NewGuid();
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow;
+        var endAt = startAt.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        var claim = new StartVisitClaimResult(visit, false, true);
+        await using (var firstScope = provider.CreateAsyncScope())
+        {
+            var store = firstScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var executor = firstScope.ServiceProvider.GetRequiredService<StartVisitProviderExecutor>();
+            var preparation = await store.PrepareAttemptAsync(claim, endAt, cancellationToken);
+            var execution = await executor.ExecuteAsync(
+                preparation,
+                new ProviderStartRequest("FF66FF", "Oss", endAt),
+                cancellationToken);
+
+            Assert.True(execution.RequiresReconciliation);
+        }
+
+        await using (var persistedContext = fixture.CreateDbContext())
+        {
+            var operation = await persistedContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+            var action = await persistedContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+            var persistedVisit = await persistedContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
+            Assert.Equal(ProviderActionHealth.Unknown, action.Health);
+            Assert.Null(action.ProviderActionId);
+            Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
+        }
+
+        await using (var restartedScope = provider.CreateAsyncScope())
+        {
+            var store = restartedScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var executor = restartedScope.ServiceProvider.GetRequiredService<StartVisitProviderExecutor>();
+            var replay = await store.PrepareAttemptAsync(new StartVisitClaimResult(visit, true, true), endAt, cancellationToken);
+            var execution = await executor.ExecuteAsync(
+                replay,
+                new ProviderStartRequest("FF66FF", "Oss", endAt),
+                cancellationToken);
+
+            Assert.False(execution.RequiresReconciliation);
+            Assert.NotNull(execution.ProviderAction);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var confirmedOperation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var confirmedAction = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        var activeVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        Assert.Equal(ProviderOperationStatus.Succeeded, confirmedOperation.Status);
+        Assert.Equal(1, confirmedOperation.AttemptCount);
+        Assert.Equal(ProviderActionState.Active, confirmedAction.State);
+        Assert.Equal(ProviderActionHealth.Healthy, confirmedAction.Health);
+        Assert.NotNull(confirmedAction.ProviderActionId);
+        Assert.Equal(VisitStatus.Active, activeVisit.Status);
+        Assert.Equal(VisitHealth.Healthy, activeVisit.Health);
+        Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken), x => x.LicensePlate == "FF66FF");
     }
 
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
