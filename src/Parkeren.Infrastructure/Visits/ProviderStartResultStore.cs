@@ -7,6 +7,14 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IProviderStartResultStore
 {
+    public async Task RecordResponseAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        ArgumentNullException.ThrowIfNull(providerAction);
+        preparation.Action.CaptureStartResponse(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task RecordConfirmedAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
