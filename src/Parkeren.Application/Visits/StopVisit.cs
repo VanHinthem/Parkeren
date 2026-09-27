@@ -60,6 +60,7 @@ public sealed record ProviderStopExecution(
 public sealed class StopVisitProviderExecutor(
     Parkeren.Application.ParkingProvider.IParkingProvider provider,
     IProviderStopResultStore resultStore,
+    StopVisitProviderReconciler? reconciler = null,
     TimeProvider? timeProvider = null)
 {
     private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(5);
@@ -71,7 +72,16 @@ public sealed class StopVisitProviderExecutor(
     {
         ArgumentNullException.ThrowIfNull(preparation);
 
-        if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
+        if (preparation.Operation.Status == ProviderOperationStatus.Unknown)
+        {
+            if (reconciler is null)
+                return new(preparation, null, true);
+
+            var reconciledAction = await reconciler.ReconcileAsync(preparation, cancellationToken);
+            return new(preparation, reconciledAction, reconciledAction is null);
+        }
+
+        if (preparation.Operation.Status == ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
 
         if (preparation.IsReplay &&
@@ -131,5 +141,38 @@ public sealed class StopVisitProviderExecutor(
             await resultStore.RecordUnknownAsync(preparation, "invalid-response", cancellationToken);
             return new(preparation, null, true);
         }
+    }
+}
+
+public sealed class StopVisitProviderReconciler(
+    Parkeren.Application.ParkingProvider.IParkingProvider provider,
+    IProviderStopResultStore resultStore,
+    TimeProvider? timeProvider = null)
+{
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+
+    public async Task<Parkeren.Application.ParkingProvider.ProviderParkingAction?> ReconcileAsync(
+        ProviderStopPreparation preparation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        if (preparation.Operation.Status != ProviderOperationStatus.Unknown ||
+            preparation.Action.State != ProviderActionState.Stopping ||
+            preparation.Action.Health != ProviderActionHealth.Unknown ||
+            string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
+            throw new InvalidOperationException("Only an unknown provider Stop with a persisted provider action id can be reconciled.");
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        var match = actions.SingleOrDefault(x =>
+            x.ProviderActionId == preparation.Action.ProviderActionId &&
+            string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase));
+
+        if (match is null)
+            return null;
+
+        preparation.Operation.BeginReconciliation();
+        preparation.Action.BeginReconciliation();
+        await resultStore.RecordConfirmedAsync(preparation, match, clock.GetUtcNow(), cancellationToken);
+        return match;
     }
 }
