@@ -4,6 +4,7 @@ using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
 using System.Threading.RateLimiting;
