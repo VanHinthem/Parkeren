@@ -52,6 +52,52 @@ public sealed class StartVisitProviderExecutorTests
         Assert.Equal("interrupted-in-progress", resultStore.LastErrorCode);
     }
 
+    [Fact]
+    public async Task Newly_claimed_retry_attempt_may_start_provider_once()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+
+        var providerAction = new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+            "provider-1", "TK01HF", start, end, "test", "active");
+        var provider = new SuccessfulProvider(providerAction);
+        var resultStore = new NoopResultStore();
+
+        var result = await new StartVisitProviderExecutor(provider, resultStore).ExecuteAsync(
+            new ProviderStartPreparation(operation, action, true, AttemptStartedNow: true),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Equal(1, provider.StartCalls);
+    }
+
+    private sealed class SuccessfulProvider(Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
+    {
+        public int StartCalls { get; private set; }
+
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default)
+        {
+            StartCalls++;
+            return Task.FromResult(action);
+        }
+
+        public Task<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>([action]);
+
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     private sealed class TrackingResultStore : IProviderStartResultStore
     {
         public int UnknownCalls { get; private set; }
