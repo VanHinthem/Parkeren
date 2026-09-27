@@ -34,8 +34,20 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         preparation.Operation.Succeed(DateTimeOffset.UtcNow);
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
-        visit.Activate();
-        visit.SetHealth(VisitHealth.Healthy);
+
+        // A Stop request can win while the external Start call is in flight.
+        // Reload so an already tracked Starting Visit cannot overwrite that Stop claim.
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
+        if (visit.Status == VisitStatus.Starting)
+        {
+            visit.Activate();
+            visit.SetHealth(VisitHealth.Healthy);
+        }
+        else if (visit.Status != VisitStatus.Stopping)
+        {
+            throw new InvalidOperationException($"Provider Start cannot be confirmed for Visit in state {visit.Status}.");
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
