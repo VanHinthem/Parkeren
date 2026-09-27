@@ -1,6 +1,6 @@
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
-using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Xunit;
 
@@ -26,7 +26,7 @@ public sealed class StopVisitFlowTests
         var executor = new StopVisitProviderExecutor(provider, new ThrowingResultStore());
 
         var result = await new StopVisitFlow(claimer, finalizer, stopStore, executor).StopAsync(
-            new StopVisitCommand(operation.OperationId, visit.Id, visit.OwnerUserId),
+            new StopVisitCommand(operation.OperationId, visit.Id, visit.UserId),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(StopVisitFlowOutcome.Completed, result.Outcome);
