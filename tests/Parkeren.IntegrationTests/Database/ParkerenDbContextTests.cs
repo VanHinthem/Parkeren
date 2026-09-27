@@ -1498,6 +1498,53 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Concrete_visit_can_change_to_manual_end_when_snapshot_allows_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"concrete-manual-{suffix}", $"CONCRETE-MANUAL-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"CM-{suffix[..6]}", $"CM{suffix[..6]}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var originalEndAt = startAt.AddHours(2);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+
+        var result = await changer.ApplyAsync(
+            new ChangeVisitEndTimeCommand(Guid.NewGuid(), visit.Id, user.Id, null),
+            cancellationToken);
+
+        Assert.Equal(VisitEndTimeChangeResult.Applied, result.Change.Result);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        Assert.Null(persistedVisit.DesiredEndAt);
+        Assert.Equal(snapshot, persistedVisit.PolicySnapshot);
+        Assert.Empty(await verifyContext.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ToListAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Manual_visit_can_change_to_concrete_end_without_precreating_provider_actions()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
