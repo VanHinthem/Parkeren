@@ -128,6 +128,68 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
 
+
+    [Fact]
+    public async Task Visit_stop_claim_serializes_same_operation()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "stop-race", "STOP-RACE", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "ST-11-OP", "ST11OP", null);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow;
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, startAt.AddHours(1), snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+        var command = new StopVisitCommand(operationId, visit.Id, user.Id);
+
+        async Task<StopVisitClaim> ClaimAsync()
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var claimer = scope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            return await claimer.ClaimAsync(command, cancellationToken);
+        }
+
+        var claims = await Task.WhenAll(ClaimAsync(), ClaimAsync());
+
+        Assert.Single(claims, claim => !claim.IsReplay);
+        Assert.Single(claims, claim => claim.IsReplay);
+        Assert.All(claims, claim => Assert.Equal(VisitStatus.Stopping, claim.Visit.Status));
+        Assert.Equal(claims[0].Operation!.Id, claims[1].Operation!.Id);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var operations = await verifyContext.ProviderOperations
+            .Where(x => x.OperationId == operationId)
+            .ToListAsync(cancellationToken);
+
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Single(operations);
+        Assert.Equal(ProviderOperationType.Stop, operations[0].Type);
+        Assert.Equal(ProviderOperationStatus.Pending, operations[0].Status);
+        Assert.Equal(visit.Id, operations[0].VisitId);
+    }
+
+
     [Fact]
     public async Task Provider_start_prepare_serializes_same_operation()
     {
