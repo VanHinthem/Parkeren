@@ -53,6 +53,8 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
                 new ProviderParkingActionRequest(request.LicensePlate, preparation.Action.PlannedStartAt, preparation.Action.PlannedEndAt, request.Location),
                 cancellationToken);
 
+            await resultStore.RecordResponseAsync(preparation, action, cancellationToken);
+
             var actions = await provider.GetActionsAsync(cancellationToken);
             var confirmed = actions.SingleOrDefault(x =>
                 x.ProviderActionId == action.ProviderActionId &&
