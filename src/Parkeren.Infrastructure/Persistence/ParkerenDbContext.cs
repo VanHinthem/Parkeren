@@ -100,5 +100,12 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasIndex(x => x.ValidFrom);
         });
 
+        modelBuilder.Entity<ParkingBudgetPeriod>(entity =>
+        {
+            entity.ToTable("parking_budget_periods");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.ValidFrom);
+        });
+
     }
 }
