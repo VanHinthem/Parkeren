@@ -319,6 +319,26 @@ app.MapPut("/api/visits/{visitId:guid}/end-time", async (
     }
 });
 
+app.MapGet("/api/visits/active", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var visit = await dbContext.Visits
+        .AsNoTracking()
+        .Where(x => x.UserId == authenticated.User.Id)
+        .Where(x => x.Status == VisitStatus.Starting || x.Status == VisitStatus.Active || x.Status == VisitStatus.Stopping)
+        .OrderByDescending(x => x.StartAt)
+        .FirstOrDefaultAsync(cancellationToken);
+
+    return visit is null ? Results.NotFound() : Results.Ok(visit);
+});
+
 app.MapGet("/api/visits/{visitId:guid}", async (
     Guid visitId,
     ParkerenDbContext dbContext,
