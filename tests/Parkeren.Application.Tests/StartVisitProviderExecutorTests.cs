@@ -152,6 +152,41 @@ public sealed class StartVisitProviderExecutorTests
         await liveAttempt;
     }
 
+    [Fact]
+    public async Task Stale_in_progress_replay_is_reconciled_without_second_provider_start()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+
+        var providerAction = new Parkeren.Application.ParkingProvider.ProviderParkingAction("provider-1", "TK01HF", start, end, "test", "active");
+        var provider = new SuccessfulProvider(providerAction);
+        var resultStore = new TrackingResultStore();
+        var reconciler = new StartVisitProviderReconciler(provider, resultStore);
+        var clock = new FixedTimeProvider(operation.AttemptStartedAt!.Value.AddMinutes(2));
+
+        var result = await new StartVisitProviderExecutor(provider, resultStore, reconciler, clock).ExecuteAsync(
+            new ProviderStartPreparation(operation, action, true, AttemptStartedNow: false),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Equal(0, provider.StartCalls);
+        Assert.Equal(1, resultStore.UnknownCalls);
+        Assert.Equal("stale-in-progress", resultStore.LastErrorCode);
+        Assert.Equal("provider-1", result.ProviderAction?.ProviderActionId);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
     private sealed class BlockingProvider : IParkingProvider
     {
         public int StartCalls { get; private set; }
@@ -212,6 +247,11 @@ public sealed class StartVisitProviderExecutorTests
         {
             UnknownCalls++;
             LastErrorCode = errorCode;
+            if (preparation.Operation.Status == ProviderOperationStatus.InProgress)
+            {
+                preparation.Action.MarkUnknown();
+                preparation.Operation.MarkUnknown(errorCode);
+            }
             return Task.CompletedTask;
         }
     }
