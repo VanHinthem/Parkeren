@@ -7,8 +7,10 @@ namespace Parkeren.Application.Visits;
 public sealed record ProviderStartRequest(string LicensePlate, string Location, DateTimeOffset EndAt);
 public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation, bool DefinitiveFailure = false);
 
-public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null)
+public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null)
 {
+    private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(2);
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     public async Task<ProviderStartExecution> ExecuteAsync(
         ProviderStartPreparation preparation,
         ProviderStartRequest request,
@@ -36,8 +38,17 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             preparation.Action.State == ProviderActionState.Starting)
         {
             // A replay can race with the request that currently owns this persisted
-            // attempt. Do not mutate its state and never issue a second provider call.
-            return new(preparation, null, true);
+            // attempt. Only an expired persisted lease may be treated as abandoned.
+            var attemptStartedAt = preparation.Operation.AttemptStartedAt;
+            if (attemptStartedAt is not null && clock.GetUtcNow() - attemptStartedAt.Value < AttemptLease)
+                return new(preparation, null, true);
+
+            await resultStore.RecordUnknownAsync(preparation, "stale-in-progress", cancellationToken);
+            if (reconciler is null)
+                return new(preparation, null, true);
+
+            var reconciledAction = await reconciler.ReconcileAsync(preparation, request.LicensePlate, cancellationToken);
+            return new(preparation, reconciledAction, reconciledAction is null);
         }
         if (preparation.Operation.Status == ProviderOperationStatus.Succeeded &&
             preparation.Action.State == ProviderActionState.Active &&
