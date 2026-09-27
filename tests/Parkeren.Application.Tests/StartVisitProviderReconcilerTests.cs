@@ -49,12 +49,12 @@ public sealed class StartVisitProviderReconcilerTests
         operation.MarkUnknown("readback-unconfirmed");
         var store = new TrackingResultStore();
 
-        var reconciled = await new StartVisitProviderReconciler(new EmptyProvider(), store).ReconcileAsync(
+        var reconciledAction = await new StartVisitProviderReconciler(new EmptyProvider(), store).ReconcileAsync(
             new ProviderStartPreparation(operation, action, true),
             "TK01HF",
             TestContext.Current.CancellationToken);
 
-        Assert.False(reconciled);
+        Assert.Null(reconciledAction);
         Assert.Equal(0, store.RetryableCalls);
         Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
         Assert.Equal(ProviderActionHealth.Unknown, action.Health);
