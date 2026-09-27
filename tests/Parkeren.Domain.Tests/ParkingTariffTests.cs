@@ -31,4 +31,17 @@ public sealed class ParkingTariffTests
             new ParkingTimeSegment(start, start.AddHours(10), false),
             new[] { tariff }));
     }
+    [Fact]
+    public void Overlapping_tariffs_are_rejected()
+    {
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var tariffs = new[]
+        {
+            new ParkingTariff(Guid.NewGuid(), start, start.AddMonths(6), 1m),
+            new ParkingTariff(Guid.NewGuid(), start.AddMonths(5), start.AddYears(1), 2m)
+        };
+
+        Assert.Throws<InvalidOperationException>(() => ParkingTariffResolver.ValidateNoOverlap(tariffs));
+    }
+
 }

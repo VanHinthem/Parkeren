@@ -25,6 +25,19 @@ public sealed class ParkingTariff
 
 public static class ParkingTariffResolver
 {
+    public static void ValidateNoOverlap(IEnumerable<ParkingTariff> tariffs)
+    {
+        ArgumentNullException.ThrowIfNull(tariffs);
+        var ordered = tariffs.OrderBy(x => x.ValidFrom).ToArray();
+
+        for (var i = 1; i < ordered.Length; i++)
+        {
+            var previous = ordered[i - 1];
+            if (!previous.ValidUntil.HasValue || ordered[i].ValidFrom < previous.ValidUntil.Value)
+                throw new InvalidOperationException("Parking tariffs may not overlap.");
+        }
+    }
+
     public static ParkingTariff Resolve(IEnumerable<ParkingTariff> tariffs, DateTimeOffset instant)
     {
         ArgumentNullException.ThrowIfNull(tariffs);
