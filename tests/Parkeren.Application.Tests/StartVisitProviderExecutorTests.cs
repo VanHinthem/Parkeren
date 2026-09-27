@@ -104,6 +104,8 @@ public sealed class StartVisitProviderExecutorTests
             TestContext.Current.CancellationToken);
 
         Assert.False(result.RequiresReconciliation);
+        Assert.NotNull(result.ProviderAction);
+        Assert.Equal("provider-1", result.ProviderAction.ProviderActionId);
         Assert.Equal(0, provider.StartCalls);
     }
 
