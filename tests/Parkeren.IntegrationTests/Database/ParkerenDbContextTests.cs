@@ -635,8 +635,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Vehicles.Add(vehicle);
             await seedContext.SaveChangesAsync(cancellationToken);
 
-            await seedContext.Database.ExecuteSqlRawAsync(
-                $"""ALTER TABLE visits ADD CONSTRAINT fail_visit_insert_for_test CHECK ("StartOperationId" <> '{operationId}');""",
+            await seedContext.Database.ExecuteSqlAsync(
+                $"""ALTER TABLE visits ADD CONSTRAINT fail_visit_insert_for_test CHECK ("StartOperationId" <> {operationId});""",
                 cancellationToken);
         }
 
