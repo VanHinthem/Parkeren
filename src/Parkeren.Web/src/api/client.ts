@@ -37,5 +37,6 @@ export async function createVehicle(licensePlate:string,displayName?:string){ret
 export async function setVehicleActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/vehicles/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Voertuig kon niet worden gewijzigd.");}
 export async function assignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"PUT"});if(!r.ok)throw new Error("Voertuig kon niet worden toegewezen.");}
 
-export async function getAuthorizedVehicles(userId?:string){return json<VehicleSummary[]>(await apiFetch(userId?`/api/admin/users/${userId}/vehicles`:"/api/vehicles"));}
+export async function getAssignedVehicles(userId:string){return json<VehicleSummary[]>(await apiFetch(`/api/admin/users/${userId}/vehicles`));}
+export async function getAuthorizedVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/vehicles"));}
 export async function unassignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"DELETE"});if(!r.ok)throw new Error("Toewijzing kon niet worden verwijderd.");}

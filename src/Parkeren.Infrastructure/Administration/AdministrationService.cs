@@ -139,13 +139,15 @@ internal sealed class AdministrationService(
         if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
             return null;
 
-        return await dbContext.UserVehicles.AsNoTracking()
+        var vehicleIds = await dbContext.UserVehicles.AsNoTracking()
             .Where(x => x.UserId == userId)
-            .Join(dbContext.Vehicles,
-                assignment => assignment.VehicleId,
-                vehicle => vehicle.Id,
-                (_, vehicle) => new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive))
+            .Select(x => x.VehicleId)
+            .ToListAsync(cancellationToken);
+
+        return await dbContext.Vehicles.AsNoTracking()
+            .Where(x => vehicleIds.Contains(x.Id))
             .OrderBy(x => x.LicensePlate)
+            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.IsActive))
             .ToListAsync(cancellationToken);
     }
 
