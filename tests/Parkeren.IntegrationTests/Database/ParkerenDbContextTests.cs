@@ -1516,7 +1516,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
         visit.Activate();
 
-        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, actionEndAt);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, actionEndAt);
         action.MarkStarting();
         action.MarkActive($"provider-{suffix}", startAt, "active");
 
