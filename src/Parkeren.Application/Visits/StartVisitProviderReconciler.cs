@@ -13,10 +13,14 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
             throw new InvalidOperationException("Only an unknown provider start can be reconciled.");
 
         var actions = await provider.GetActionsAsync(cancellationToken);
-        var match = actions.SingleOrDefault(x =>
-            string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
-            x.Start == preparation.Action.PlannedStartAt &&
-            x.End == preparation.Action.PlannedEndAt);
+        var match = !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId)
+            ? actions.SingleOrDefault(x =>
+                x.ProviderActionId == preparation.Action.ProviderActionId &&
+                string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase))
+            : actions.SingleOrDefault(x =>
+                string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
+                x.Start == preparation.Action.PlannedStartAt &&
+                x.End == preparation.Action.PlannedEndAt);
 
         if (match is null)
             return false;
