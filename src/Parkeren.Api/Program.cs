@@ -220,6 +220,29 @@ app.MapPost("/api/visits/start", async (
     }
 });
 
+app.MapGet("/api/visits/{visitId:guid}", async (
+    Guid visitId,
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var visit = await dbContext.Visits
+        .AsNoTracking()
+        .SingleOrDefaultAsync(x => x.Id == visitId, cancellationToken);
+    if (visit is null)
+        return Results.NotFound();
+
+    if (visit.OwnerUserId != authenticated.User.Id && authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return Results.Ok(visit);
+});
+
 app.MapGet("/api/vehicles", async (
     IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
 {
