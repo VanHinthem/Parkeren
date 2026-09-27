@@ -14,9 +14,19 @@ public sealed class PaidWindow
     public TimeOnly End { get; private set; }
 }
 
+public sealed class ParkingCalendarException
+{
+    private ParkingCalendarException() { }
+    public ParkingCalendarException(DateOnly date, bool isPaid) { Date = date; IsPaid = isPaid; }
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    public Guid ParkingRuleSetId { get; private set; }
+    public DateOnly Date { get; private set; }
+    public bool IsPaid { get; private set; }
+}
+
 public sealed class ParkingRuleSet
 {
-    private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); }
+    private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); CalendarExceptions = Array.Empty<ParkingCalendarException>(); }
 
     public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows)
     {
@@ -29,6 +39,7 @@ public sealed class ParkingRuleSet
     public DateTimeOffset? ValidUntil { get; private set; }
     public TimeSpan MaxProviderActionDuration { get; private set; }
     public IReadOnlyCollection<PaidWindow> PaidWindows { get; private set; }
+    public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions { get; private set; } = Array.Empty<ParkingCalendarException>();
 }
 
 public sealed record ParkingTimeSegment(DateTimeOffset Start, DateTimeOffset End, bool IsPaid);
@@ -56,7 +67,8 @@ public static class ParkingTimeSegmenter
             var a=points[i]; var b=points[i+1];
             var mid=a + TimeSpan.FromTicks((b-a).Ticks/2);
             var local=TimeZoneInfo.ConvertTime(mid,zone);
-            var paid=rules.PaidWindows.Any(w => w.Day==local.DayOfWeek && local.TimeOfDay>=w.Start.ToTimeSpan() && local.TimeOfDay<w.End.ToTimeSpan());
+            var calendarException = rules.CalendarExceptions.SingleOrDefault(x => x.Date == DateOnly.FromDateTime(local.Date));
+            var paid = calendarException?.IsPaid ?? rules.PaidWindows.Any(w => w.Day==local.DayOfWeek && local.TimeOfDay>=w.Start.ToTimeSpan() && local.TimeOfDay<w.End.ToTimeSpan());
             if(result.Count>0 && result[^1].IsPaid==paid && result[^1].End==a) result[^1]=result[^1] with { End=b };
             else result.Add(new(a,b,paid));
         }
