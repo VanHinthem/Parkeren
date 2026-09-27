@@ -24,8 +24,11 @@ public sealed class StopVisitFlow(
 
     public async Task<StopVisitFlowResult> StopAsync(
         StopVisitCommand command,
+        StopVisitContext context,
         CancellationToken cancellationToken = default)
     {
+        StopVisitPreconditions.Validate(command, context);
+
         var claim = await claimer.ClaimAsync(command, cancellationToken);
 
         if (claim.IsAlreadyCompleted)

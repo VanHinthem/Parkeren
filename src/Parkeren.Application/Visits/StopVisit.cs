@@ -3,6 +3,21 @@ using Parkeren.Domain.Visits;
 namespace Parkeren.Application.Visits;
 
 public sealed record StopVisitCommand(Guid OperationId, Guid VisitId, Guid ActorUserId);
+public sealed record StopVisitContext(StopVisitActor Actor, Visit Visit);
+
+public static class StopVisitPreconditions
+{
+    public static void Validate(StopVisitCommand command, StopVisitContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (command.OperationId == Guid.Empty || command.VisitId == Guid.Empty || command.ActorUserId == Guid.Empty)
+            throw new ArgumentException("Operation, Visit and actor are required.", nameof(command));
+        if (context.Actor.Id != command.ActorUserId || context.Visit.Id != command.VisitId)
+            throw new InvalidOperationException("Resolved stop context does not match the command.");
+
+        StopVisitAuthorization.Validate(context.Actor, context.Visit);
+    }
+}
 
 public sealed record StopVisitClaim(
     Visit Visit,

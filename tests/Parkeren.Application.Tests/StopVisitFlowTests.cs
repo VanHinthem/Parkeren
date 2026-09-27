@@ -2,6 +2,7 @@ using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Users;
 using Parkeren.Domain.Visits;
 using Xunit;
 
@@ -28,6 +29,7 @@ public sealed class StopVisitFlowTests
 
         var result = await new StopVisitFlow(claimer, finalizer, stopStore, executor).StopAsync(
             new StopVisitCommand(operation.OperationId, visit.Id, visit.UserId),
+            new StopVisitContext(new StopVisitActor(visit.UserId, UserRole.Visitor, true), visit),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(StopVisitFlowOutcome.Completed, result.Outcome);
@@ -62,6 +64,7 @@ public sealed class StopVisitFlowTests
 
         var result = await flow.StopAsync(
             new StopVisitCommand(operation.OperationId, visit.Id, visit.UserId),
+            new StopVisitContext(new StopVisitActor(visit.UserId, UserRole.Visitor, true), visit),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(StopVisitFlowOutcome.ReconciliationRequired, result.Outcome);
