@@ -21,11 +21,17 @@ public sealed class StartVisitProviderExecutorTests
         operation.BeginAttempt(); operation.MarkUnknown("timeout");
         var provider = new CountingProvider();
 
-        var result = await new StartVisitProviderExecutor(provider).ExecuteAsync(
+        var result = await new StartVisitProviderExecutor(provider, new NoopResultStore()).ExecuteAsync(
             new ProviderStartPreparation(operation, action, true), new("TK01HF", "test", start.AddHours(1)), TestContext.Current.CancellationToken);
 
         Assert.True(result.RequiresReconciliation);
         Assert.Equal(0, provider.StartCalls);
+    }
+
+    private sealed class NoopResultStore : IProviderStartResultStore
+    {
+        public Task RecordConfirmedAsync(ProviderStartPreparation preparation, Parkeren.Application.ParkingProvider.ProviderParkingAction providerAction, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RecordUnknownAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class CountingProvider : IParkingProvider
