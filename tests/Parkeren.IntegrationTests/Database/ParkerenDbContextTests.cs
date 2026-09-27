@@ -294,6 +294,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
         Assert.NotNull(operation.CompletedAt);
         Assert.False(await verifyContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
+        Assert.Single(await verifyContext.NotificationEvents
+            .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
+            .ToListAsync(cancellationToken));
     }
 
 
@@ -1049,6 +1052,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
         Assert.Equal(action.Id, stopOperation.ProviderParkingActionId);
         Assert.Equal(1, stopOperation.AttemptCount);
+        Assert.Single(await verifyContext.NotificationEvents
+            .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
+            .ToListAsync(cancellationToken));
     }
 
 
