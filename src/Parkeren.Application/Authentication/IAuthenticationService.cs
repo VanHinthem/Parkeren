@@ -6,6 +6,9 @@ public interface IAuthenticationService
 {
     Task<LoginResult?> LoginAsync(string username, string pin, CancellationToken cancellationToken);
     Task<AuthenticatedUser?> AuthenticateAsync(string sessionToken, CancellationToken cancellationToken);
+    Task<bool> ChangePinAsync(string sessionToken, string currentPin, string newPin, CancellationToken cancellationToken);
+    Task<bool> ResetPinAsync(Guid actorUserId, Guid userId, string newPin, CancellationToken cancellationToken);
+    Task<bool> RevokeAllSessionsAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken);
     Task LogoutAsync(string sessionToken, CancellationToken cancellationToken);
 }
 
