@@ -15,5 +15,6 @@ public sealed class ProviderOperationTests
         operation.BeginReconciliation(); operation.Succeed(DateTimeOffset.UtcNow);
         Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
         Assert.Equal(1, operation.AttemptCount);
+        Assert.NotNull(operation.AttemptStartedAt);
     }
 }
