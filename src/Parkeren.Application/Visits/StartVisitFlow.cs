@@ -59,10 +59,13 @@ public sealed class StartVisitFlow(
 
             await providerReadiness.CheckAsync(paidDuration, cancellationToken);
             var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, paidEndAt, cancellationToken);
-            await providerExecutor.ExecuteAsync(
+            var execution = await providerExecutor.ExecuteAsync(
                 providerPreparation,
                 new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location, paidEndAt),
                 cancellationToken);
+
+            if (!execution.RequiresReconciliation && !execution.DefinitiveFailure && execution.ProviderAction is not null)
+                await finalizer.FinalizePaidStartAsync(claim, execution, cancellationToken);
         }
 
         return new StartVisitFlowResult(
