@@ -37,3 +37,17 @@ public interface IProviderStopStore
         StopVisitClaim claim,
         CancellationToken cancellationToken = default);
 }
+
+public interface IProviderStopResultStore
+{
+    Task RecordUnknownAsync(
+        ProviderStopPreparation preparation,
+        string errorCode,
+        CancellationToken cancellationToken = default);
+
+    Task RecordConfirmedAsync(
+        ProviderStopPreparation preparation,
+        Parkeren.Application.ParkingProvider.ProviderParkingAction providerAction,
+        DateTimeOffset actualEndAt,
+        CancellationToken cancellationToken = default);
+}
