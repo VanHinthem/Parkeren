@@ -40,3 +40,5 @@ export async function assignVehicle(userId:string,vehicleId:string){const r=awai
 export async function getAssignedVehicles(userId:string){return json<VehicleSummary[]>(await apiFetch(`/api/admin/users/${userId}/vehicles`));}
 export async function getAuthorizedVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/vehicles"));}
 export async function unassignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"DELETE"});if(!r.ok)throw new Error("Toewijzing kon niet worden verwijderd.");}
+
+export async function logout(){const response=await apiFetch("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("Uitloggen is mislukt.");csrfToken=null;}
