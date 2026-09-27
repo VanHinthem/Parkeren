@@ -70,4 +70,54 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             visit => visit.Status != VisitStatus.Completed && visit.Status != VisitStatus.Cancelled,
             cancellationToken));
     }
+    [Fact]
+    public async Task Visit_capacity_claim_replays_same_operation_without_duplicate_visit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var user = new User(Guid.NewGuid(), "visitor-replay", "VISITOR-REPLAY", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "CC-33-CC", "CC33CC", null);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var operationId = Guid.NewGuid();
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow;
+        var visit1 = new Visit(Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, startAt.AddHours(1), snapshot);
+        var visit2 = new Visit(Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, startAt.AddHours(1), snapshot);
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        async Task<VisitCapacityClaim> ClaimAsync(Visit visit)
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var claimer = scope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            return await claimer.TryClaimAsync(visit, 5, cancellationToken);
+        }
+
+        var claims = await Task.WhenAll(ClaimAsync(visit1), ClaimAsync(visit2));
+
+        Assert.All(claims, claim => Assert.True(claim.Claimed));
+        Assert.Single(claims, claim => claim.IsReplay);
+        Assert.Single(claims, claim => !claim.IsReplay);
+        Assert.Equal(claims[0].Visit!.Id, claims[1].Visit!.Id);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(1, await verifyContext.Visits.CountAsync(
+            visit => visit.StartOperationId == operationId,
+            cancellationToken));
+    }
+
 }
