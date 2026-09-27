@@ -32,6 +32,9 @@ public static class DependencyInjection
         services.AddScoped<IStopVisitFinalizer, StopVisitFinalizer>();
         services.AddScoped<IProviderStopStore, ProviderStopStore>();
         services.AddScoped<IProviderStopResultStore, ProviderStopResultStore>();
+        services.AddScoped<StopVisitProviderReconciler>();
+        services.AddScoped<StopVisitProviderExecutor>();
+        services.AddScoped<StopVisitFlow>();
         services.AddScoped<IVisitStartStore, VisitStartStore>();
         services.AddScoped<IStartVisitRequestResolver, StartVisitRequestResolver>();
         services.AddScoped<IStartVisitOperationalContextResolver, StartVisitOperationalContextResolver>();
