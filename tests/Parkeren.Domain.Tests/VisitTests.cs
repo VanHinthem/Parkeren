@@ -7,10 +7,11 @@ namespace Parkeren.Domain.Tests;
 
 public sealed class VisitTests
 {
-    private static Visit CreateVisit() => new(
+    private static Visit CreateVisit(EffectiveParkingPolicySnapshot? policySnapshot = null) => new(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
         DateTimeOffset.UtcNow, null,
-        EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(8), null, true)));
+        policySnapshot ?? EffectiveParkingPolicySnapshot.Capture(
+            new EffectiveParkingPolicy(TimeSpan.FromHours(8), null, true)));
 
     [Fact]
     public void New_visit_starts_healthy_and_occupies_capacity()
