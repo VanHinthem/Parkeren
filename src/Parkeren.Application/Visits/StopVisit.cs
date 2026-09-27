@@ -16,3 +16,11 @@ public interface IStopVisitClaimer
         StopVisitCommand command,
         CancellationToken cancellationToken = default);
 }
+
+public interface IStopVisitFinalizer
+{
+    Task<Visit> CompleteWithoutProviderActionAsync(
+        StopVisitClaim claim,
+        DateTimeOffset actualEndAt,
+        CancellationToken cancellationToken = default);
+}
