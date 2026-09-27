@@ -19,6 +19,20 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
 
         if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
+        if (preparation.Operation.Status == ProviderOperationStatus.Succeeded &&
+            preparation.Action.State == ProviderActionState.Active &&
+            !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
+        {
+            return new(
+                preparation,
+                new ProviderAction(
+                    preparation.Action.ProviderActionId,
+                    request.LicensePlate,
+                    preparation.Action.ActualStartAt ?? preparation.Action.PlannedStartAt,
+                    preparation.Action.ActualEndAt ?? preparation.Action.PlannedEndAt,
+                    preparation.Action.ProviderStatus),
+                false);
+        }
         if (preparation.Operation.Status != ProviderOperationStatus.InProgress || preparation.Action.State != ProviderActionState.Starting)
             throw new InvalidOperationException("Provider start is not ready for mutation.");
 
