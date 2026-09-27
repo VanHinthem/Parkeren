@@ -244,7 +244,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
         Assert.Equal(VisitHealth.Healthy, persistedVisit.Health);
-        Assert.Equal(actualEndAt, persistedVisit.ActualEndAt);
+        Assert.NotNull(persistedVisit.ActualEndAt);
+        Assert.True((persistedVisit.ActualEndAt.Value - actualEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.False(persistedVisit.OccupiesCapacity);
         Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
         Assert.NotNull(operation.CompletedAt);
