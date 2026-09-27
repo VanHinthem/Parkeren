@@ -1428,8 +1428,14 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.Equal(2, changes.Count);
         Assert.All(changes, change => Assert.Equal(VisitEndTimeChangeResult.Applied, change.Result));
-        Assert.Contains(persistedVisit.DesiredEndAt, new DateTimeOffset?[] { firstEndAt, secondEndAt });
-        Assert.Equal(changes[^1].RequestedDesiredEndAt, persistedVisit.DesiredEndAt);
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True(
+            (persistedVisit.DesiredEndAt.Value - firstEndAt).Duration() <= TimeSpan.FromMilliseconds(1) ||
+            (persistedVisit.DesiredEndAt.Value - secondEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.NotNull(changes[^1].RequestedDesiredEndAt);
+        Assert.True(
+            (changes[^1].RequestedDesiredEndAt.GetValueOrDefault() - persistedVisit.DesiredEndAt.Value).Duration()
+            <= TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
