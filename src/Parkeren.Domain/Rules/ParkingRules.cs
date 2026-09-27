@@ -28,11 +28,11 @@ public sealed class ParkingRuleSet
 {
     private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); CalendarExceptions = Array.Empty<ParkingCalendarException>(); }
 
-    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null)
+    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null, bool publicHolidaysAreFree = false)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
-        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows; CalendarExceptions=calendarExceptions ?? Array.Empty<ParkingCalendarException>();
+        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows; CalendarExceptions=calendarExceptions ?? Array.Empty<ParkingCalendarException>(); PublicHolidaysAreFree=publicHolidaysAreFree;
     }
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
@@ -40,6 +40,7 @@ public sealed class ParkingRuleSet
     public TimeSpan MaxProviderActionDuration { get; private set; }
     public IReadOnlyCollection<PaidWindow> PaidWindows { get; private set; }
     public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions { get; private set; } = Array.Empty<ParkingCalendarException>();
+    public bool PublicHolidaysAreFree { get; private set; }
 }
 
 public sealed record ParkingTimeSegment(DateTimeOffset Start, DateTimeOffset End, bool IsPaid);
@@ -71,7 +72,12 @@ public static class ParkingTimeSegmenter
             var mid=a + TimeSpan.FromTicks((b-a).Ticks/2);
             var local=TimeZoneInfo.ConvertTime(mid,zone);
             var calendarException = rules.CalendarExceptions.SingleOrDefault(x => x.Date == DateOnly.FromDateTime(local.Date));
-            var paid = calendarException?.IsPaid ?? rules.PaidWindows.Any(w => w.Day==local.DayOfWeek && local.TimeOfDay>=w.Start.ToTimeSpan() && local.TimeOfDay<w.End.ToTimeSpan());
+            var localDate = DateOnly.FromDateTime(local.Date);
+            var isPublicHoliday = DutchPublicHolidayCalendar.ForYear(localDate.Year).Contains(localDate);
+            var paid = calendarException?.IsPaid
+                ?? (rules.PublicHolidaysAreFree && isPublicHoliday
+                    ? false
+                    : rules.PaidWindows.Any(w => w.Day==local.DayOfWeek && local.TimeOfDay>=w.Start.ToTimeSpan() && local.TimeOfDay<w.End.ToTimeSpan()));
             if(result.Count>0 && result[^1].IsPaid==paid && result[^1].End==a) result[^1]=result[^1] with { End=b };
             else result.Add(new(a,b,paid));
         }
