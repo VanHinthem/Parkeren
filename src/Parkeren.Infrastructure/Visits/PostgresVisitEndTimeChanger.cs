@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -38,6 +39,17 @@ internal sealed class PostgresVisitEndTimeChanger(
 
             await transaction.CommitAsync(cancellationToken);
             return new ChangeVisitEndTimeResult(visit, existing, true);
+        }
+
+        if (desiredEndAt is not null)
+        {
+            var durationValidation = VisitDurationPolicyValidator.Validate(
+                visit.PolicySnapshot.ToEffectivePolicy(),
+                visit.StartAt,
+                desiredEndAt.Value);
+
+            if (!durationValidation.IsAllowed)
+                throw new InvalidOperationException("Requested end exceeds the Visit elapsed-duration policy.");
         }
 
         var change = new VisitEndTimeChange(
