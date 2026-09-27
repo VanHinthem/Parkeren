@@ -36,6 +36,40 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.ToTable("user_policy_overrides");
         });
 
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<TimeSpan>("MaxProviderActionDuration").HasColumnType("interval");
+            b.Property<DateTimeOffset>("ValidFrom").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset?>("ValidUntil").HasColumnType("timestamp with time zone");
+            b.HasKey("Id");
+            b.ToTable("parking_rule_sets");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.PaidWindow", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<int>("Day").HasColumnType("integer");
+            b.Property<TimeOnly>("End").HasColumnType("time without time zone");
+            b.Property<Guid>("ParkingRuleSetId").HasColumnType("uuid");
+            b.Property<TimeOnly>("Start").HasColumnType("time without time zone");
+            b.HasKey("Id");
+            b.HasIndex("ParkingRuleSetId", "Day", "Start", "End").IsUnique();
+            b.ToTable("paid_windows");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.ParkingCalendarException", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<DateOnly>("Date").HasColumnType("date");
+            b.Property<bool>("IsPaid").HasColumnType("boolean");
+            b.Property<Guid>("ParkingRuleSetId").HasColumnType("uuid");
+            b.HasKey("Id");
+            b.HasIndex("ParkingRuleSetId", "Date").IsUnique();
+            b.ToTable("parking_calendar_exceptions");
+        });
+
         modelBuilder.Entity("Parkeren.Domain.Users.User", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
@@ -91,6 +125,23 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
         modelBuilder.Entity("Parkeren.Domain.Policies.UserPolicyOverride", b =>
         {
             b.HasOne("Parkeren.Domain.Users.User", null).WithOne().HasForeignKey("Parkeren.Domain.Policies.UserPolicyOverride", "UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+        });
+
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.PaidWindow", b =>
+        {
+            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("PaidWindows").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired();
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.ParkingCalendarException", b =>
+        {
+            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired();
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
+        {
+            b.Navigation("CalendarExceptions");
+            b.Navigation("PaidWindows");
         });
 
         modelBuilder.Entity("Parkeren.Domain.Users.UserSession", b =>
