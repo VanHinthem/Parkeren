@@ -8,7 +8,7 @@ namespace Parkeren.Domain.Tests;
 public sealed class VisitTests
 {
     private static Visit CreateVisit() => new(
-        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
         DateTimeOffset.UtcNow, null,
         EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(8), null, true)));
 
