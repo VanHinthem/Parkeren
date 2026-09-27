@@ -25,3 +25,14 @@ export async function getCurrentUser():Promise<AuthenticatedUser|null>{
  if(!response.ok)throw new Error("Sessie kon niet worden gecontroleerd.");
  return response.json() as Promise<AuthenticatedUser>;
 }
+
+export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
+export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
+async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error("De bewerking is mislukt.");return response.json() as Promise<T>;}
+export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
+export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
+export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Gebruiker kon niet worden gewijzigd.");}
+export async function getVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/admin/vehicles"));}
+export async function createVehicle(licensePlate:string,displayName?:string){return json<VehicleSummary>(await apiFetch("/api/admin/vehicles",{method:"POST",body:JSON.stringify({licensePlate,displayName:displayName||null})}));}
+export async function setVehicleActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/vehicles/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Voertuig kon niet worden gewijzigd.");}
+export async function assignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"PUT"});if(!r.ok)throw new Error("Voertuig kon niet worden toegewezen.");}
