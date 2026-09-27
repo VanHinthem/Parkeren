@@ -7,6 +7,20 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext) : IStopVisitFinalizer
 {
+    public async Task<bool> RequiresProviderActionAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+
+        return await dbContext.ProviderParkingActions.AnyAsync(
+            x => x.VisitId == claim.Visit.Id &&
+                 x.State != ProviderActionState.Stopped &&
+                 x.State != ProviderActionState.Completed &&
+                 x.State != ProviderActionState.Failed,
+            cancellationToken);
+    }
+
     public async Task<Visit> CompleteWithoutProviderActionAsync(
         StopVisitClaim claim,
         DateTimeOffset actualEndAt,
