@@ -1,5 +1,6 @@
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Users;
 using Xunit;
@@ -14,12 +15,18 @@ public sealed class StartVisitTests
         var userId = Guid.NewGuid();
         var command = new StartVisitCommand(Guid.NewGuid(), userId, userId, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(2));
         var context = new StartVisitContext(new(command.ActorUserId, UserRole.Visitor, true), new(command.OwnerUserId, true), new(command.VehicleId, true, true));
-        var result = new StartVisitPreparer().Prepare(command, context, policy, true);
+        var rules = PaidRules(command.StartAt);
+        var result = new StartVisitPreparer().Prepare(command, context, policy, rules, command.StartAt.AddMinutes(1));
         Assert.Equal(VisitStatus.Starting, result.Visit.Status);
         Assert.True(result.RequiresProviderCoverageNow);
         Assert.Equal(command.OperationId, result.OperationId);
         Assert.Equal(policy.MaxPaidParkingDuration, result.Visit.PolicySnapshot.MaxPaidParkingDuration);
     }
+    private static ParkingRuleSet[] PaidRules(DateTimeOffset start) =>
+    [
+        new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+            [new PaidWindow(TimeZoneInfo.ConvertTime(start, TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId)).DayOfWeek, TimeOnly.MinValue, new TimeOnly(23, 59, 59))])
+    ];
 }
 
 
@@ -32,7 +39,8 @@ public sealed class StartVisitClaimerTests
         var userId = Guid.NewGuid();
         var command = new StartVisitCommand(Guid.NewGuid(), userId, userId, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(2));
         var context = new StartVisitContext(new(command.ActorUserId, UserRole.Visitor, true), new(command.OwnerUserId, true), new(command.VehicleId, true, true));
-        var preparation = new StartVisitPreparer().Prepare(command, context, policy, true);
+        var rules = PaidRules(command.StartAt);
+        var preparation = new StartVisitPreparer().Prepare(command, context, policy, rules, command.StartAt.AddMinutes(1));
         var existing = preparation.Visit;
         var claimer = new StartVisitClaimer(new ReplayCapacityClaimer(existing));
 
@@ -43,6 +51,12 @@ public sealed class StartVisitClaimerTests
         Assert.Same(existing, result.Visit);
         Assert.True(result.RequiresProviderCoverageNow);
     }
+
+    private static ParkingRuleSet[] PaidRules(DateTimeOffset start) =>
+    [
+        new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+            [new PaidWindow(TimeZoneInfo.ConvertTime(start, TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId)).DayOfWeek, TimeOnly.MinValue, new TimeOnly(23, 59, 59))])
+    ];
 
     private sealed class ReplayCapacityClaimer(Visit existing) : IVisitCapacityClaimer
     {

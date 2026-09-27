@@ -12,10 +12,11 @@ public sealed record StartVisitContext(StartVisitActor Actor, StartVisitOwner Ow
 
 public sealed class StartVisitPreparer
 {
-    public StartVisitPreparation Prepare(StartVisitCommand command, StartVisitContext context, EffectiveParkingPolicy policy, bool requiresProviderCoverageNow)
+    public StartVisitPreparation Prepare(StartVisitCommand command, StartVisitContext context, EffectiveParkingPolicy policy, IEnumerable<ParkingRuleSet> ruleSets, DateTimeOffset coverageEvaluationEndAt)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(ruleSets);
         if (context.Actor.Id != command.ActorUserId || context.Owner.Id != command.OwnerUserId || context.Vehicle.Id != command.VehicleId)
             throw new InvalidOperationException("Resolved start context does not match the command.");
         StartVisitAuthorization.Validate(context.Actor, context.Owner, context.Vehicle);
@@ -28,6 +29,8 @@ public sealed class StartVisitPreparer
             if (!durationValidation.IsAllowed)
                 throw new InvalidOperationException("Requested Visit duration exceeds the effective parking policy.");
         }
+        var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
+            command.StartAt, coverageEvaluationEndAt, ruleSets);
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
