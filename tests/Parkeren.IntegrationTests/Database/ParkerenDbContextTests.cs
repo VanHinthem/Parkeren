@@ -1491,7 +1491,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.NotNull(persistedVisit.DesiredEndAt);
         Assert.True((persistedVisit.DesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
-        Assert.Empty(changes);
+        var rejected = Assert.Single(changes);
+        Assert.Equal(VisitEndTimeChangeResult.Rejected, rejected.Result);
+        Assert.Equal(user.Id, rejected.ActorUserId);
     }
 
     [Fact]
@@ -1547,7 +1549,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
         Assert.NotNull(persistedVisit.DesiredEndAt);
         Assert.True((persistedVisit.DesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
-        Assert.False(await verifyContext.VisitEndTimeChanges.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
+        var rejected = await verifyContext.VisitEndTimeChanges
+            .SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        Assert.Equal(VisitEndTimeChangeResult.Rejected, rejected.Result);
+        Assert.Equal(user.Id, rejected.ActorUserId);
     }
 
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
