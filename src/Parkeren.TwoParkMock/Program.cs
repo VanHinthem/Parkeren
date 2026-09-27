@@ -69,6 +69,20 @@ app.MapPut("/api/actions/{id}/end", (string id, MockExtendRequest request) =>
     return Results.Ok(updated);
 });
 
+app.MapPost("/api/test/actions/{id}/stop", (string id) =>
+{
+    if (!actions.TryGetValue(id, out var current)) return Results.NotFound();
+    actions[id] = current with { Status = "stopped" };
+    return Results.NoContent();
+});
+
+app.MapPut("/api/test/actions/{id}/end", (string id, MockExtendRequest request) =>
+{
+    if (!actions.TryGetValue(id, out var current)) return Results.NotFound();
+    actions[id] = current with { End = request.End };
+    return Results.NoContent();
+});
+
 app.MapPost("/api/actions/{id}/stop", (string id) =>
 {
     if (!actions.TryGetValue(id, out var current))

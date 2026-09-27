@@ -35,6 +35,23 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_simulate_action_stopped_externally()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        var created = await provider.StartActionAsync(new ProviderParkingActionRequest("EXT1", start, start.AddHours(1), "Oss"), cancellationToken);
+
+        var externalStop = await http.PostAsync($"api/test/actions/{created.ProviderActionId}/stop", null, cancellationToken);
+        externalStop.EnsureSuccessStatusCode();
+
+        var action = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+        Assert.Equal("stopped", action.Status);
+    }
+
+    [Fact]
     public async Task Mock_can_return_provider_validation_error()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
