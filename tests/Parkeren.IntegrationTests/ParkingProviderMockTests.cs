@@ -35,6 +35,24 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_reject_duplicate_active_action_for_same_plate()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/reject-duplicates", new { Enabled = true }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        var request = new ProviderParkingActionRequest("DUP1", start, start.AddHours(1), "Oss");
+        await provider.StartActionAsync(request, cancellationToken);
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(request, cancellationToken));
+
+        Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.LicensePlate == "DUP1" && x.Status == "active");
+    }
+
+    [Fact]
     public async Task Mock_can_simulate_action_stopped_externally()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

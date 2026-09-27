@@ -10,6 +10,7 @@ var remainingMinutes = 1500 * 60;
 var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
 var forcedValidationError = false;
+var rejectDuplicateActiveActions = false;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -45,6 +46,9 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
 
     if ((request.End - request.Start).TotalMinutes > remainingMinutes)
         return Results.Conflict(new { error = "Insufficient provider balance." });
+
+    if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.LicensePlate == request.LicensePlate))
+        return Results.Conflict(new { error = "Duplicate active provider action." });
 
     if (actions.Values.Count(x => x.Status == "active") >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
@@ -98,6 +102,12 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/reject-duplicates", (MockDuplicateRequest request) =>
+{
+    rejectDuplicateActiveActions = request.Enabled;
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/validation-error", (MockValidationErrorRequest request) =>
 {
     forcedValidationError = request.Enabled;
@@ -145,6 +155,7 @@ app.MapPost("/api/test/reset", () =>
     validCredentials = true;
     visibilityDelay = TimeSpan.Zero;
     forcedValidationError = false;
+    rejectDuplicateActiveActions = false;
     return Results.NoContent();
 });
 
@@ -234,3 +245,5 @@ public sealed record MockAuthenticationRequest(bool Valid);
 public sealed record MockVisibilityDelayRequest(int Milliseconds);
 
 public sealed record MockValidationErrorRequest(bool Enabled);
+
+public sealed record MockDuplicateRequest(bool Enabled);
