@@ -42,8 +42,7 @@ public sealed class StartVisitProviderReconcilerTests
             EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
         var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
         action.MarkStarting();
-        action.CaptureStartResponse(new Parkeren.Application.ParkingProvider.ProviderParkingAction(
-            "provider-1", "TK01HF", start, end, "test", "active"));
+        action.CaptureStartResponse("provider-1", start, "active");
         action.MarkUnknown();
         var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
         operation.BeginAttempt();
