@@ -37,6 +37,63 @@ public sealed class StopVisitProviderExecutorTests
         Assert.Equal("provider-stop-1", store.ConfirmedAction?.ProviderActionId);
     }
 
+    [Fact]
+    public async Task In_progress_replay_never_calls_provider_again()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visitId, now.AddMinutes(-30), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-2", now.AddMinutes(-30), "active");
+        action.BeginStopping();
+
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        var provider = new SuccessfulStopProvider(
+            new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                "provider-stop-2", "ST02OP", now.AddMinutes(-30), now.AddHours(1), "Oss", "stopped"));
+        var store = new TrackingStopResultStore();
+
+        var result = await new StopVisitProviderExecutor(provider, store).ExecuteAsync(
+            new ProviderStopPreparation(operation, action, true, false),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal(0, provider.StopCalls);
+        Assert.Equal(0, provider.ReadCalls);
+        Assert.Equal(0, store.ConfirmedCalls);
+        Assert.Equal(0, store.UnknownCalls);
+    }
+
+    [Fact]
+    public async Task Unconfirmed_readback_marks_stop_unknown_instead_of_succeeding()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visitId, now.AddMinutes(-30), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-3", now.AddMinutes(-30), "active");
+        action.BeginStopping();
+
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        var provider = new SuccessfulStopProvider(
+            new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                "provider-stop-3", "ST03OP", now.AddMinutes(-30), now.AddHours(1), "Oss", "active"));
+        var store = new TrackingStopResultStore();
+
+        var result = await new StopVisitProviderExecutor(provider, store).ExecuteAsync(
+            new ProviderStopPreparation(operation, action, false, true),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal(1, provider.StopCalls);
+        Assert.Equal(1, provider.ReadCalls);
+        Assert.Equal(0, store.ConfirmedCalls);
+        Assert.Equal(1, store.UnknownCalls);
+        Assert.Equal("read-back-unconfirmed", store.LastErrorCode);
+    }
+
     private sealed class SuccessfulStopProvider(
         Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
     {
@@ -70,10 +127,12 @@ public sealed class StopVisitProviderExecutorTests
         public int ConfirmedCalls { get; private set; }
         public int UnknownCalls { get; private set; }
         public Parkeren.Application.ParkingProvider.ProviderParkingAction? ConfirmedAction { get; private set; }
+        public string? LastErrorCode { get; private set; }
 
         public Task RecordUnknownAsync(ProviderStopPreparation preparation, string errorCode, CancellationToken cancellationToken = default)
         {
             UnknownCalls++;
+            LastErrorCode = errorCode;
             return Task.CompletedTask;
         }
 
