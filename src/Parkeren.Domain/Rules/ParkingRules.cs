@@ -16,7 +16,7 @@ public sealed class PaidWindow
 
 public sealed class ParkingRuleSet
 {
-    private ParkingRuleSet() { }
+    private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); }
 
     public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows)
     {
