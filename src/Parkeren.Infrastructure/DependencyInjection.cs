@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IStartVisitRequestResolver, StartVisitRequestResolver>();
         services.AddScoped<IStartVisitOperationalContextResolver, StartVisitOperationalContextResolver>();
         services.AddScoped<IProviderStartStore, ProviderStartStore>();
+        services.AddScoped<IProviderStartMutationGuard, ProviderStartMutationGuard>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
         services.AddScoped<StartVisitPreparer>();

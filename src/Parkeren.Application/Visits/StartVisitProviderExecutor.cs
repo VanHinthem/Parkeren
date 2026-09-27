@@ -7,7 +7,12 @@ namespace Parkeren.Application.Visits;
 public sealed record ProviderStartRequest(string LicensePlate, string Location, DateTimeOffset EndAt);
 public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation, bool DefinitiveFailure = false);
 
-public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null)
+public interface IProviderStartMutationGuard
+{
+    Task<bool> CanStartAsync(Guid visitId, CancellationToken cancellationToken = default);
+}
+
+public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null, IProviderStartMutationGuard? mutationGuard = null)
 {
     private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(5);
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -72,6 +77,11 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         {
             if (request.EndAt != preparation.Action.PlannedEndAt)
                 throw new InvalidOperationException("Provider request end must match the persisted planned end.");
+
+            if (mutationGuard is not null &&
+                (!preparation.Operation.VisitId.HasValue ||
+                 !await mutationGuard.CanStartAsync(preparation.Operation.VisitId.Value, cancellationToken)))
+                return new(preparation, null, true);
 
             var action = await provider.StartActionAsync(
                 new ProviderParkingActionRequest(request.LicensePlate, preparation.Action.PlannedStartAt, preparation.Action.PlannedEndAt, request.Location),
