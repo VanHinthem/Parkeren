@@ -30,7 +30,8 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
                     request.LicensePlate,
                     preparation.Action.ActualStartAt ?? preparation.Action.PlannedStartAt,
                     preparation.Action.ActualEndAt ?? preparation.Action.PlannedEndAt,
-                    preparation.Action.ProviderStatus),
+                    request.Location,
+                    preparation.Action.ProviderStatus ?? "active"),
                 false);
         }
         if (preparation.Operation.Status != ProviderOperationStatus.InProgress || preparation.Action.State != ProviderActionState.Starting)
