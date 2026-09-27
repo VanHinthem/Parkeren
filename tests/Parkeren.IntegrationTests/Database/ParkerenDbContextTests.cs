@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
 namespace Parkeren.IntegrationTests.Database;
 
@@ -34,6 +35,14 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.True(
             operations.Count == 0,
-            "Pending model operations: " + string.Join(", ", operations.Select(x => x.GetType().Name)));
+            "Pending model operations: " + string.Join(", ", operations.Select(DescribeOperation)));
     }
+
+    private static string DescribeOperation(MigrationOperation operation) => operation switch
+    {
+        RenameColumnOperation rename => $"RenameColumn({rename.Table}.{rename.Name}->{rename.NewName})",
+        AddForeignKeyOperation add => $"AddFK({add.Table}[{string.Join("+", add.Columns)}]->{add.PrincipalTable}[{string.Join("+", add.PrincipalColumns)}])",
+        DropForeignKeyOperation drop => $"DropFK({drop.Table}.{drop.Name})",
+        _ => operation.GetType().Name
+    };
 }
