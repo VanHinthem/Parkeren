@@ -1356,10 +1356,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.NotNull(persistedVisit.DesiredEndAt);
         Assert.True((persistedVisit.DesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.Single(changes);
-        Assert.NotNull(changes[0].PreviousDesiredEndAt);
-        Assert.True((changes[0].PreviousDesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
-        Assert.NotNull(changes[0].RequestedDesiredEndAt);
-        Assert.True((changes[0].RequestedDesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.True(changes[0].PreviousDesiredEndAt is { } previousDesiredEndAt);
+        Assert.True((previousDesiredEndAt - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.True(changes[0].RequestedDesiredEndAt is { } persistedRequestedEndAt);
+        Assert.True((persistedRequestedEndAt - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndTimeChangeResult.Applied, changes[0].Result);
     }
 
