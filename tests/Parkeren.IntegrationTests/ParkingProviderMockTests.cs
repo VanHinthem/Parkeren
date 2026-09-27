@@ -35,6 +35,23 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_store_action_while_omitting_created_response_body()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/omit-created-body", new { Enabled = true }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("NOBODY1", start, start.AddHours(1), "Oss"), cancellationToken));
+
+        Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.LicensePlate == "NOBODY1" && x.Status == "active");
+    }
+
+    [Fact]
     public async Task Mock_can_reject_duplicate_active_action_for_same_plate()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

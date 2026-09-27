@@ -11,6 +11,7 @@ var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
 var forcedValidationError = false;
 var rejectDuplicateActiveActions = false;
+var omitCreatedActionBody = false;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -57,6 +58,7 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active", DateTimeOffset.UtcNow + visibilityDelay);
     actions[id] = action;
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
+    if (omitCreatedActionBody) return Results.Created($"/api/actions/{id}", value: null);
     return Results.Created($"/api/actions/{id}", action);
 });
 
@@ -99,6 +101,12 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
 app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
 {
     outcome.Configure(request.StatusCode, request.DelayMilliseconds, request.Count);
+    return Results.NoContent();
+});
+
+app.MapPost("/api/test/omit-created-body", (MockOmitCreatedBodyRequest request) =>
+{
+    omitCreatedActionBody = request.Enabled;
     return Results.NoContent();
 });
 
@@ -156,6 +164,7 @@ app.MapPost("/api/test/reset", () =>
     visibilityDelay = TimeSpan.Zero;
     forcedValidationError = false;
     rejectDuplicateActiveActions = false;
+    omitCreatedActionBody = false;
     return Results.NoContent();
 });
 
@@ -247,3 +256,5 @@ public sealed record MockVisibilityDelayRequest(int Milliseconds);
 public sealed record MockValidationErrorRequest(bool Enabled);
 
 public sealed record MockDuplicateRequest(bool Enabled);
+
+public sealed record MockOmitCreatedBodyRequest(bool Enabled);
