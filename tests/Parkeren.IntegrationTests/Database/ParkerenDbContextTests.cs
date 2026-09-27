@@ -24,9 +24,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var migrationsAssembly = context.GetService<IMigrationsAssembly>();
         var snapshot = migrationsAssembly.ModelSnapshot
             ?? throw new InvalidOperationException("No migration model snapshot found.");
+        var runtimeInitializer = context.GetService<IModelRuntimeInitializer>();
+        var snapshotModel = runtimeInitializer.Initialize(snapshot.Model, designTime: true);
 
         var operations = differ.GetDifferences(
-            snapshot.Model.GetRelationalModel(),
+            snapshotModel.GetRelationalModel(),
             context.Model.GetRelationalModel());
 
         Assert.True(
