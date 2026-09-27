@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Parkeren.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace Parkeren.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(ParkerenDbContext))]
+[Migration("20260927204000_AddAllowManualStop")]
 public partial class AddAllowManualStop : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
