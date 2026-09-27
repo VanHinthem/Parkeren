@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
+using Parkeren.Application.Visits;
 using Parkeren.Domain.Users;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
@@ -142,6 +143,81 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
     return await authentication.RevokeAllSessionsAsync(authenticated.User.Id, userId, cancellationToken)
         ? Results.NoContent()
         : Results.NotFound();
+});
+
+app.MapPost("/api/visits/start", async (
+    StartVisitRequest request,
+    StartVisitFlow flow,
+    IStartVisitRequestResolver requestResolver,
+    IStartVisitOperationalContextResolver operationalContextResolver,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    if (request.OperationId == Guid.Empty || request.VehicleId == Guid.Empty)
+        return Results.BadRequest(new { error = "OperationId en VehicleId zijn verplicht." });
+
+    var ownerUserId = request.OwnerUserId ?? authenticated.User.Id;
+    var startAt = DateTimeOffset.UtcNow;
+
+    var requestContext = await requestResolver.ResolveAsync(
+        authenticated.User.Id,
+        ownerUserId,
+        request.VehicleId,
+        cancellationToken);
+    if (requestContext is null)
+        return Results.BadRequest(new { error = "Visit-context kon niet worden bepaald." });
+
+    var operationalContext = await operationalContextResolver.ResolveAsync(
+        ownerUserId,
+        startAt,
+        request.DesiredEndAt,
+        cancellationToken);
+    if (operationalContext is null)
+        return Results.Problem("Parkeerbeleid of parkeerregels zijn niet beschikbaar.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    var command = new StartVisitCommand(
+        request.OperationId,
+        ownerUserId,
+        authenticated.User.Id,
+        request.VehicleId,
+        startAt,
+        request.DesiredEndAt);
+
+    try
+    {
+        var result = await flow.StartAsync(
+            command,
+            requestContext.StartContext,
+            operationalContext.Policy,
+            operationalContext.RuleSets,
+            operationalContext.CoverageEvaluationEndAt,
+            operationalContext.MaxConcurrentVisits,
+            requestContext.ProviderContext,
+            cancellationToken);
+
+        if (result is null)
+            return Results.Conflict(new { error = "Er is geen parkeercapaciteit beschikbaar." });
+
+        return result.Outcome switch
+        {
+            StartVisitFlowOutcome.ReconciliationRequired => Results.Accepted($"/api/visits/{result.Visit.Id}", result),
+            StartVisitFlowOutcome.DefinitiveFailure => Results.Conflict(result),
+            _ => Results.Ok(result)
+        };
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
 });
 
 app.MapGet("/api/vehicles", async (
@@ -285,5 +361,6 @@ public sealed record ResetPinRequest(string NewPin);
 public sealed record CreateUserRequest(string Username, string Pin, UserRole Role);
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
+public sealed record StartVisitRequest(Guid OperationId, Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 
 public partial class Program;
