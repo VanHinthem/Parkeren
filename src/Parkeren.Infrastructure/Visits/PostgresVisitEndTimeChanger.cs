@@ -95,7 +95,7 @@ internal sealed class PostgresVisitEndTimeChanger(
             change.MarkApplied();
             dbContext.VisitEndTimeChanges.Add(change);
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
             change.MarkRejected();
             dbContext.VisitEndTimeChanges.Add(change);
