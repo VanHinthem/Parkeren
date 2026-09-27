@@ -12,9 +12,6 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         if (preparation.Operation.Status != ProviderOperationStatus.Unknown || preparation.Action.Health != ProviderActionHealth.Unknown)
             throw new InvalidOperationException("Only an unknown provider start can be reconciled.");
 
-        preparation.Operation.BeginReconciliation();
-        preparation.Action.BeginReconciliation();
-
         var actions = await provider.GetActionsAsync(cancellationToken);
         var match = actions.SingleOrDefault(x =>
             string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
@@ -24,6 +21,8 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         if (match is null)
             return false;
 
+        preparation.Operation.BeginReconciliation();
+        preparation.Action.BeginReconciliation();
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
         return true;
     }
