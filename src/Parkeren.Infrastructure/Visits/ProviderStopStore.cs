@@ -1,0 +1,63 @@
+using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.Visits;
+using Parkeren.Domain.Visits;
+using Parkeren.Infrastructure.Persistence;
+
+namespace Parkeren.Infrastructure.Visits;
+
+internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProviderStopStore
+{
+    private const long StopOperationLockNamespace = 0x53544F50; // STOP
+
+    public async Task<ProviderStopPreparation> PrepareAttemptAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+        if (claim.Operation is null || claim.Operation.Type != ProviderOperationType.Stop)
+            throw new InvalidOperationException("A persisted Stop operation is required.");
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = StopOperationLockNamespace ^ claim.Operation.OperationId.GetHashCode();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == claim.Visit.Id, cancellationToken);
+        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.Id == claim.Operation.Id, cancellationToken);
+        if (visit.Status != VisitStatus.Stopping)
+            throw new InvalidOperationException($"Visit must be Stopping before provider Stop preparation, but was {visit.Status}.");
+
+        ProviderParkingAction action;
+        if (operation.ProviderParkingActionId is Guid actionId)
+        {
+            action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
+        }
+        else
+        {
+            var openActions = await dbContext.ProviderParkingActions
+                .Where(x => x.VisitId == visit.Id &&
+                            x.State != ProviderActionState.Stopped &&
+                            x.State != ProviderActionState.Completed &&
+                            x.State != ProviderActionState.Failed)
+                .ToListAsync(cancellationToken);
+
+            if (openActions.Count != 1)
+                throw new InvalidOperationException($"Provider Stop requires exactly one unresolved provider action, but found {openActions.Count}.");
+
+            action = openActions[0];
+            operation.AttachProviderParkingAction(action.Id);
+        }
+
+        var attemptStartedNow = false;
+        if (operation.Status == ProviderOperationStatus.Pending && action.State == ProviderActionState.Active)
+        {
+            action.BeginStopping();
+            operation.BeginAttempt();
+            attemptStartedNow = true;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new ProviderStopPreparation(operation, action, !attemptStartedNow, attemptStartedNow);
+    }
+}

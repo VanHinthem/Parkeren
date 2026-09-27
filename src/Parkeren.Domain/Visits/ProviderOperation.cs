@@ -20,6 +20,14 @@ public sealed class ProviderOperation
     public DateTimeOffset? AttemptStartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public uint Version { get; private set; }
+    public void AttachProviderParkingAction(Guid providerParkingActionId)
+    {
+        if (Type != ProviderOperationType.Stop || Status != ProviderOperationStatus.Pending || ProviderParkingActionId is not null)
+            throw new InvalidOperationException("Only an unbound pending Stop operation can be attached to a provider action.");
+        if (providerParkingActionId == Guid.Empty)
+            throw new ArgumentException("Provider parking action id is required.", nameof(providerParkingActionId));
+        ProviderParkingActionId = providerParkingActionId;
+    }
     public void BeginAttempt() { if (Status is not ProviderOperationStatus.Pending) throw new InvalidOperationException("Only a pending operation can begin a provider attempt; unknown outcomes must reconcile first."); Status = ProviderOperationStatus.InProgress; AttemptCount++; AttemptStartedAt = DateTimeOffset.UtcNow; }
     public void MarkUnknown(string? errorCode = null) { if (Status != ProviderOperationStatus.InProgress) throw new InvalidOperationException(); LastErrorCode = errorCode; Status = ProviderOperationStatus.Unknown; }
     public void BeginReconciliation() { if (Status != ProviderOperationStatus.Unknown) throw new InvalidOperationException(); Status = ProviderOperationStatus.Reconciling; }
