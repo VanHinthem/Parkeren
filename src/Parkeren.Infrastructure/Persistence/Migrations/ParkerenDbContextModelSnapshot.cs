@@ -14,6 +14,18 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
         modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
 
+        modelBuilder.Entity("Parkeren.Domain.Notifications.NotificationEvent", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<Guid>("AggregateId").HasColumnType("uuid");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("OccurredAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Type").IsRequired().HasMaxLength(50).HasColumnType("character varying(50)");
+            b.HasKey("Id");
+            b.HasIndex("Type", "AggregateId").IsUnique();
+            b.ToTable("notification_events");
+        });
+
         modelBuilder.Entity("Parkeren.Domain.Policies.DefaultParkingPolicy", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
