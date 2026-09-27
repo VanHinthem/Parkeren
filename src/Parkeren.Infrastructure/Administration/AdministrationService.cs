@@ -133,6 +133,22 @@ internal sealed class AdministrationService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<VehicleSummary>?> GetAssignedVehiclesAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+            return null;
+
+        return await dbContext.UserVehicles.AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .Join(dbContext.Vehicles,
+                assignment => assignment.VehicleId,
+                vehicle => vehicle.Id,
+                (_, vehicle) => new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive))
+            .OrderBy(x => x.LicensePlate)
+            .ToListAsync(cancellationToken);
+    }
+
     private async Task EnsureAdminAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
         if (!await dbContext.Users.AnyAsync(x => x.Id == actorUserId && x.IsActive && x.Role == UserRole.Admin, cancellationToken))
