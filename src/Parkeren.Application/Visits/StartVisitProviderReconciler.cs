@@ -6,7 +6,7 @@ namespace Parkeren.Application.Visits;
 
 public sealed class StartVisitProviderReconciler(IParkingProvider provider, IProviderStartResultStore resultStore)
 {
-    public async Task<bool> ReconcileAsync(ProviderStartPreparation preparation, string licensePlate, CancellationToken cancellationToken = default)
+    public async Task<ProviderAction?> ReconcileAsync(ProviderStartPreparation preparation, string licensePlate, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
         if (preparation.Operation.Status != ProviderOperationStatus.Unknown || preparation.Action.Health != ProviderActionHealth.Unknown)
@@ -26,12 +26,12 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         {
             if (string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
                 await resultStore.RecordRetryableAsync(preparation, cancellationToken);
-            return false;
+            return null;
         }
 
         preparation.Operation.BeginReconciliation();
         preparation.Action.BeginReconciliation();
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
-        return true;
+        return match;
     }
 }
