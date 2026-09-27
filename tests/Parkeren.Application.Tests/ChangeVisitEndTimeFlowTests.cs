@@ -1,0 +1,98 @@
+using Parkeren.Application.ParkingProvider;
+using Parkeren.Application.Visits;
+using Parkeren.Domain.Policies;
+using Parkeren.Domain.Users;
+using Parkeren.Domain.Visits;
+using Xunit;
+
+namespace Parkeren.Application.Tests;
+
+public sealed class ChangeVisitEndTimeFlowTests
+{
+    [Fact]
+    public async Task Elapsed_end_time_routes_exclusively_through_stop_flow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), userId, Guid.NewGuid(), userId,
+            now.AddHours(-1), now.AddHours(1),
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        visit.Activate();
+
+        var operationId = Guid.NewGuid();
+        var stopFlow = new StopVisitFlow(
+            new CompletingClaimer(visit, operationId),
+            new ProviderFreeFinalizer(),
+            new ThrowingStopStore(),
+            new StopVisitProviderExecutor(new ThrowingProvider(), new ThrowingResultStore()),
+            new FixedTimeProvider(now));
+        var flow = new ChangeVisitEndTimeFlow(new ThrowingChanger(), stopFlow, new FixedTimeProvider(now));
+
+        var result = await flow.ChangeAsync(
+            new ChangeVisitEndTimeCommand(operationId, visit.Id, userId, now),
+            new StopVisitContext(new StopVisitActor(userId, UserRole.Visitor, true), visit),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ChangeVisitEndTimeFlowOutcome.Stopped, result.Outcome);
+        Assert.Equal(VisitStatus.Completed, result.Visit.Status);
+    }
+
+    private sealed class ThrowingChanger : IVisitEndTimeChanger
+    {
+        public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("End-time changer must not run when the requested end has elapsed.");
+    }
+
+    private sealed class CompletingClaimer(Visit visit, Guid operationId) : IStopVisitClaimer
+    {
+        public Task<StopVisitClaim> ClaimAsync(StopVisitCommand command, CancellationToken cancellationToken = default)
+        {
+            visit.BeginStopping();
+            return Task.FromResult(new StopVisitClaim(
+                visit,
+                new ProviderOperation(operationId, Guid.NewGuid(), visit.Id, null, ProviderOperationType.Stop),
+                false,
+                false));
+        }
+    }
+
+    private sealed class ProviderFreeFinalizer : IStopVisitFinalizer
+    {
+        public Task<bool> RequiresProviderActionAsync(StopVisitClaim claim, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<Visit> CompleteWithoutProviderActionAsync(StopVisitClaim claim, DateTimeOffset actualEndAt, CancellationToken cancellationToken = default)
+        {
+            claim.Visit.Complete(actualEndAt);
+            return Task.FromResult(claim.Visit);
+        }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class ThrowingStopStore : IProviderStopStore
+    {
+        public Task<ProviderStopPreparation> PrepareAttemptAsync(StopVisitClaim claim, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+    }
+
+    private sealed class ThrowingResultStore : IProviderStopResultStore
+    {
+        public Task RecordUnknownAsync(ProviderStopPreparation preparation, string errorCode, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task RecordConfirmedAsync(ProviderStopPreparation preparation, ProviderParkingAction providerAction, DateTimeOffset actualEndAt, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+    }
+
+    private sealed class ThrowingProvider : IParkingProvider
+    {
+        public Task<ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<ProviderParkingAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+    }
+}
