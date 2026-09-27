@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Parkeren.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
 
@@ -32,7 +31,6 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         var options = new DbContextOptionsBuilder<ParkerenDbContext>()
             .UseNpgsql(ConnectionString)
-            .ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         return new ParkerenDbContext(options);
