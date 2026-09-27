@@ -1,0 +1,30 @@
+using Parkeren.Application.ParkingProvider;
+using Parkeren.Domain.Visits;
+using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
+
+namespace Parkeren.Application.Visits;
+
+public sealed class StartVisitProviderReconciler(IParkingProvider provider, IProviderStartResultStore resultStore)
+{
+    public async Task<bool> ReconcileAsync(ProviderStartPreparation preparation, string licensePlate, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        if (preparation.Operation.Status != ProviderOperationStatus.Unknown || preparation.Action.Health != ProviderActionHealth.Unknown)
+            throw new InvalidOperationException("Only an unknown provider start can be reconciled.");
+
+        preparation.Operation.BeginReconciliation();
+        preparation.Action.BeginReconciliation();
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        var match = actions.SingleOrDefault(x =>
+            string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
+            x.Start == preparation.Action.PlannedStartAt &&
+            x.End == preparation.Action.PlannedEndAt);
+
+        if (match is null)
+            return false;
+
+        await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
+        return true;
+    }
+}
