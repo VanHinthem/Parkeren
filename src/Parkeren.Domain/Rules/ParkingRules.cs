@@ -16,6 +16,8 @@ public sealed class PaidWindow
 
 public sealed class ParkingRuleSet
 {
+    private ParkingRuleSet() { }
+
     public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
