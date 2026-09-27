@@ -5,6 +5,7 @@ using Parkeren.Domain.Visits;
 namespace Parkeren.Application.Visits;
 
 public sealed record StartVisitFlowResult(Visit Visit, bool IsReplay, bool RequiresProviderCoverageNow);
+public sealed record StartVisitProviderContext(string LicensePlate, string Location);
 
 public sealed class StartVisitFlow(
     StartVisitPreparer preparer,
@@ -20,6 +21,7 @@ public sealed class StartVisitFlow(
         IEnumerable<ParkingRuleSet> ruleSets,
         DateTimeOffset coverageEvaluationEndAt,
         int maxConcurrentVisits,
+        StartVisitProviderContext? providerContext = null,
         CancellationToken cancellationToken = default)
     {
         var preparation = preparer.Prepare(
@@ -43,6 +45,11 @@ public sealed class StartVisitFlow(
         }
         else
         {
+            if (providerContext is null)
+                throw new InvalidOperationException("Server-resolved provider context is required for a paid Visit start.");
+            if (string.IsNullOrWhiteSpace(providerContext.LicensePlate) || string.IsNullOrWhiteSpace(providerContext.Location))
+                throw new InvalidOperationException("Provider context must contain a license plate and location.");
+
             var paidEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
             var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(command.StartAt, paidEndAt, ruleSets)
                 .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
