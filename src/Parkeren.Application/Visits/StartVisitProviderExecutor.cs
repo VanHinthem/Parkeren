@@ -9,7 +9,7 @@ public sealed record ProviderStartExecution(ProviderStartPreparation Preparation
 
 public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null)
 {
-    private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(5);
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     public async Task<ProviderStartExecution> ExecuteAsync(
         ProviderStartPreparation preparation,
