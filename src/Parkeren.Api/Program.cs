@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
@@ -29,6 +30,29 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
+    await db.Database.MigrateAsync();
+
+    if (!await db.Users.AnyAsync())
+    {
+        var username = app.Configuration["BootstrapAdmin:Username"];
+        var pin = app.Configuration["BootstrapAdmin:Pin"];
+
+        if (string.IsNullOrWhiteSpace(username) || pin is null || pin.Length != 6 || !pin.All(char.IsAsciiDigit))
+            throw new InvalidOperationException("No users exist. Configure BootstrapAdmin__Username and a six-digit BootstrapAdmin__Pin.");
+
+        var trimmedUsername = username.Trim();
+        var user = new User(Guid.NewGuid(), trimmedUsername, trimmedUsername.ToUpperInvariant(), string.Empty, UserRole.Admin);
+        var hasher = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<User>>();
+        user.ChangePinHash(hasher.HashPassword(user, pin));
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        app.Logger.LogInformation("Initial administrator account created.");
+    }
+}
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
