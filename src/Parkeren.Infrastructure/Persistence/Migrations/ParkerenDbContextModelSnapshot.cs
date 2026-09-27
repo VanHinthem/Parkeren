@@ -681,6 +681,10 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                                 .HasColumnType("boolean")
                                 .HasColumnName("PolicyAllowAutoExtension");
 
+                            b1.Property<bool>("AllowManualStop")
+                                .HasColumnType("boolean")
+                                .HasColumnName("PolicyAllowManualStop");
+
                             b1.Property<TimeSpan>("MaxPaidParkingDuration")
                                 .HasColumnType("interval")
                                 .HasColumnName("PolicyMaxPaidParkingDuration");
