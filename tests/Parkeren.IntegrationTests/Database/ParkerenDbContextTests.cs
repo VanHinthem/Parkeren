@@ -130,6 +130,50 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
 
     [Fact]
+    public async Task Stop_visit_context_is_resolved_from_persisted_actor_and_visit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"stop-resolver-{suffix}", $"STOP-RESOLVER-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"SR-{suffix[..2]}-{suffix[2..4]}", $"SR{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now, now.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+
+        var resolver = scope.ServiceProvider.GetRequiredService<IStopVisitRequestResolver>();
+        var resolved = await resolver.ResolveAsync(user.Id, visit.Id, cancellationToken);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(user.Id, resolved.Actor.Id);
+        Assert.Equal(UserRole.Visitor, resolved.Actor.Role);
+        Assert.True(resolved.Actor.IsActive);
+        Assert.Equal(visit.Id, resolved.Visit.Id);
+        Assert.Equal(user.Id, resolved.Visit.UserId);
+    }
+
+    [Fact]
     public async Task Visit_stop_claim_serializes_same_operation()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
