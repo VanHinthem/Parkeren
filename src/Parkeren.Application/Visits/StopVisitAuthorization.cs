@@ -1,4 +1,5 @@
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Visits;
 
