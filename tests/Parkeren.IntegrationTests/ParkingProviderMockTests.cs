@@ -35,6 +35,19 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_reject_invalid_provider_credentials()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/authentication", new { Valid = false }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.GetBalanceAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_rejects_action_when_provider_balance_is_insufficient()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

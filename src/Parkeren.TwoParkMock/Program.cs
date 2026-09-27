@@ -7,6 +7,7 @@ var actions = new ConcurrentDictionary<string, MockParkingAction>();
 var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
 var remainingMinutes = 1500 * 60;
+var validCredentials = true;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -14,6 +15,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "2park-moc
 
 app.MapGet("/api/balance", async () =>
 {
+    if (!validCredentials) return Results.Unauthorized();
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
     return Results.Ok(new
 {
@@ -26,6 +28,7 @@ app.MapGet("/api/actions", () => Results.Ok(actions.Values.OrderBy(x => x.Start)
 
 app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
+    if (!validCredentials) return Results.Unauthorized();
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
     if (request.End <= request.Start)
         return Results.BadRequest(new { error = "End must be after start." });
@@ -74,6 +77,12 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>
+{
+    validCredentials = request.Valid;
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/balance", (MockBalanceRequest request) =>
 {
     remainingMinutes = Math.Max(0, request.RemainingPaidMinutes);
@@ -100,6 +109,7 @@ app.MapPost("/api/test/reset", () =>
     maxConcurrentActions = 5;
     maxActionDuration = TimeSpan.FromHours(4);
     remainingMinutes = 1500 * 60;
+    validCredentials = true;
     return Results.NoContent();
 });
 
@@ -183,3 +193,5 @@ public sealed record MockCapacityRequest(int MaxConcurrentActions);
 public sealed record MockMaxActionDurationRequest(int Minutes);
 
 public sealed record MockBalanceRequest(int RemainingPaidMinutes);
+
+public sealed record MockAuthenticationRequest(bool Valid);
