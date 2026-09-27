@@ -18,13 +18,19 @@ public sealed record StartVisitFlowResult(
     StartVisitFlowOutcome Outcome);
 public sealed record StartVisitProviderContext(string LicensePlate, string Location);
 
+public interface IStartVisitNotificationPublisher
+{
+    Task PublishStartedAsync(Visit visit, CancellationToken cancellationToken = default);
+}
+
 public sealed class StartVisitFlow(
     StartVisitPreparer preparer,
     StartVisitClaimer claimer,
     StartVisitFinalizer finalizer,
     StartVisitProviderReadiness providerReadiness,
     IProviderStartStore providerStartStore,
-    StartVisitProviderExecutor providerExecutor)
+    StartVisitProviderExecutor providerExecutor,
+    IStartVisitNotificationPublisher notificationPublisher)
 {
     public async Task<StartVisitFlowResult?> StartAsync(
         StartVisitCommand command,
@@ -88,6 +94,18 @@ public sealed class StartVisitFlow(
             else
             {
                 await finalizer.FinalizePaidStartAsync(claim, execution, cancellationToken);
+            }
+        }
+
+        if (outcome == StartVisitFlowOutcome.Active)
+        {
+            try
+            {
+                await notificationPublisher.PublishStartedAsync(claim.Visit, cancellationToken);
+            }
+            catch when (!cancellationToken.IsCancellationRequested)
+            {
+                // Notification delivery is best-effort and must never change Visit start state.
             }
         }
 
