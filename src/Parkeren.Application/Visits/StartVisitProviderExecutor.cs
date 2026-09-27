@@ -40,5 +40,10 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             await resultStore.RecordUnknownAsync(preparation, "network", cancellationToken);
             return new(preparation, null, true);
         }
+        catch (System.Text.Json.JsonException)
+        {
+            await resultStore.RecordUnknownAsync(preparation, "invalid-response", cancellationToken);
+            return new(preparation, null, true);
+        }
     }
 }
