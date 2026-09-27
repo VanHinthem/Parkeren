@@ -92,5 +92,13 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.UserId);
             entity.HasOne<User>().WithOne().HasForeignKey<UserPolicyOverride>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
+        modelBuilder.Entity<ParkingTariff>(entity =>
+        {
+            entity.ToTable("parking_tariffs");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.HourlyRate).HasPrecision(18, 4);
+            entity.HasIndex(x => x.ValidFrom);
+        });
+
     }
 }
