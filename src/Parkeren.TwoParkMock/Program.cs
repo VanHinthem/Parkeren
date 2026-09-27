@@ -5,6 +5,7 @@ var app = builder.Build();
 
 var actions = new ConcurrentDictionary<string, MockParkingAction>();
 var remainingMinutes = 1500 * 60;
+var maxConcurrentActions = 5;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -27,6 +28,9 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
     if (request.End <= request.Start)
         return Results.BadRequest(new { error = "End must be after start." });
+
+    if (actions.Values.Count(x => x.Status == "active") >= maxConcurrentActions)
+        return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");
     var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active");
@@ -63,11 +67,18 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>
+{
+    maxConcurrentActions = Math.Max(1, request.MaxConcurrentActions);
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/reset", () =>
 {
     actions.Clear();
     failure.Reset();
     outcome.Reset();
+    maxConcurrentActions = 5;
     return Results.NoContent();
 });
 
@@ -145,3 +156,5 @@ public sealed class MockUnknownOutcomeState
         return true;
     }
 }
+
+public sealed record MockCapacityRequest(int MaxConcurrentActions);

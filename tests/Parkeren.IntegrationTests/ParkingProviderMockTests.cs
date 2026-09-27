@@ -35,6 +35,23 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_enforces_configured_provider_capacity()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var capacity = await http.PostAsJsonAsync("api/test/capacity", new { MaxConcurrentActions = 1 }, cancellationToken);
+        capacity.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        await provider.StartActionAsync(new ProviderParkingActionRequest("CAP1", start, start.AddHours(1), "Oss"), cancellationToken);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAP2", start, start.AddHours(1), "Oss"), cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_state_can_be_reset_between_scenarios()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
