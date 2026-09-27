@@ -269,6 +269,56 @@ app.MapPost("/api/visits/{visitId:guid}/stop", async (
     }
 });
 
+app.MapPut("/api/visits/{visitId:guid}/end-time", async (
+    Guid visitId,
+    ChangeVisitEndTimeRequest request,
+    ChangeVisitEndTimeFlow flow,
+    IStopVisitRequestResolver requestResolver,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    if (request.OperationId == Guid.Empty)
+        return Results.BadRequest(new { error = "OperationId is verplicht." });
+
+    var visitContext = await requestResolver.ResolveAsync(
+        authenticated.User.Id,
+        visitId,
+        cancellationToken);
+    if (visitContext is null)
+        return Results.NotFound();
+
+    var command = new ChangeVisitEndTimeCommand(
+        request.OperationId,
+        visitId,
+        authenticated.User.Id,
+        request.DesiredEndAt);
+
+    try
+    {
+        var result = await flow.ChangeAsync(command, visitContext, cancellationToken);
+        return result.Outcome == ChangeVisitEndTimeFlowOutcome.ReconciliationRequired
+            ? Results.Accepted($"/api/visits/{visitId}", result)
+            : Results.Ok(result);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Forbid();
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+});
+
 app.MapGet("/api/visits/{visitId:guid}", async (
     Guid visitId,
     ParkerenDbContext dbContext,
@@ -435,5 +485,6 @@ public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayNa
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record StartVisitRequest(Guid OperationId, Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 public sealed record StopVisitRequest(Guid OperationId);
+public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);
 
 public partial class Program;
