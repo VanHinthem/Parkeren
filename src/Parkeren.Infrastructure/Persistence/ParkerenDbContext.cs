@@ -20,6 +20,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
     public DbSet<ParkingCalendarException> ParkingCalendarExceptions => Set<ParkingCalendarException>();
     public DbSet<Visit> Visits => Set<Visit>();
+    public DbSet<ProviderParkingAction> ProviderParkingActions => Set<ProviderParkingAction>();
+    public DbSet<ProviderOperation> ProviderOperations => Set<ProviderOperation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -108,6 +110,32 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("parking_budget_periods");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.ValidFrom);
+        });
+
+        modelBuilder.Entity<ProviderParkingAction>(entity =>
+        {
+            entity.ToTable("provider_parking_actions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProviderActionId).HasMaxLength(200);
+            entity.Property(x => x.ProviderStatus).HasMaxLength(100);
+            entity.Property(x => x.State).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Version).IsRowVersion();
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.VisitId);
+        });
+
+        modelBuilder.Entity<ProviderOperation>(entity =>
+        {
+            entity.ToTable("provider_operations");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.LastErrorCode).HasMaxLength(100);
+            entity.Property(x => x.Version).IsRowVersion();
+            entity.HasIndex(x => x.OperationId).IsUnique();
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Visit>(entity =>
