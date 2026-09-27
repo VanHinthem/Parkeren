@@ -35,6 +35,21 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_enforces_configured_maximum_action_duration()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/max-action-duration", new { Minutes = 30 }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("LONG1", start, start.AddMinutes(31), "Oss"), cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_enforces_configured_provider_capacity()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

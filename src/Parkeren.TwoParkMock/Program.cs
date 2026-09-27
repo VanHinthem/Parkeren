@@ -6,6 +6,7 @@ var app = builder.Build();
 var actions = new ConcurrentDictionary<string, MockParkingAction>();
 var remainingMinutes = 1500 * 60;
 var maxConcurrentActions = 5;
+var maxActionDuration = TimeSpan.FromHours(4);
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -28,6 +29,9 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
     if (request.End <= request.Start)
         return Results.BadRequest(new { error = "End must be after start." });
+
+    if (request.End - request.Start > maxActionDuration)
+        return Results.BadRequest(new { error = "Provider action exceeds maximum duration." });
 
     if (actions.Values.Count(x => x.Status == "active") >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
@@ -67,6 +71,12 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/max-action-duration", (MockMaxActionDurationRequest request) =>
+{
+    maxActionDuration = TimeSpan.FromMinutes(Math.Max(1, request.Minutes));
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>
 {
     maxConcurrentActions = Math.Max(1, request.MaxConcurrentActions);
@@ -79,6 +89,7 @@ app.MapPost("/api/test/reset", () =>
     failure.Reset();
     outcome.Reset();
     maxConcurrentActions = 5;
+    maxActionDuration = TimeSpan.FromHours(4);
     return Results.NoContent();
 });
 
@@ -158,3 +169,5 @@ public sealed class MockUnknownOutcomeState
 }
 
 public sealed record MockCapacityRequest(int MaxConcurrentActions);
+
+public sealed record MockMaxActionDurationRequest(int Minutes);
