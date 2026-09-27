@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -29,7 +30,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         var operations = differ.GetDifferences(
             snapshotModel.GetRelationalModel(),
-            context.Model.GetRelationalModel());
+            context.GetService<IDesignTimeModel>().Model.GetRelationalModel());
 
         Assert.True(
             operations.Count == 0,
