@@ -58,6 +58,18 @@ internal sealed class PostgresVisitEndTimeChanger(
         {
             visit.EnsureDesiredEndCanChange(desiredEndAt);
 
+            if (desiredEndAt is not null && visit.DesiredEndAt is not null && desiredEndAt < visit.DesiredEndAt)
+            {
+                var providerActions = await dbContext.ProviderParkingActions
+                    .Where(x => x.VisitId == visit.Id)
+                    .ToListAsync(cancellationToken);
+
+                if (VisitEndTimeProviderImpactClassifier.Classify(desiredEndAt.Value, providerActions) ==
+                    VisitEndTimeProviderImpact.RequiresProviderMutation)
+                    throw new InvalidOperationException(
+                        "Requested end requires a provider mutation whose strategy is not yet available.");
+            }
+
             if (desiredEndAt is not null)
             {
                 var operationalContext = await operationalContextResolver.ResolveAsync(
