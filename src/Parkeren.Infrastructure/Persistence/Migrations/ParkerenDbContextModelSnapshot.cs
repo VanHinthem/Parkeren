@@ -13,6 +13,29 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
     {
         modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
+
+        modelBuilder.Entity("Parkeren.Domain.Policies.DefaultParkingPolicy", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<bool>("AllowAutoExtension").HasColumnType("boolean");
+            b.Property<TimeSpan>("MaxPaidParkingDuration").HasColumnType("interval");
+            b.Property<TimeSpan?>("MaxVisitElapsedDuration").HasColumnType("interval");
+            b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+            b.HasKey("Id");
+            b.ToTable("default_parking_policy");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Policies.UserPolicyOverride", b =>
+        {
+            b.Property<Guid>("UserId").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<bool?>("AllowAutoExtension").HasColumnType("boolean");
+            b.Property<TimeSpan?>("MaxPaidParkingDuration").HasColumnType("interval");
+            b.Property<TimeSpan?>("MaxVisitElapsedDuration").HasColumnType("interval");
+            b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+            b.HasKey("UserId");
+            b.ToTable("user_policy_overrides");
+        });
+
         modelBuilder.Entity("Parkeren.Domain.Users.User", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
@@ -62,6 +85,12 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.HasKey("UserId", "VehicleId");
             b.HasIndex("VehicleId");
             b.ToTable("user_vehicles");
+        });
+
+
+        modelBuilder.Entity("Parkeren.Domain.Policies.UserPolicyOverride", b =>
+        {
+            b.HasOne("Parkeren.Domain.Users.User", null).WithOne().HasForeignKey("Parkeren.Domain.Policies.UserPolicyOverride", "UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
         });
 
         modelBuilder.Entity("Parkeren.Domain.Users.UserSession", b =>
