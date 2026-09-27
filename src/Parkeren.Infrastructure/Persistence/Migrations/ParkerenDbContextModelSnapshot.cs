@@ -41,6 +41,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
             b.Property<TimeSpan>("MaxProviderActionDuration").HasColumnType("interval");
+            b.Property<bool>("PublicHolidaysAreFree").HasColumnType("boolean");
             b.Property<DateTimeOffset>("ValidFrom").HasColumnType("timestamp with time zone");
             b.Property<DateTimeOffset?>("ValidUntil").HasColumnType("timestamp with time zone");
             b.HasKey("Id");
