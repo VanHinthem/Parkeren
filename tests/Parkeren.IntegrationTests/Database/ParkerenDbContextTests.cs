@@ -26,6 +26,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     public async Task Visit_capacity_claim_allows_only_one_start_for_last_slot()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
         var user1 = new User(Guid.NewGuid(), "visitor-1", "VISITOR-1", "hash", UserRole.Visitor);
         var user2 = new User(Guid.NewGuid(), "visitor-2", "VISITOR-2", "hash", UserRole.Visitor);
         var vehicle1 = new Vehicle(Guid.NewGuid(), "AA-11-AA", "AA11AA", null);
@@ -74,6 +75,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     public async Task Visit_capacity_claim_replays_same_operation_without_duplicate_visit()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
         var user = new User(Guid.NewGuid(), "visitor-replay", "VISITOR-REPLAY", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), "CC-33-CC", "CC33CC", null);
 
@@ -118,6 +120,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(1, await verifyContext.Visits.CountAsync(
             visit => visit.StartOperationId == operationId,
             cancellationToken));
+    }
+
+    private async Task ClearVisitsAsync(CancellationToken cancellationToken)
+    {
+        await using var context = fixture.CreateDbContext();
+        await context.Visits.ExecuteDeleteAsync(cancellationToken);
     }
 
 }
