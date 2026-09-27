@@ -1463,7 +1463,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 Guid.NewGuid(),
                 startAt.AddDays(-1),
                 originalEndAt.AddDays(1),
-                TimeSpan.FromHours(4)));
+                TimeSpan.FromHours(4),
+                Array.Empty<PaidWindow>()));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
