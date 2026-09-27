@@ -2,7 +2,7 @@ using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Visits;
 
-public sealed record ProviderStartPreparation(ProviderOperation Operation, ProviderParkingAction Action, bool IsReplay);
+public sealed record ProviderStartPreparation(ProviderOperation Operation, ProviderParkingAction Action, bool IsReplay, bool AttemptStartedNow = false);
 
 public sealed class StartVisitProviderPreparer
 {
@@ -18,6 +18,6 @@ public sealed class StartVisitProviderPreparer
 
         var action = new ProviderParkingAction(Guid.NewGuid(), claim.Visit.Id, claim.Visit.StartAt, providerEndAt);
         var operation = new ProviderOperation(Guid.NewGuid(), claim.Visit.StartOperationId, claim.Visit.Id, action.Id, ProviderOperationType.Start);
-        return new ProviderStartPreparation(operation, action, claim.IsReplay);
+        return new ProviderStartPreparation(operation, action, claim.IsReplay, true);
     }
 }
