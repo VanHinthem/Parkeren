@@ -10,6 +10,8 @@ using Parkeren.Infrastructure.Authentication;
 using Parkeren.Infrastructure.Persistence;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Infrastructure.ParkingProvider;
+using Parkeren.Application.Visits;
+using Parkeren.Infrastructure.Visits;
 
 namespace Parkeren.Infrastructure;
 
@@ -24,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IAdministrationService, AdministrationService>();
+        services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
+        services.AddScoped<IVisitStartStore, VisitStartStore>();
 
         if (configuration["ParkingProvider:Type"] == "TwoParkMock")
         {
