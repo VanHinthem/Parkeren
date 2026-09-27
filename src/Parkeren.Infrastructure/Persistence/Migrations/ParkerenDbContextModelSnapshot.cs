@@ -62,7 +62,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Parkeren.Domain.Visits.ProviderOperation", b =>
         {
-            b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null).WithMany().HasForeignKey("ProviderParkingActionId").OnDelete(DeleteBehavior.Restrict).HasConstraintName(null);
+            b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null).WithMany().HasForeignKey("ProviderParkingActionId").OnDelete(DeleteBehavior.Restrict);
             b.HasOne("Parkeren.Domain.Visits.Visit", null).WithMany().HasForeignKey("VisitId").OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -262,7 +262,8 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingCalendarException", b =>
         {
-            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired().HasConstraintName(null);
+            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired();
+            b.Navigation("ParkingRuleSet");
         });
 
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
