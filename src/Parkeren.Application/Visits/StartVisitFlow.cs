@@ -9,7 +9,8 @@ public sealed record StartVisitFlowResult(Visit Visit, bool IsReplay, bool Requi
 public sealed class StartVisitFlow(
     StartVisitPreparer preparer,
     StartVisitClaimer claimer,
-    StartVisitFinalizer finalizer)
+    StartVisitFinalizer finalizer,
+    StartVisitProviderReadiness providerReadiness)
 {
     public async Task<StartVisitFlowResult?> StartAsync(
         StartVisitCommand command,
@@ -36,7 +37,19 @@ public sealed class StartVisitFlow(
             return null;
 
         if (!claim.RequiresProviderCoverageNow)
+        {
             await finalizer.FinalizeFreeStartAsync(claim, cancellationToken);
+        }
+        else
+        {
+            var paidEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
+            var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(command.StartAt, paidEndAt, ruleSets)
+                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                .Where(x => x.IsPaid)
+                .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
+
+            await providerReadiness.CheckAsync(paidDuration, cancellationToken);
+        }
 
         return new StartVisitFlowResult(
             claim.Visit,
