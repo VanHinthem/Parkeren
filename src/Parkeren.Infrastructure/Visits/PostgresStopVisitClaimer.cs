@@ -35,6 +35,23 @@ internal sealed class PostgresStopVisitClaimer(ParkerenDbContext dbContext) : IS
             return new StopVisitClaim(visit, null, false, true);
         }
 
+        if (visit.Status == VisitStatus.Stopping)
+        {
+            var activeStop = await dbContext.ProviderOperations
+                .Where(x => x.VisitId == visit.Id &&
+                            x.Type == ProviderOperationType.Stop &&
+                            x.Status != ProviderOperationStatus.Succeeded &&
+                            x.Status != ProviderOperationStatus.Failed)
+                .OrderBy(x => x.CreatedAt)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (activeStop is null)
+                throw new InvalidOperationException("Stopping Visit has no active Stop operation.");
+
+            await transaction.CommitAsync(cancellationToken);
+            return new StopVisitClaim(visit, activeStop, true, false);
+        }
+
         visit.BeginStopping();
         var operation = new ProviderOperation(Guid.NewGuid(), command.OperationId, visit.Id, null, ProviderOperationType.Stop);
         dbContext.ProviderOperations.Add(operation);
