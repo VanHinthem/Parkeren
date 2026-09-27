@@ -6,6 +6,7 @@ namespace Parkeren.Application.Visits;
 
 public sealed class StartVisitProviderReconciler(IParkingProvider provider, IProviderStartResultStore resultStore)
 {
+    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
     public async Task<ProviderAction?> ReconcileAsync(ProviderStartPreparation preparation, string licensePlate, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
@@ -19,8 +20,8 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
                 string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase))
             : actions.SingleOrDefault(x =>
                 string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
-                x.Start == preparation.Action.PlannedStartAt &&
-                x.End == preparation.Action.PlannedEndAt);
+                TimestampsMatch(x.Start, preparation.Action.PlannedStartAt) &&
+                TimestampsMatch(x.End, preparation.Action.PlannedEndAt));
 
         if (match is null)
         {
@@ -34,4 +35,7 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
         return match;
     }
+
+    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
+        (left - right).Duration() < TimestampTolerance;
 }
