@@ -263,7 +263,6 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingCalendarException", b =>
         {
             b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired();
-            b.Navigation("ParkingRuleSet");
         });
 
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
