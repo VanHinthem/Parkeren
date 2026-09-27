@@ -45,7 +45,7 @@ public sealed class ParkingProviderMockTests
 
         var provider = new TwoParkMockProvider(http);
         var start = DateTimeOffset.UtcNow;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.StartActionAsync(
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(() => provider.StartActionAsync(
             new ProviderParkingActionRequest("NOBODY1", start, start.AddHours(1), "Oss"), cancellationToken));
 
         Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.LicensePlate == "NOBODY1" && x.Status == "active");
