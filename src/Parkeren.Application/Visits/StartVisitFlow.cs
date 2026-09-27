@@ -10,7 +10,8 @@ public sealed class StartVisitFlow(
     StartVisitPreparer preparer,
     StartVisitClaimer claimer,
     StartVisitFinalizer finalizer,
-    StartVisitProviderReadiness providerReadiness)
+    StartVisitProviderReadiness providerReadiness,
+    IProviderStartStore providerStartStore)
 {
     public async Task<StartVisitFlowResult?> StartAsync(
         StartVisitCommand command,
@@ -49,6 +50,7 @@ public sealed class StartVisitFlow(
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
 
             await providerReadiness.CheckAsync(paidDuration, cancellationToken);
+            await providerStartStore.PrepareAttemptAsync(claim, paidEndAt, cancellationToken);
         }
 
         return new StartVisitFlowResult(
