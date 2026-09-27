@@ -28,7 +28,7 @@ public sealed class ParkingProviderMockTests
         Assert.Equal(start.AddHours(3), extended.End);
 
         await provider.StopActionAsync(created.ProviderActionId, cancellationToken);
-        actions = await provider.GetActionsAsync();
+        actions = await provider.GetActionsAsync(cancellationToken);
         Assert.Equal("stopped", actions.Single(x => x.ProviderActionId == created.ProviderActionId).Status);
     }
 }
