@@ -37,6 +37,35 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.ToTable("default_parking_policy");
         });
 
+        modelBuilder.Entity("Parkeren.Domain.Visits.Visit", b =>
+        {
+            b.HasOne("Parkeren.Domain.Users.User", null).WithMany().HasForeignKey("StartedByUserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            b.HasOne("Parkeren.Domain.Users.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            b.HasOne("Parkeren.Domain.Vehicles.Vehicle", null).WithMany().HasForeignKey("VehicleId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            b.OwnsOne("Parkeren.Domain.Rules.EffectiveParkingPolicySnapshot", "PolicySnapshot", b1 =>
+            {
+                b1.Property<Guid>("VisitId").HasColumnType("uuid");
+                b1.Property<bool>("AllowAutoExtension").HasColumnName("PolicyAllowAutoExtension").HasColumnType("boolean");
+                b1.Property<TimeSpan>("MaxPaidParkingDuration").HasColumnName("PolicyMaxPaidParkingDuration").HasColumnType("interval");
+                b1.Property<TimeSpan?>("MaxVisitElapsedDuration").HasColumnName("PolicyMaxVisitElapsedDuration").HasColumnType("interval");
+                b1.HasKey("VisitId");
+                b1.ToTable("visits");
+                b1.WithOwner().HasForeignKey("VisitId");
+            });
+            b.Navigation("PolicySnapshot").IsRequired();
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Visits.ProviderParkingAction", b =>
+        {
+            b.HasOne("Parkeren.Domain.Visits.Visit", null).WithMany().HasForeignKey("VisitId").OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Visits.ProviderOperation", b =>
+        {
+            b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null).WithMany().HasForeignKey("ProviderParkingActionId").OnDelete(DeleteBehavior.Restrict);
+            b.HasOne("Parkeren.Domain.Visits.Visit", null).WithMany().HasForeignKey("VisitId").OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity("Parkeren.Domain.Policies.UserPolicyOverride", b =>
         {
             b.Property<Guid>("UserId").ValueGeneratedNever().HasColumnType("uuid");
@@ -104,6 +133,68 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.HasKey("Id");
             b.HasIndex("ParkingRuleSetId", "Date").IsUnique();
             b.ToTable("parking_calendar_exceptions");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Visits.Visit", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<DateTimeOffset?>("ActualEndAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset?>("DesiredEndAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Health").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<DateTimeOffset>("StartAt").HasColumnType("timestamp with time zone");
+            b.Property<Guid>("StartedByUserId").HasColumnType("uuid");
+            b.Property<Guid>("StartOperationId").HasColumnType("uuid");
+            b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+            b.Property<Guid>("UserId").HasColumnType("uuid");
+            b.Property<Guid>("VehicleId").HasColumnType("uuid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.HasKey("Id");
+            b.HasIndex("StartedByUserId");
+            b.HasIndex("StartOperationId").IsUnique();
+            b.HasIndex("UserId");
+            b.HasIndex("VehicleId");
+            b.HasIndex("Status", "StartAt");
+            b.ToTable("visits");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Visits.ProviderParkingAction", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<DateTimeOffset?>("ActualEndAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset?>("ActualStartAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Health").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+            b.Property<DateTimeOffset>("PlannedEndAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("PlannedStartAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("ProviderActionId").HasMaxLength(200).HasColumnType("character varying(200)");
+            b.Property<string>("ProviderStatus").HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<string>("State").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+            b.Property<Guid?>("VisitId").HasColumnType("uuid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.HasKey("Id");
+            b.HasIndex("VisitId");
+            b.ToTable("provider_parking_actions");
+        });
+
+        modelBuilder.Entity("Parkeren.Domain.Visits.ProviderOperation", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<int>("AttemptCount").HasColumnType("integer");
+            b.Property<DateTimeOffset?>("CompletedAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("LastErrorCode").HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<Guid>("OperationId").HasColumnType("uuid");
+            b.Property<Guid?>("ProviderParkingActionId").HasColumnType("uuid");
+            b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+            b.Property<string>("Type").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+            b.Property<Guid?>("VisitId").HasColumnType("uuid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.HasKey("Id");
+            b.HasIndex("OperationId").IsUnique();
+            b.HasIndex("ProviderParkingActionId");
+            b.HasIndex("VisitId");
+            b.ToTable("provider_operations");
         });
 
         modelBuilder.Entity("Parkeren.Domain.Users.User", b =>
