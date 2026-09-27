@@ -22,11 +22,11 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             if (reconciler is null)
                 return new(preparation, null, true);
 
-            var reconciled = await reconciler.ReconcileAsync(preparation, request.LicensePlate, cancellationToken);
-            if (!reconciled)
+            var reconciledAction = await reconciler.ReconcileAsync(preparation, request.LicensePlate, cancellationToken);
+            if (reconciledAction is null)
                 return new(preparation, null, true);
 
-            return new(preparation, null, false);
+            return new(preparation, reconciledAction, false);
         }
         if (preparation.Operation.Status == ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
