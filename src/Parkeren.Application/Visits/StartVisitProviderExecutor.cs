@@ -47,8 +47,6 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         }
         catch (ArgumentException)
         {
-            preparation.Operation.Fail("provider-rejected", DateTimeOffset.UtcNow);
-            preparation.Action.MarkFailed();
             await resultStore.RecordDefinitiveFailureAsync(preparation, "provider-rejected", cancellationToken);
             return new(preparation, null, false, true);
         }

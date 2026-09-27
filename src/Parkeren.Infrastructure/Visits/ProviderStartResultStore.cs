@@ -22,6 +22,8 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
     public async Task RecordDefinitiveFailureAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        preparation.Operation.Fail(errorCode, DateTimeOffset.UtcNow);
+        preparation.Action.MarkFailed();
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.Cancel();
