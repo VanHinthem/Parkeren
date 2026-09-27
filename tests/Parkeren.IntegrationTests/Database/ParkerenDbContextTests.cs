@@ -1,19 +1,14 @@
-using Microsoft.EntityFrameworkCore;
-using Parkeren.Infrastructure.Persistence;
-
 namespace Parkeren.IntegrationTests.Database;
 
-public sealed class ParkerenDbContextTests
+[Collection(PostgreSqlCollection.Name)]
+public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 {
     [Fact]
-    public void Context_can_build_model()
+    public async Task Database_can_apply_migrations()
     {
-        var options = new DbContextOptionsBuilder<ParkerenDbContext>()
-            .UseNpgsql("Host=localhost;Database=parkeren_test;Username=test;Password=test")
-            .Options;
+        await using var context = fixture.CreateDbContext();
 
-        using var context = new ParkerenDbContext(options);
-
-        Assert.NotNull(context.Model);
+        Assert.True(await context.Database.CanConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await context.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken));
     }
 }
