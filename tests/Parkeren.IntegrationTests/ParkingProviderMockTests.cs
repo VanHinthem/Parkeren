@@ -35,6 +35,25 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_apply_action_before_returning_unknown_outcome()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var setup = await http.PostAsJsonAsync("api/test/unknown-outcome", new { StatusCode = 504, Count = 1 }, cancellationToken);
+        setup.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("UNKNOWN1", start, start.AddHours(1), "Oss"), cancellationToken));
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        Assert.Contains(actions, x => x.LicensePlate == "UNKNOWN1" && x.Status == "active");
+    }
+
+    [Fact]
     public async Task Mock_can_inject_provider_failure()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

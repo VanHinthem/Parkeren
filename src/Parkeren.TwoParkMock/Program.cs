@@ -6,6 +6,7 @@ var app = builder.Build();
 var actions = new ConcurrentDictionary<string, MockParkingAction>();
 var remainingMinutes = 1500 * 60;
 var failure = new MockFailureState();
+var outcome = new MockUnknownOutcomeState();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "2park-mock" }));
 
@@ -30,6 +31,7 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     var id = Guid.NewGuid().ToString("N");
     var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active");
     actions[id] = action;
+    if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
     return Results.Created($"/api/actions/{id}", action);
 });
 
@@ -52,6 +54,12 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
         return Results.NotFound();
 
     actions[id] = current with { Status = "stopped" };
+    return Results.NoContent();
+});
+
+app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
+{
+    outcome.Configure(request.StatusCode, request.DelayMilliseconds, request.Count);
     return Results.NoContent();
 });
 
@@ -78,6 +86,33 @@ public sealed class MockFailureState
 {
     private int remaining;
     public int StatusCode { get; private set; } = 503;
+    public int DelayMilliseconds { get; private set; }
+
+    public void Configure(int statusCode, int delayMilliseconds, int count)
+    {
+        StatusCode = statusCode;
+        DelayMilliseconds = Math.Max(0, delayMilliseconds);
+        Interlocked.Exchange(ref remaining, Math.Max(0, count));
+    }
+
+    public async Task<bool> ApplyAsync()
+    {
+        if (Interlocked.Decrement(ref remaining) < 0)
+        {
+            Interlocked.Exchange(ref remaining, 0);
+            return false;
+        }
+        if (DelayMilliseconds > 0) await Task.Delay(DelayMilliseconds);
+        return true;
+    }
+}
+
+public sealed record MockUnknownOutcomeRequest(int StatusCode = 504, int DelayMilliseconds = 0, int Count = 1);
+
+public sealed class MockUnknownOutcomeState
+{
+    private int remaining;
+    public int StatusCode { get; private set; } = 504;
     public int DelayMilliseconds { get; private set; }
 
     public void Configure(int statusCode, int delayMilliseconds, int count)
