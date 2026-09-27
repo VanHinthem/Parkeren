@@ -1,0 +1,18 @@
+using Parkeren.Domain.Visits;
+
+namespace Parkeren.Application.Visits;
+
+public sealed record StopVisitCommand(Guid OperationId, Guid VisitId, Guid ActorUserId);
+
+public sealed record StopVisitClaim(
+    Visit Visit,
+    ProviderOperation? Operation,
+    bool IsReplay,
+    bool IsAlreadyCompleted);
+
+public interface IStopVisitClaimer
+{
+    Task<StopVisitClaim> ClaimAsync(
+        StopVisitCommand command,
+        CancellationToken cancellationToken = default);
+}
