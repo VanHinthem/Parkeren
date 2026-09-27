@@ -23,4 +23,25 @@ public sealed class StartVisitFinalizer(IVisitStartStore store)
 
         return claim.Visit;
     }
+
+    public async Task<Visit> FinalizePaidStartAsync(
+        StartVisitClaimResult claim,
+        ProviderStartExecution execution,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+        ArgumentNullException.ThrowIfNull(execution);
+        if (!claim.RequiresProviderCoverageNow)
+            throw new InvalidOperationException("A free-period Visit cannot use the paid start finalizer.");
+        if (execution.RequiresReconciliation || execution.DefinitiveFailure || execution.ProviderAction is null)
+            throw new InvalidOperationException("Paid Visit cannot be activated without confirmed provider coverage.");
+
+        if (claim.Visit.Status == VisitStatus.Starting)
+        {
+            claim.Visit.Activate();
+            await store.SaveAsync(claim.Visit, cancellationToken);
+        }
+
+        return claim.Visit;
+    }
 }
