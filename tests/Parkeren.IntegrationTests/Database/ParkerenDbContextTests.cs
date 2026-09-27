@@ -918,6 +918,89 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
 
+
+    [Fact]
+    public async Task Unknown_provider_stop_keeps_visit_stopping_and_capacity_occupied()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "unknown-stop", "UNKNOWN-STOP", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "US-55-OP", "US55OP", null);
+        var startOperationId = Guid.NewGuid();
+        var stopOperationId = Guid.NewGuid();
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var endAt = startAt.AddHours(2);
+        var visit = new Visit(Guid.NewGuid(), startOperationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var startScope = provider.CreateAsyncScope())
+        {
+            var startStore = startScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var startResultStore = startScope.ServiceProvider.GetRequiredService<IProviderStartResultStore>();
+            var preparation = await startStore.PrepareAttemptAsync(
+                new StartVisitClaimResult(visit, false, true), endAt, cancellationToken);
+            await startResultStore.RecordConfirmedAsync(
+                preparation,
+                new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                    "provider-unknown-stop-1", "US55OP", startAt, endAt, "Oss", "active"),
+                cancellationToken);
+        }
+
+        StopVisitClaim stopClaim;
+        await using (var claimScope = provider.CreateAsyncScope())
+        {
+            stopClaim = await claimScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>().ClaimAsync(
+                new StopVisitCommand(stopOperationId, visit.Id, user.Id),
+                cancellationToken);
+        }
+
+        ProviderStopPreparation stopPreparation;
+        await using (var prepareScope = provider.CreateAsyncScope())
+        {
+            stopPreparation = await prepareScope.ServiceProvider.GetRequiredService<IProviderStopStore>()
+                .PrepareAttemptAsync(stopClaim, cancellationToken);
+        }
+
+        await using (var resultScope = provider.CreateAsyncScope())
+        {
+            await resultScope.ServiceProvider.GetRequiredService<IProviderStopResultStore>()
+                .RecordUnknownAsync(stopPreparation, "network", cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var action = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        var stopOperation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == stopOperationId, cancellationToken);
+
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
+        Assert.True(persistedVisit.OccupiesCapacity);
+        Assert.Null(persistedVisit.ActualEndAt);
+        Assert.Equal(ProviderActionState.Stopping, action.State);
+        Assert.Equal(ProviderActionHealth.Unknown, action.Health);
+        Assert.Equal(ProviderOperationStatus.Unknown, stopOperation.Status);
+        Assert.Equal("network", stopOperation.LastErrorCode);
+    }
+
+
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
