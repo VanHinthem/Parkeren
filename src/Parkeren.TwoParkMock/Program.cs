@@ -9,6 +9,7 @@ var maxActionDuration = TimeSpan.FromHours(4);
 var remainingMinutes = 1500 * 60;
 var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
+var forcedValidationError = false;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -33,6 +34,9 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
     if (!validCredentials) return Results.Unauthorized();
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
+    if (forcedValidationError)
+        return Results.BadRequest(new { error = "Provider validation rejected the action." });
+
     if (request.End <= request.Start)
         return Results.BadRequest(new { error = "End must be after start." });
 
@@ -80,6 +84,12 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/validation-error", (MockValidationErrorRequest request) =>
+{
+    forcedValidationError = request.Enabled;
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/visibility-delay", (MockVisibilityDelayRequest request) =>
 {
     visibilityDelay = TimeSpan.FromMilliseconds(Math.Max(0, request.Milliseconds));
@@ -120,6 +130,7 @@ app.MapPost("/api/test/reset", () =>
     remainingMinutes = 1500 * 60;
     validCredentials = true;
     visibilityDelay = TimeSpan.Zero;
+    forcedValidationError = false;
     return Results.NoContent();
 });
 
@@ -207,3 +218,5 @@ public sealed record MockBalanceRequest(int RemainingPaidMinutes);
 public sealed record MockAuthenticationRequest(bool Valid);
 
 public sealed record MockVisibilityDelayRequest(int Milliseconds);
+
+public sealed record MockValidationErrorRequest(bool Enabled);

@@ -35,6 +35,22 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_return_provider_validation_error()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/validation-error", new { Enabled = true }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("INVALID1", start, start.AddHours(1), "Oss"), cancellationToken));
+        Assert.Empty(await provider.GetActionsAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_can_delay_action_visibility_after_write()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
