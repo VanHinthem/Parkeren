@@ -1,5 +1,8 @@
 namespace Parkeren.Application.ParkingProvider;
 
+public sealed record ProviderCategory(string Id, string Name);
+public sealed record ProviderProduct(string Id, string Name, string Location);
+
 public sealed record ProviderBalance(TimeSpan RemainingPaidDuration, DateTimeOffset RetrievedAt);
 
 public sealed record ProviderParkingActionRequest(
@@ -18,6 +21,10 @@ public sealed record ProviderParkingAction(
 
 public interface IParkingProvider
 {
+    Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default);
+
+    Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default);
+
     Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(

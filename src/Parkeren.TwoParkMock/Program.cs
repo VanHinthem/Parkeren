@@ -12,10 +12,15 @@ var visibilityDelay = TimeSpan.Zero;
 var forcedValidationError = false;
 var rejectDuplicateActiveActions = false;
 var omitCreatedActionBody = false;
+var categories = new[] { new MockCategory("oss", "Oss") };
+var product = new MockProduct("visitor", "Bezoekersparkeren", "Oss");
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "2park-mock" }));
+
+app.MapGet("/api/categories", () => Results.Ok(categories));
+app.MapGet("/api/product", () => Results.Ok(product));
 
 app.MapGet("/api/balance", async () =>
 {
@@ -258,3 +263,6 @@ public sealed record MockValidationErrorRequest(bool Enabled);
 public sealed record MockDuplicateRequest(bool Enabled);
 
 public sealed record MockOmitCreatedBodyRequest(bool Enabled);
+
+public sealed record MockCategory(string Id, string Name);
+public sealed record MockProduct(string Id, string Name, string Location);

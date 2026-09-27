@@ -15,6 +15,11 @@ public sealed class ParkingProviderMockTests
         var provider = new TwoParkMockProvider(http);
         var cancellationToken = TestContext.Current.CancellationToken;
 
+        var categories = await provider.GetCategoriesAsync(cancellationToken);
+        Assert.Contains(categories, x => x.Id == "oss");
+        var product = await provider.GetProductAsync(cancellationToken);
+        Assert.Equal("Oss", product.Location);
+
         var balance = await provider.GetBalanceAsync(cancellationToken);
         Assert.True(balance.RemainingPaidDuration > TimeSpan.Zero);
 

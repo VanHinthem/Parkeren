@@ -5,6 +5,17 @@ namespace Parkeren.Infrastructure.ParkingProvider;
 
 public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvider
 {
+    public async Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+        (await httpClient.GetFromJsonAsync<MockCategory[]>("api/categories", cancellationToken) ?? [])
+            .Select(x => new ProviderCategory(x.Id, x.Name)).ToArray();
+
+    public async Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default)
+    {
+        var x = await httpClient.GetFromJsonAsync<MockProduct>("api/product", cancellationToken)
+            ?? throw new InvalidOperationException("Parking provider returned no product.");
+        return new ProviderProduct(x.Id, x.Name, x.Location);
+    }
+
     public async Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default)
     {
         var response = await httpClient.GetFromJsonAsync<MockBalance>("api/balance", cancellationToken)
@@ -41,6 +52,8 @@ public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvide
     private static ProviderParkingAction Map(MockAction x) =>
         new(x.Id, x.LicensePlate, x.Start, x.End, x.Location, x.Status);
 
+    private sealed record MockCategory(string Id, string Name);
+    private sealed record MockProduct(string Id, string Name, string Location);
     private sealed record MockBalance(double RemainingPaidMinutes, DateTimeOffset RetrievedAt);
     private sealed record MockAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status);
 }
