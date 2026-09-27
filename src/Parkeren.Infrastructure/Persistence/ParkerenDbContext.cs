@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.Policies;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -11,6 +12,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
+    public DbSet<DefaultParkingPolicy> DefaultParkingPolicies => Set<DefaultParkingPolicy>();
+    public DbSet<UserPolicyOverride> UserPolicyOverrides => Set<UserPolicyOverride>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,6 +54,18 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => new { x.UserId, x.VehicleId });
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<DefaultParkingPolicy>(entity =>
+        {
+            entity.ToTable("default_parking_policy");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.MaxPaidParkingDuration).IsRequired();
+        });
+        modelBuilder.Entity<UserPolicyOverride>(entity =>
+        {
+            entity.ToTable("user_policy_overrides");
+            entity.HasKey(x => x.UserId);
+            entity.HasOne<User>().WithOne().HasForeignKey<UserPolicyOverride>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
