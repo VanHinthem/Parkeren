@@ -1,0 +1,34 @@
+using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.Visits;
+using Parkeren.Domain.Visits;
+using Parkeren.Infrastructure.Persistence;
+
+namespace Parkeren.Infrastructure.Visits;
+
+internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProviderStartStore
+{
+    public async Task<ProviderStartPreparation> PrepareAttemptAsync(StartVisitClaimResult claim, DateTimeOffset providerEndAt, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var existing = await dbContext.ProviderOperations.SingleOrDefaultAsync(x => x.OperationId == claim.Visit.StartOperationId, cancellationToken);
+        if (existing is not null)
+        {
+            var existingAction = existing.ProviderParkingActionId is Guid actionId
+                ? await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken)
+                : throw new InvalidOperationException("Existing start operation has no provider action.");
+            await transaction.CommitAsync(cancellationToken);
+            return new ProviderStartPreparation(existing, existingAction, true);
+        }
+
+        var prepared = new StartVisitProviderPreparer().Prepare(claim, providerEndAt);
+        prepared.Action.MarkStarting();
+        prepared.Operation.BeginAttempt();
+        dbContext.ProviderParkingActions.Add(prepared.Action);
+        dbContext.ProviderOperations.Add(prepared.Operation);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return prepared;
+    }
+}

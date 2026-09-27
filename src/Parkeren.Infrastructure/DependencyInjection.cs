@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
         services.AddScoped<IVisitStartStore, VisitStartStore>();
+        services.AddScoped<IProviderStartStore, ProviderStartStore>();
 
         if (configuration["ParkingProvider:Type"] == "TwoParkMock")
         {
