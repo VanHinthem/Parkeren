@@ -47,6 +47,17 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.ToTable("parking_rule_sets");
         });
 
+        modelBuilder.Entity("Parkeren.Domain.Rules.ParkingBudgetPeriod", b =>
+        {
+            b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
+            b.Property<TimeSpan>("MaximumPaidDuration").HasColumnType("interval");
+            b.Property<DateTimeOffset>("ValidFrom").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("ValidUntil").HasColumnType("timestamp with time zone");
+            b.HasKey("Id");
+            b.HasIndex("ValidFrom");
+            b.ToTable("parking_budget_periods");
+        });
+
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingTariff", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
