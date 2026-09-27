@@ -2,7 +2,8 @@ namespace Parkeren.Domain.Notifications;
 
 public enum NotificationEventType
 {
-    VisitStarted
+    VisitStarted,
+    VisitStopped
 }
 
 public sealed class NotificationEvent

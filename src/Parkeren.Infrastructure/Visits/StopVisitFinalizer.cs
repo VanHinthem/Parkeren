@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -52,6 +53,8 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext) : IStopVis
         visit.Complete(actualEndAt);
         operation.BeginAttempt();
         operation.Succeed(actualEndAt);
+        dbContext.NotificationEvents.Add(
+            new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt));
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
