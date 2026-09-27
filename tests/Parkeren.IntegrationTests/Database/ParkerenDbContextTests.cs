@@ -1119,6 +1119,101 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
 
     [Fact]
+    public async Task Unknown_provider_stop_reconciles_after_restart_without_second_stop()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"stop-restart-{suffix}", $"STOP-RESTART-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"RS-{suffix[..2]}-{suffix[2..4]}", $"RS{suffix[..4]}", null);
+        var startOperationId = Guid.NewGuid();
+        var stopOperationId = Guid.NewGuid();
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var endAt = startAt.AddHours(2);
+        var visit = new Visit(
+            Guid.NewGuid(), startOperationId, user.Id, vehicle.Id, user.Id,
+            startAt, endAt,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        var remoteAction = await parkingProvider.StartActionAsync(
+            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, endAt, "Oss"),
+            cancellationToken);
+
+        await using (var startScope = provider.CreateAsyncScope())
+        {
+            var startStore = startScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var startResultStore = startScope.ServiceProvider.GetRequiredService<IProviderStartResultStore>();
+            var preparation = await startStore.PrepareAttemptAsync(
+                new StartVisitClaimResult(visit, false, true), endAt, cancellationToken);
+            await startResultStore.RecordConfirmedAsync(preparation, remoteAction, cancellationToken);
+        }
+
+        await using (var stopScope = provider.CreateAsyncScope())
+        {
+            var claimer = stopScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            var store = stopScope.ServiceProvider.GetRequiredService<IProviderStopStore>();
+            var resultStore = stopScope.ServiceProvider.GetRequiredService<IProviderStopResultStore>();
+            var claim = await claimer.ClaimAsync(
+                new StopVisitCommand(stopOperationId, visit.Id, user.Id),
+                cancellationToken);
+            var preparation = await store.PrepareAttemptAsync(claim, cancellationToken);
+            await resultStore.RecordUnknownAsync(preparation, "network", cancellationToken);
+        }
+
+        await parkingProvider.StopActionAsync(remoteAction.ProviderActionId, cancellationToken);
+
+        await using (var recoveryScope = provider.CreateAsyncScope())
+        {
+            var claimer = recoveryScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            var store = recoveryScope.ServiceProvider.GetRequiredService<IProviderStopStore>();
+            var executor = recoveryScope.ServiceProvider.GetRequiredService<StopVisitProviderExecutor>();
+            var replay = await claimer.ClaimAsync(
+                new StopVisitCommand(stopOperationId, visit.Id, user.Id),
+                cancellationToken);
+            var preparation = await store.PrepareAttemptAsync(replay, cancellationToken);
+            var execution = await executor.ExecuteAsync(preparation, cancellationToken);
+
+            Assert.False(execution.RequiresReconciliation);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var persistedAction = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        var persistedStopOperation = await verifyContext.ProviderOperations.SingleAsync(
+            x => x.OperationId == stopOperationId, cancellationToken);
+
+        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+        Assert.False(persistedVisit.OccupiesCapacity);
+        Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        Assert.Equal(ProviderOperationStatus.Succeeded, persistedStopOperation.Status);
+        Assert.Equal(1, persistedStopOperation.AttemptCount);
+    }
+
+    [Fact]
     public async Task Concurrent_stop_claims_with_different_operation_ids_coalesce_to_one_stop()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
