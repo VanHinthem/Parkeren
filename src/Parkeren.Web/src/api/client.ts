@@ -26,6 +26,22 @@ export async function getCurrentUser():Promise<AuthenticatedUser|null>{
  return response.json() as Promise<AuthenticatedUser>;
 }
 
+export type ActiveVisit={
+  id:string;
+  userId:string;
+  vehicleId:string;
+  startAt:string;
+  desiredEndAt:string|null;
+  actualEndAt:string|null;
+  status:"Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
+  health:"Healthy"|"Unknown"|"Reconciling";
+};
+export async function getActiveVisit():Promise<ActiveVisit|null>{
+  const response=await apiFetch("/api/visits/active");
+  if(response.status===404)return null;
+  return json<ActiveVisit>(response);
+}
+
 export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
 export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
