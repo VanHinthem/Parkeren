@@ -28,11 +28,11 @@ public sealed class ParkingRuleSet
 {
     private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); CalendarExceptions = Array.Empty<ParkingCalendarException>(); }
 
-    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows)
+    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
-        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows;
+        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows; CalendarExceptions=calendarExceptions ?? Array.Empty<ParkingCalendarException>();
     }
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
