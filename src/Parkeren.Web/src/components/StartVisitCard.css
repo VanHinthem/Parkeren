@@ -1,0 +1,1 @@
+.start-visit{display:grid;gap:1rem}.start-visit h2{margin:0 0 .3rem}.start-visit p{margin:0;color:var(--color-text-muted)}.start-visit__button{width:100%;min-height:3rem;border:0;border-radius:var(--radius-md);background:var(--color-primary);color:#fff;font:inherit;font-weight:700;cursor:pointer}.start-visit__button:disabled{opacity:.55;cursor:not-allowed}
