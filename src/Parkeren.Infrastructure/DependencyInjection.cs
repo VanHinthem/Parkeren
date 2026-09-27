@@ -8,6 +8,8 @@ using Parkeren.Domain.Users;
 using Parkeren.Infrastructure.Administration;
 using Parkeren.Infrastructure.Authentication;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Application.ParkingProvider;
+using Parkeren.Infrastructure.ParkingProvider;
 
 namespace Parkeren.Infrastructure;
 
@@ -22,6 +24,13 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IAdministrationService, AdministrationService>();
+
+        if (configuration["ParkingProvider:Type"] == "TwoParkMock")
+        {
+            var baseUrl = configuration["ParkingProvider:BaseUrl"]
+                ?? throw new InvalidOperationException("ParkingProvider:BaseUrl is not configured.");
+            services.AddHttpClient<IParkingProvider, TwoParkMockProvider>(client => client.BaseAddress = new Uri(baseUrl));
+        }
         return services;
     }
 }
