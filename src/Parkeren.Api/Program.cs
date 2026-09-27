@@ -6,10 +6,12 @@ using Parkeren.Domain.Users;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
 using System.Threading.RateLimiting;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
