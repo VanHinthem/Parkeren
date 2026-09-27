@@ -35,6 +35,24 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_can_delay_action_visibility_after_write()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var config = await http.PostAsJsonAsync("api/test/visibility-delay", new { Milliseconds = 100 }, cancellationToken);
+        config.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+        var created = await provider.StartActionAsync(new ProviderParkingActionRequest("DELAY1", start, start.AddHours(1), "Oss"), cancellationToken);
+
+        Assert.DoesNotContain(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+        await Task.Delay(150, cancellationToken);
+        Assert.Contains(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+    }
+
+    [Fact]
     public async Task Mock_can_reject_invalid_provider_credentials()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

@@ -8,6 +8,7 @@ var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
 var remainingMinutes = 1500 * 60;
 var validCredentials = true;
+var visibilityDelay = TimeSpan.Zero;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -24,7 +25,9 @@ app.MapGet("/api/balance", async () =>
     });
 });
 
-app.MapGet("/api/actions", () => Results.Ok(actions.Values.OrderBy(x => x.Start)));
+app.MapGet("/api/actions", () => Results.Ok(actions.Values
+    .Where(x => DateTimeOffset.UtcNow >= x.VisibleAt)
+    .OrderBy(x => x.Start)));
 
 app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
@@ -43,7 +46,7 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
         return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");
-    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active");
+    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active", DateTimeOffset.UtcNow + visibilityDelay);
     actions[id] = action;
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
     return Results.Created($"/api/actions/{id}", action);
@@ -74,6 +77,12 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
 app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
 {
     outcome.Configure(request.StatusCode, request.DelayMilliseconds, request.Count);
+    return Results.NoContent();
+});
+
+app.MapPost("/api/test/visibility-delay", (MockVisibilityDelayRequest request) =>
+{
+    visibilityDelay = TimeSpan.FromMilliseconds(Math.Max(0, request.Milliseconds));
     return Results.NoContent();
 });
 
@@ -110,6 +119,7 @@ app.MapPost("/api/test/reset", () =>
     maxActionDuration = TimeSpan.FromHours(4);
     remainingMinutes = 1500 * 60;
     validCredentials = true;
+    visibilityDelay = TimeSpan.Zero;
     return Results.NoContent();
 });
 
@@ -128,7 +138,7 @@ namespace Parkeren.TwoParkMock
 
 public sealed record MockActionRequest(string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location);
 public sealed record MockExtendRequest(DateTimeOffset End);
-public sealed record MockParkingAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status);
+public sealed record MockParkingAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status, DateTimeOffset VisibleAt);
 
 public sealed record MockFailureRequest(int StatusCode = 503, int DelayMilliseconds = 0, int Count = 1);
 
@@ -195,3 +205,5 @@ public sealed record MockMaxActionDurationRequest(int Minutes);
 public sealed record MockBalanceRequest(int RemainingPaidMinutes);
 
 public sealed record MockAuthenticationRequest(bool Valid);
+
+public sealed record MockVisibilityDelayRequest(int Milliseconds);
