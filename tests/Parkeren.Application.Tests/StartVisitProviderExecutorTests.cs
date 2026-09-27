@@ -78,6 +78,35 @@ public sealed class StartVisitProviderExecutorTests
         Assert.Equal(1, provider.StartCalls);
     }
 
+    [Fact]
+    public async Task Unknown_replay_reconciles_existing_provider_action_without_second_start()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        action.MarkUnknown();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+        operation.MarkUnknown("timeout");
+
+        var providerAction = new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+            "provider-1", "TK01HF", start, end, "test", "active");
+        var provider = new SuccessfulProvider(providerAction);
+        var resultStore = new TrackingResultStore();
+        var reconciler = new StartVisitProviderReconciler(provider, resultStore);
+
+        var result = await new StartVisitProviderExecutor(provider, resultStore, reconciler).ExecuteAsync(
+            new ProviderStartPreparation(operation, action, true),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Equal(0, provider.StartCalls);
+    }
+
     private sealed class SuccessfulProvider(Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
     {
         public int StartCalls { get; private set; }
