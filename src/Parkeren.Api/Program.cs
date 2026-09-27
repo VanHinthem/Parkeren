@@ -237,7 +237,7 @@ app.MapGet("/api/visits/{visitId:guid}", async (
     if (visit is null)
         return Results.NotFound();
 
-    if (visit.OwnerUserId != authenticated.User.Id && authenticated.User.Role != UserRole.Admin)
+    if (visit.UserId != authenticated.User.Id && authenticated.User.Role != UserRole.Admin)
         return Results.Forbid();
 
     return Results.Ok(visit);
