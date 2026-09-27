@@ -1296,9 +1296,129 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
 
+
+    [Fact]
+    public async Task End_time_change_retry_is_idempotent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"end-{suffix}", $"END-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ET-{suffix[..6]}", $"ET{suffix[..6]}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var originalEndAt = startAt.AddHours(1);
+        var requestedEndAt = startAt.AddHours(2);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+        var command = new ChangeVisitEndTimeCommand(operationId, visit.Id, user.Id, requestedEndAt);
+
+        async Task<ChangeVisitEndTimeResult> ApplyAsync()
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+            return await changer.ApplyAsync(command, cancellationToken);
+        }
+
+        var first = await ApplyAsync();
+        var replay = await ApplyAsync();
+
+        Assert.False(first.IsReplay);
+        Assert.True(replay.IsReplay);
+        Assert.Equal(first.Change.Id, replay.Change.Id);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var changes = await verifyContext.VisitEndTimeChanges
+            .Where(x => x.OperationId == operationId)
+            .ToListAsync(cancellationToken);
+
+        Assert.Equal(requestedEndAt, persistedVisit.DesiredEndAt);
+        Assert.Single(changes);
+        Assert.Equal(originalEndAt, changes[0].PreviousDesiredEndAt);
+        Assert.Equal(requestedEndAt, changes[0].RequestedDesiredEndAt);
+        Assert.Equal(VisitEndTimeChangeResult.Applied, changes[0].Result);
+    }
+
+    [Fact]
+    public async Task Stop_claim_prevents_later_end_time_change()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"end-stop-{suffix}", $"END-STOP-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ES-{suffix[..6]}", $"ES{suffix[..6]}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var originalEndAt = startAt.AddHours(1);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var stopScope = provider.CreateAsyncScope())
+        {
+            var claimer = stopScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            await claimer.ClaimAsync(
+                new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id),
+                cancellationToken);
+        }
+
+        await using (var changeScope = provider.CreateAsyncScope())
+        {
+            var changer = changeScope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => changer.ApplyAsync(
+                new ChangeVisitEndTimeCommand(Guid.NewGuid(), visit.Id, user.Id, startAt.AddHours(2)),
+                cancellationToken));
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(originalEndAt, persistedVisit.DesiredEndAt);
+        Assert.False(await verifyContext.VisitEndTimeChanges.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
+    }
+
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
+        await context.VisitEndTimeChanges.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
