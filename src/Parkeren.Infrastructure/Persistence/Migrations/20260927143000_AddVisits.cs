@@ -29,7 +29,7 @@ public partial class AddVisits : Migration
                 PolicyMaxVisitElapsedDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
                 PolicyAllowAutoExtension = table.Column<bool>(type: "boolean", nullable: false),
                 CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                Version = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
+                xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
             },
             constraints: table =>
             {
