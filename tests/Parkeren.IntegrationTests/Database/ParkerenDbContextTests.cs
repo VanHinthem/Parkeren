@@ -1497,6 +1497,64 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Rejected_end_time_change_retry_is_idempotent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"end-reject-{suffix}", $"END-REJECT-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"EJ-{suffix[..6]}", $"EJ{suffix[..6]}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var originalEndAt = startAt.AddHours(1);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, false);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+
+        async Task ApplyAsync()
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+            await changer.ApplyAsync(
+                new ChangeVisitEndTimeCommand(operationId, visit.Id, user.Id, null),
+                cancellationToken);
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(ApplyAsync);
+        await Assert.ThrowsAsync<InvalidOperationException>(ApplyAsync);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var changes = await verifyContext.VisitEndTimeChanges
+            .Where(x => x.OperationId == operationId)
+            .ToListAsync(cancellationToken);
+
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True((persistedVisit.DesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        var rejected = Assert.Single(changes);
+        Assert.Equal(VisitEndTimeChangeResult.Rejected, rejected.Result);
+    }
+
+    [Fact]
     public async Task Stop_claim_prevents_later_end_time_change()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
