@@ -57,8 +57,11 @@ public static class ParkingTimeSegmenter
         var localEnd = TimeZoneInfo.ConvertTime(end, zone).Date;
 
         for (var date = localStart; date <= localEnd; date = date.AddDays(1))
+        {
+            AddBoundary(date, TimeOnly.MinValue);
             foreach (var window in rules.PaidWindows.Where(x => x.Day == date.DayOfWeek))
             { AddBoundary(date, window.Start); AddBoundary(date, window.End); }
+        }
 
         var points = cuts.ToArray();
         var result = new List<ParkingTimeSegment>();
