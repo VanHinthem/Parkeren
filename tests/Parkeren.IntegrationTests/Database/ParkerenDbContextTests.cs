@@ -1436,6 +1436,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.True(
             (changes[^1].RequestedDesiredEndAt.GetValueOrDefault() - persistedVisit.DesiredEndAt.Value).Duration()
             <= TimeSpan.FromMilliseconds(1));
+        Assert.NotNull(changes[^1].PreviousDesiredEndAt);
+        Assert.NotNull(changes[0].RequestedDesiredEndAt);
+        Assert.True(
+            (changes[^1].PreviousDesiredEndAt.GetValueOrDefault() - changes[0].RequestedDesiredEndAt.GetValueOrDefault()).Duration()
+            <= TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
