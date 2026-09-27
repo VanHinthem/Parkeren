@@ -33,6 +33,14 @@ public static class DependencyInjection
         services.AddScoped<IProviderStartStore, ProviderStartStore>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
+        services.AddScoped<StartVisitPreparer>();
+        services.AddScoped<StartVisitClaimer>();
+        services.AddScoped<StartVisitFinalizer>();
+        services.AddScoped<StartVisitProviderPreparer>();
+        services.AddScoped<StartVisitProviderReadiness>();
+        services.AddScoped<StartVisitProviderExecutor>();
+        services.AddScoped<StartVisitProviderReconciler>();
+        services.AddScoped<StartVisitFlow>();
 
         if (configuration["ParkingProvider:Type"] == "TwoParkMock")
         {
