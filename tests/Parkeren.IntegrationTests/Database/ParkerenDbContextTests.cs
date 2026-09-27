@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace Parkeren.IntegrationTests.Database;
 
 [Collection(PostgreSqlCollection.Name)]
