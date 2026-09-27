@@ -1488,6 +1488,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
+        await context.PaidWindows.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingCalendarExceptions.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingRuleSets.ExecuteDeleteAsync(cancellationToken);
     }
 
 }
