@@ -653,13 +653,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         try
         {
-            await using var failedScope = new ServiceCollection()
-                .AddInfrastructure(new ConfigurationManager
-                {
-                    { "ConnectionStrings:Parkeren", fixture.ConnectionString }
-                })
-                .BuildServiceProvider()
-                .CreateAsyncScope();
+            var failedConfiguration = new ConfigurationManager();
+            failedConfiguration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+            });
+            await using var failedProvider = new ServiceCollection()
+                .AddInfrastructure(failedConfiguration)
+                .BuildServiceProvider();
+            await using var failedScope = failedProvider.CreateAsyncScope();
 
             var capacity = failedScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
             var visit = new Visit(
