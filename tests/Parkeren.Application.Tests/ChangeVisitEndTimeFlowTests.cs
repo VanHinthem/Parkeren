@@ -82,17 +82,17 @@ public sealed class ChangeVisitEndTimeFlowTests
     private sealed class ThrowingResultStore : IProviderStopResultStore
     {
         public Task RecordUnknownAsync(ProviderStopPreparation preparation, string errorCode, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
-        public Task RecordConfirmedAsync(ProviderStopPreparation preparation, ProviderParkingAction providerAction, DateTimeOffset actualEndAt, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task RecordConfirmedAsync(ProviderStopPreparation preparation, Parkeren.Application.ParkingProvider.ProviderParkingAction providerAction, DateTimeOffset actualEndAt, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
     }
 
     private sealed class ThrowingProvider : IParkingProvider
     {
-        public Task<ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
         public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
         public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
         public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
-        public Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
-        public Task<ProviderParkingAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException();
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new InvalidOperationException();
     }
 }
