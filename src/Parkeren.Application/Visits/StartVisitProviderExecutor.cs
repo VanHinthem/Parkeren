@@ -5,7 +5,7 @@ using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingActio
 namespace Parkeren.Application.Visits;
 
 public sealed record ProviderStartRequest(string LicensePlate, string Location, DateTimeOffset EndAt);
-public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation);
+public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation, bool DefinitiveFailure = false);
 
 public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore)
 {
@@ -44,6 +44,13 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         {
             await resultStore.RecordUnknownAsync(preparation, "invalid-response", cancellationToken);
             return new(preparation, null, true);
+        }
+        catch (ArgumentException)
+        {
+            preparation.Operation.Fail("provider-rejected", DateTimeOffset.UtcNow);
+            preparation.Action.MarkFailed();
+            await resultStore.RecordDefinitiveFailureAsync(preparation, "provider-rejected", cancellationToken);
+            return new(preparation, null, false, true);
         }
     }
 }
