@@ -12,21 +12,22 @@ public sealed class ParkingProviderMockTests
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
         using var http = factory.CreateClient();
         var provider = new TwoParkMockProvider(http);
+        var cancellationToken = TestContext.Current.CancellationToken;
 
-        var balance = await provider.GetBalanceAsync();
+        var balance = await provider.GetBalanceAsync(cancellationToken);
         Assert.True(balance.RemainingPaidDuration > TimeSpan.Zero);
 
         var start = DateTimeOffset.UtcNow.AddMinutes(5);
         var created = await provider.StartActionAsync(
-            new ProviderParkingActionRequest("TK01HF", start, start.AddHours(2), "Oss"));
+            new ProviderParkingActionRequest("TK01HF", start, start.AddHours(2), "Oss"), cancellationToken);
 
-        var actions = await provider.GetActionsAsync();
+        var actions = await provider.GetActionsAsync(cancellationToken);
         Assert.Contains(actions, x => x.ProviderActionId == created.ProviderActionId);
 
-        var extended = await provider.ExtendActionAsync(created.ProviderActionId, start.AddHours(3));
+        var extended = await provider.ExtendActionAsync(created.ProviderActionId, start.AddHours(3), cancellationToken);
         Assert.Equal(start.AddHours(3), extended.End);
 
-        await provider.StopActionAsync(created.ProviderActionId);
+        await provider.StopActionAsync(created.ProviderActionId, cancellationToken);
         actions = await provider.GetActionsAsync();
         Assert.Equal("stopped", actions.Single(x => x.ProviderActionId == created.ProviderActionId).Status);
     }
