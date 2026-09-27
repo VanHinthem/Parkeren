@@ -20,6 +20,7 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
         if (preparation.IsReplay &&
+            !preparation.AttemptStartedNow &&
             preparation.Operation.Status == ProviderOperationStatus.InProgress &&
             preparation.Action.State == ProviderActionState.Starting)
         {
