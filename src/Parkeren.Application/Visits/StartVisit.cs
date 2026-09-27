@@ -7,11 +7,17 @@ namespace Parkeren.Application.Visits;
 public sealed record StartVisitCommand(Guid OperationId, Guid OwnerUserId, Guid ActorUserId, Guid VehicleId, DateTimeOffset StartAt, DateTimeOffset? DesiredEndAt);
 public sealed record StartVisitPreparation(Visit Visit, Guid OperationId, bool RequiresProviderCoverageNow);
 
+public sealed record StartVisitContext(StartVisitActor Actor, StartVisitOwner Owner, StartVisitVehicle Vehicle);
+
 public sealed class StartVisitPreparer
 {
-    public StartVisitPreparation Prepare(StartVisitCommand command, EffectiveParkingPolicy policy, bool requiresProviderCoverageNow)
+    public StartVisitPreparation Prepare(StartVisitCommand command, StartVisitContext context, EffectiveParkingPolicy policy, bool requiresProviderCoverageNow)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(policy);
+        if (context.Actor.Id != command.ActorUserId || context.Owner.Id != command.OwnerUserId || context.Vehicle.Id != command.VehicleId)
+            throw new InvalidOperationException("Resolved start context does not match the command.");
+        StartVisitAuthorization.Validate(context.Actor, context.Owner, context.Vehicle);
         if (command.OperationId == Guid.Empty) throw new ArgumentException("OperationId is required.", nameof(command));
         if (command.OwnerUserId == Guid.Empty || command.ActorUserId == Guid.Empty || command.VehicleId == Guid.Empty) throw new ArgumentException("Owner, actor and vehicle are required.", nameof(command));
 

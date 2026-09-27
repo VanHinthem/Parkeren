@@ -1,6 +1,7 @@
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Users;
 using Xunit;
 
 namespace Parkeren.Application.Tests;
@@ -11,7 +12,8 @@ public sealed class StartVisitTests
     {
         var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(12), true);
         var command = new StartVisitCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(2));
-        var result = new StartVisitPreparer().Prepare(command, policy, true);
+        var context = new StartVisitContext(new(command.ActorUserId, UserRole.Visitor, true), new(command.OwnerUserId, true), new(command.VehicleId, true, true));
+        var result = new StartVisitPreparer().Prepare(command, context, policy, true);
         Assert.Equal(VisitStatus.Starting, result.Visit.Status);
         Assert.True(result.RequiresProviderCoverageNow);
         Assert.Equal(command.OperationId, result.OperationId);
