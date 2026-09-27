@@ -96,7 +96,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("parking_tariffs");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.HourlyRate).HasPrecision(18, 4);
+            entity.Property(x => x.Rate).HasPrecision(18, 4);
+            entity.Property(x => x.Unit).HasConversion<int>();
             entity.HasIndex(x => x.ValidFrom);
         });
 

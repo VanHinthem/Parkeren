@@ -1,26 +1,33 @@
 namespace Parkeren.Domain.Rules;
 
+public enum ParkingTariffUnit
+{
+    Hour
+}
+
 public sealed class ParkingTariff
 {
     private ParkingTariff() { }
 
-    public ParkingTariff(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, decimal hourlyRate)
+    public ParkingTariff(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, decimal rate, ParkingTariffUnit unit = ParkingTariffUnit.Hour)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom)
             throw new ArgumentException("ValidUntil must be after ValidFrom.");
-        if (hourlyRate < 0m)
-            throw new ArgumentOutOfRangeException(nameof(hourlyRate));
+        if (rate < 0m)
+            throw new ArgumentOutOfRangeException(nameof(rate));
 
         Id = id;
         ValidFrom = validFrom;
         ValidUntil = validUntil;
-        HourlyRate = hourlyRate;
+        Rate = rate;
+        Unit = unit;
     }
 
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
     public DateTimeOffset? ValidUntil { get; private set; }
-    public decimal HourlyRate { get; private set; }
+    public decimal Rate { get; private set; }
+    public ParkingTariffUnit Unit { get; private set; }
 }
 
 public static class ParkingTariffResolver
@@ -83,7 +90,11 @@ public static class ParkingTariffCostCalculator
             var end = boundaries[i + 1];
             var tariff = ParkingTariffResolver.Resolve(tariffArray, start);
             var duration = end - start;
-            var amount = ParkingCostCalculator.Calculate(new ParkingUsage(duration), tariff.HourlyRate).Amount;
+            var amount = ParkingCostCalculator.Calculate(new ParkingUsage(duration), tariff.Unit switch
+            {
+                ParkingTariffUnit.Hour => tariff.Rate,
+                _ => throw new InvalidOperationException($"Unsupported parking tariff unit: {tariff.Unit}.")
+            }).Amount;
             result.Add(new ParkingTariffCost(tariff, duration, amount));
         }
 
