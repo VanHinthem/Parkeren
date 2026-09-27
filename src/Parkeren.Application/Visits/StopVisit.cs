@@ -24,3 +24,16 @@ public interface IStopVisitFinalizer
         DateTimeOffset actualEndAt,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ProviderStopPreparation(
+    ProviderOperation Operation,
+    ProviderParkingAction Action,
+    bool IsReplay,
+    bool AttemptStartedNow);
+
+public interface IProviderStopStore
+{
+    Task<ProviderStopPreparation> PrepareAttemptAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken = default);
+}
