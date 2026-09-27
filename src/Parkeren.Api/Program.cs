@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.RateLimiting;
+using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Domain.Users;
 using Parkeren.Infrastructure;
@@ -109,6 +110,91 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/vehicles", async (
+    IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var vehicles = await administration.GetAuthorizedVehiclesAsync(authenticated.User.Id, cancellationToken);
+    return vehicles is null ? Results.Unauthorized() : Results.Ok(vehicles);
+});
+
+app.MapGet("/api/admin/users", async (
+    IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return Results.Ok(await administration.GetUsersAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/users", async (
+    CreateUserRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    var created = await administration.CreateUserAsync(authenticated.User.Id, request.Username, request.Pin, request.Role, cancellationToken);
+    return created is null ? Results.BadRequest() : Results.Created($"/api/admin/users/{created.Id}", created);
+});
+
+app.MapPut("/api/admin/users/{userId:guid}/active", async (
+    Guid userId, SetActiveRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return await administration.SetUserActiveAsync(authenticated.User.Id, userId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapGet("/api/admin/vehicles", async (
+    IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return Results.Ok(await administration.GetVehiclesAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/vehicles", async (
+    CreateVehicleRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    var created = await administration.CreateVehicleAsync(authenticated.User.Id, request.LicensePlate, request.DisplayName, cancellationToken);
+    return created is null ? Results.BadRequest() : Results.Created($"/api/admin/vehicles/{created.Id}", created);
+});
+
+app.MapPut("/api/admin/vehicles/{vehicleId:guid}/active", async (
+    Guid vehicleId, SetActiveRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return await administration.SetVehicleActiveAsync(authenticated.User.Id, vehicleId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapPut("/api/admin/users/{userId:guid}/vehicles/{vehicleId:guid}", async (
+    Guid userId, Guid vehicleId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return await administration.AssignVehicleAsync(authenticated.User.Id, userId, vehicleId, cancellationToken) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapDelete("/api/admin/users/{userId:guid}/vehicles/{vehicleId:guid}", async (
+    Guid userId, Guid vehicleId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return await administration.UnassignVehicleAsync(authenticated.User.Id, userId, vehicleId, cancellationToken) ? Results.NoContent() : Results.NotFound();
+});
+
 app.MapHealthChecks("/health");
 app.MapGet("/api/status", () => Results.Ok(new { status = "ok" }));
 app.MapFallbackToFile("index.html");
@@ -152,5 +238,8 @@ void DeleteSessionCookie(HttpContext context, bool secure)
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
+public sealed record CreateUserRequest(string Username, string Pin, UserRole Role);
+public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
+public sealed record SetActiveRequest(bool IsActive);
 
 public partial class Program;
