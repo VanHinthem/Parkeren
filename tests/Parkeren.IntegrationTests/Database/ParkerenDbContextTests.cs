@@ -249,6 +249,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
+        await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
+        await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
     }
 
