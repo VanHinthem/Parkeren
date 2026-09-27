@@ -17,6 +17,8 @@ internal sealed class PostgresVisitEndTimeChanger(
         if (command.VisitId == Guid.Empty) throw new ArgumentException("Visit id is required.", nameof(command));
         if (command.ActorUserId == Guid.Empty) throw new ArgumentException("Actor user id is required.", nameof(command));
 
+        var desiredEndAt = NormalizeTimestamp(command.DesiredEndAt);
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var lockKey = VisitAdvisoryLock.For(command.VisitId);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
@@ -31,7 +33,7 @@ internal sealed class PostgresVisitEndTimeChanger(
         {
             if (existing.VisitId != visit.Id ||
                 existing.ActorUserId != command.ActorUserId ||
-                existing.RequestedDesiredEndAt != command.DesiredEndAt)
+                existing.RequestedDesiredEndAt != desiredEndAt)
                 throw new InvalidOperationException("Operation id is already used by another end-time change.");
 
             await transaction.CommitAsync(cancellationToken);
@@ -44,15 +46,24 @@ internal sealed class PostgresVisitEndTimeChanger(
             visit.Id,
             command.ActorUserId,
             visit.DesiredEndAt,
-            command.DesiredEndAt,
+            desiredEndAt,
             timeProvider.GetUtcNow());
 
-        visit.ChangeDesiredEndAt(command.DesiredEndAt);
+        visit.ChangeDesiredEndAt(desiredEndAt);
         change.MarkApplied();
         dbContext.VisitEndTimeChanges.Add(change);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new ChangeVisitEndTimeResult(visit, change, false);
+    }
+    private static DateTimeOffset? NormalizeTimestamp(DateTimeOffset? value)
+    {
+        if (value is null) return null;
+
+        const long ticksPerMicrosecond = TimeSpan.TicksPerMillisecond / 1000;
+        var utcTicks = value.Value.UtcTicks;
+        var normalizedTicks = utcTicks - (utcTicks % ticksPerMicrosecond);
+        return new DateTimeOffset(normalizedTicks, TimeSpan.Zero);
     }
 }

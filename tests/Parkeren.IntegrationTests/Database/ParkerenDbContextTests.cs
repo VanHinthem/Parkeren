@@ -1353,10 +1353,13 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.OperationId == operationId)
             .ToListAsync(cancellationToken);
 
-        Assert.Equal(requestedEndAt, persistedVisit.DesiredEndAt);
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True((persistedVisit.DesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.Single(changes);
-        Assert.Equal(originalEndAt, changes[0].PreviousDesiredEndAt);
-        Assert.Equal(requestedEndAt, changes[0].RequestedDesiredEndAt);
+        Assert.NotNull(changes[0].PreviousDesiredEndAt);
+        Assert.True((changes[0].PreviousDesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.NotNull(changes[0].RequestedDesiredEndAt);
+        Assert.True((changes[0].RequestedDesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndTimeChangeResult.Applied, changes[0].Result);
     }
 
@@ -1411,7 +1414,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using var verifyContext = fixture.CreateDbContext();
         var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
         Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
-        Assert.Equal(originalEndAt, persistedVisit.DesiredEndAt);
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True((persistedVisit.DesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.False(await verifyContext.VisitEndTimeChanges.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
     }
 
