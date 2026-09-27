@@ -19,7 +19,7 @@ public sealed class ProviderOperation
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public uint Version { get; private set; }
-    public void BeginAttempt() { if (Status is ProviderOperationStatus.Succeeded or ProviderOperationStatus.Failed) throw new InvalidOperationException("Terminal operation cannot be retried."); Status = ProviderOperationStatus.InProgress; AttemptCount++; }
+    public void BeginAttempt() { if (Status is not ProviderOperationStatus.Pending) throw new InvalidOperationException("Only a pending operation can begin a provider attempt; unknown outcomes must reconcile first."); Status = ProviderOperationStatus.InProgress; AttemptCount++; }
     public void MarkUnknown(string? errorCode = null) { if (Status != ProviderOperationStatus.InProgress) throw new InvalidOperationException(); LastErrorCode = errorCode; Status = ProviderOperationStatus.Unknown; }
     public void BeginReconciliation() { if (Status != ProviderOperationStatus.Unknown) throw new InvalidOperationException(); Status = ProviderOperationStatus.Reconciling; }
     public void Succeed(DateTimeOffset completedAt) { if (Status is not ProviderOperationStatus.InProgress and not ProviderOperationStatus.Reconciling) throw new InvalidOperationException(); Status = ProviderOperationStatus.Succeeded; CompletedAt = completedAt; }
