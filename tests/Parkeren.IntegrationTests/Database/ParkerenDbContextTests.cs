@@ -1634,6 +1634,63 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task End_time_extension_from_free_into_paid_window_counts_paid_duration()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"free-paid-{suffix}", $"FREE-PAID-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"FP-{suffix[..6]}", $"FP{suffix[..6]}".ToUpperInvariant(), null);
+        var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
+        var localStart = new DateTime(2026, 9, 28, 8, 30, 0, DateTimeKind.Unspecified);
+        var startAt = new DateTimeOffset(localStart, businessZone.GetUtcOffset(localStart)).ToUniversalTime();
+        var originalEndAt = startAt.AddMinutes(30);
+        var requestedEndAt = startAt.AddHours(2);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromMinutes(30), TimeSpan.FromHours(8), true, true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(),
+                startAt.AddDays(-1),
+                requestedEndAt.AddDays(1),
+                TimeSpan.FromHours(4),
+                new[] { new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0)) }));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+        var operationId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => changer.ApplyAsync(
+            new ChangeVisitEndTimeCommand(operationId, visit.Id, user.Id, requestedEndAt),
+            cancellationToken));
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True((persistedVisit.DesiredEndAt.Value - originalEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+
+        var change = await verifyContext.VisitEndTimeChanges.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        Assert.Equal(VisitEndTimeChangeResult.Rejected, change.Result);
+    }
+
+    [Fact]
     public async Task End_time_extension_uses_rules_after_ruleset_boundary()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
