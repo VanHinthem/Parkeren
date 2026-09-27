@@ -211,6 +211,16 @@ app.MapPut("/api/admin/vehicles/{vehicleId:guid}/active", async (
     return await administration.SetVehicleActiveAsync(authenticated.User.Id, vehicleId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
 });
 
+app.MapGet("/api/admin/users/{userId:guid}/vehicles", async (
+    Guid userId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    var vehicles = await administration.GetAuthorizedVehiclesAsync(userId, cancellationToken);
+    return vehicles is null ? Results.NotFound() : Results.Ok(vehicles);
+});
+
 app.MapPut("/api/admin/users/{userId:guid}/vehicles/{vehicleId:guid}", async (
     Guid userId, Guid vehicleId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
 {
