@@ -4,7 +4,18 @@ using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Visits;
 
-public sealed record StartVisitFlowResult(Visit Visit, bool IsReplay, bool RequiresProviderCoverageNow);
+public enum StartVisitFlowOutcome
+{
+    Active,
+    ReconciliationRequired,
+    DefinitiveFailure
+}
+
+public sealed record StartVisitFlowResult(
+    Visit Visit,
+    bool IsReplay,
+    bool RequiresProviderCoverageNow,
+    StartVisitFlowOutcome Outcome);
 public sealed record StartVisitProviderContext(string LicensePlate, string Location);
 
 public sealed class StartVisitFlow(
@@ -40,6 +51,8 @@ public sealed class StartVisitFlow(
         if (claim is null)
             return null;
 
+        var outcome = StartVisitFlowOutcome.Active;
+
         if (!claim.RequiresProviderCoverageNow)
         {
             await finalizer.FinalizeFreeStartAsync(claim, cancellationToken);
@@ -64,13 +77,24 @@ public sealed class StartVisitFlow(
                 new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location, paidEndAt),
                 cancellationToken);
 
-            if (!execution.RequiresReconciliation && !execution.DefinitiveFailure && execution.ProviderAction is not null)
+            if (execution.RequiresReconciliation)
+            {
+                outcome = StartVisitFlowOutcome.ReconciliationRequired;
+            }
+            else if (execution.DefinitiveFailure)
+            {
+                outcome = StartVisitFlowOutcome.DefinitiveFailure;
+            }
+            else
+            {
                 await finalizer.FinalizePaidStartAsync(claim, execution, cancellationToken);
+            }
         }
 
         return new StartVisitFlowResult(
             claim.Visit,
             claim.IsReplay,
-            claim.RequiresProviderCoverageNow);
+            claim.RequiresProviderCoverageNow,
+            outcome);
     }
 }
