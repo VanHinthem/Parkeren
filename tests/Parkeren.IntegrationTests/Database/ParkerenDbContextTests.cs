@@ -1439,6 +1439,64 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Shortening_future_end_without_provider_action_is_local()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"end-short-{suffix}", $"END-SHORT-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"EH-{suffix[..6]}", $"EH{suffix[..6]}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var originalEndAt = startAt.AddHours(3);
+        var requestedEndAt = startAt.AddHours(1);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(),
+                startAt.AddDays(-1),
+                originalEndAt.AddDays(1),
+                TimeSpan.FromHours(4)));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
+
+        var result = await changer.ApplyAsync(
+            new ChangeVisitEndTimeCommand(Guid.NewGuid(), visit.Id, user.Id, requestedEndAt),
+            cancellationToken);
+
+        Assert.False(result.IsReplay);
+        Assert.Equal(VisitEndTimeChangeResult.Applied, result.Change.Result);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var providerActionCount = await verifyContext.ProviderParkingActions
+            .CountAsync(x => x.VisitId == visit.Id, cancellationToken);
+
+        Assert.Equal(VisitStatus.Active, persistedVisit.Status);
+        Assert.NotNull(persistedVisit.DesiredEndAt);
+        Assert.True((persistedVisit.DesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.Equal(0, providerActionCount);
+    }
+
+    [Fact]
     public async Task End_time_change_rejects_paid_duration_over_snapshot_limit_atomically()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
