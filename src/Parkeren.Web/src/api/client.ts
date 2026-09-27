@@ -42,6 +42,10 @@ export async function getActiveVisit():Promise<ActiveVisit|null>{
   return json<ActiveVisit>(response);
 }
 
+export async function getRecentVisits():Promise<ActiveVisit[]>{
+  return json<ActiveVisit[]>(await apiFetch("/api/visits/recent"));
+}
+
 export async function stopVisit(visitId:string,operationId:string):Promise<ActiveVisit>{
   const response=await apiFetch(`/api/visits/${visitId}/stop`,{
     method:"POST",
