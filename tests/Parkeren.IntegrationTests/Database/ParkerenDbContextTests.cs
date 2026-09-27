@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
@@ -485,6 +486,55 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderActionHealth.Healthy, persistedAction.Health);
         Assert.Equal(VisitStatus.Active, persistedVisit.Status);
         Assert.Equal(VisitHealth.Healthy, persistedVisit.Health);
+    }
+
+    [Fact]
+    public async Task Active_visit_notification_recovers_after_restart_idempotently()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "notification-restart", "NOTIFICATION-RESTART", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "JJ-99-JJ", "JJ99JJ", null);
+        var startAt = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, startAt.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var restartedScope = provider.CreateAsyncScope())
+        {
+            var publisher = restartedScope.ServiceProvider.GetRequiredService<IStartVisitNotificationPublisher>();
+            await publisher.PublishStartedAsync(visit, cancellationToken);
+        }
+
+        await using (var replayScope = provider.CreateAsyncScope())
+        {
+            var publisher = replayScope.ServiceProvider.GetRequiredService<IStartVisitNotificationPublisher>();
+            await publisher.PublishStartedAsync(visit, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(1, await verifyContext.NotificationEvents.CountAsync(
+            x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id,
+            cancellationToken));
     }
 
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
