@@ -522,6 +522,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var user = new User(Guid.NewGuid(), $"late-start-{suffix}", $"LATE-START-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"LS-{suffix[..2]}-{suffix[2..4]}", $"LS{suffix[..4]}", null);
         var startOperationId = Guid.NewGuid();
+        var stopOperationId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         var endAt = now.AddHours(1);
         var visit = new Visit(
@@ -558,7 +559,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         {
             var stopClaimer = stopScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
             await stopClaimer.ClaimAsync(
-                new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id),
+                new StopVisitCommand(stopOperationId, visit.Id, user.Id),
                 cancellationToken);
         }
 
@@ -572,16 +573,33 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         await startResultStore.RecordConfirmedAsync(preparation, providerAction, cancellationToken);
 
+        await using (var resumeStopScope = provider.CreateAsyncScope())
+        {
+            var stopClaimer = resumeStopScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            var stopStore = resumeStopScope.ServiceProvider.GetRequiredService<IProviderStopStore>();
+            var replay = await stopClaimer.ClaimAsync(
+                new StopVisitCommand(stopOperationId, visit.Id, user.Id),
+                cancellationToken);
+            var stopPreparation = await stopStore.PrepareAttemptAsync(replay, cancellationToken);
+
+            Assert.True(stopPreparation.AttemptStartedNow);
+        }
+
         await using var verifyContext = fixture.CreateDbContext();
         var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
         var persistedAction = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
         var persistedStartOperation = await verifyContext.ProviderOperations.SingleAsync(
             x => x.OperationId == startOperationId,
             cancellationToken);
+        var persistedStopOperation = await verifyContext.ProviderOperations.SingleAsync(
+            x => x.OperationId == stopOperationId,
+            cancellationToken);
 
         Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
-        Assert.Equal(ProviderActionState.Active, persistedAction.State);
+        Assert.Equal(ProviderActionState.Stopping, persistedAction.State);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedStartOperation.Status);
+        Assert.Equal(ProviderOperationStatus.InProgress, persistedStopOperation.Status);
+        Assert.Equal(persistedAction.Id, persistedStopOperation.ProviderParkingActionId);
     }
 
     [Fact]
