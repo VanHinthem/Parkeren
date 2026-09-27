@@ -242,6 +242,48 @@ public sealed class StartVisitProviderExecutorTests
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
+    [Fact]
+    public async Task Stop_precedence_blocks_provider_start_before_mutation()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+
+        var provider = new CountingProvider();
+        var guard = new DeniedStartMutationGuard();
+        var executor = new StartVisitProviderExecutor(
+            provider,
+            new NoopResultStore(),
+            mutationGuard: guard);
+
+        var result = await executor.ExecuteAsync(
+            new ProviderStartPreparation(operation, action, false, AttemptStartedNow: true),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal(1, guard.Calls);
+        Assert.Equal(0, provider.StartCalls);
+        Assert.Equal(ProviderOperationStatus.InProgress, operation.Status);
+        Assert.Equal(ProviderActionState.Starting, action.State);
+    }
+
+    private sealed class DeniedStartMutationGuard : IProviderStartMutationGuard
+    {
+        public int Calls { get; private set; }
+
+        public Task<bool> CanStartAsync(Guid visitId, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(false);
+        }
+    }
+
     private sealed class SuccessfulProvider(Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
     {
         public int StartCalls { get; private set; }
