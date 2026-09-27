@@ -47,8 +47,7 @@ public sealed class StopVisitFlowTests
 
         var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddHours(1));
         action.MarkStarting();
-        action.CaptureStartResponse("provider-1", now.AddHours(-1), now.AddHours(1), "active");
-        action.MarkActive();
+        action.MarkActive("provider-1", now.AddHours(-1), "active");
         action.BeginStopping();
 
         var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visit.Id, action.Id, ProviderOperationType.Stop);
