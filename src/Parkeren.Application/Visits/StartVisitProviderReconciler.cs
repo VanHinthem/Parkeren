@@ -23,7 +23,11 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
                 x.End == preparation.Action.PlannedEndAt);
 
         if (match is null)
+        {
+            if (string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
+                await resultStore.RecordRetryableAsync(preparation, cancellationToken);
             return false;
+        }
 
         preparation.Operation.BeginReconciliation();
         preparation.Action.BeginReconciliation();
