@@ -29,7 +29,7 @@ public sealed class StartVisitProviderExecutorTests
     }
 
     [Fact]
-    public async Task Interrupted_in_progress_replay_is_marked_unknown_without_second_provider_start()
+    public async Task In_progress_replay_waits_without_mutating_live_attempt()
     {
         var start = DateTimeOffset.UtcNow;
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, start.AddHours(1),
@@ -48,8 +48,10 @@ public sealed class StartVisitProviderExecutorTests
 
         Assert.True(result.RequiresReconciliation);
         Assert.Equal(0, provider.StartCalls);
-        Assert.Equal(1, resultStore.UnknownCalls);
-        Assert.Equal("interrupted-in-progress", resultStore.LastErrorCode);
+        Assert.Equal(0, resultStore.UnknownCalls);
+        Assert.Null(resultStore.LastErrorCode);
+        Assert.Equal(ProviderOperationStatus.InProgress, operation.Status);
+        Assert.Equal(ProviderActionState.Starting, action.State);
     }
 
     [Fact]
