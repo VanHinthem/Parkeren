@@ -636,18 +636,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             await seedContext.SaveChangesAsync(cancellationToken);
 
             await seedContext.Database.ExecuteSqlRawAsync(
-                """
-                CREATE OR REPLACE FUNCTION fail_visit_insert_for_test()
-                RETURNS trigger AS $
-                BEGIN
-                    RAISE EXCEPTION 'simulated crash before visit commit';
-                END;
-                $ LANGUAGE plpgsql;
-
-                CREATE TRIGGER fail_visit_insert_for_test
-                BEFORE INSERT ON visits
-                FOR EACH ROW EXECUTE FUNCTION fail_visit_insert_for_test();
-                """,
+                $"""ALTER TABLE visits ADD CONSTRAINT fail_visit_insert_for_test CHECK ("StartOperationId" <> '{operationId}');""",
                 cancellationToken);
         }
 
@@ -674,10 +663,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         {
             await using var cleanupContext = fixture.CreateDbContext();
             await cleanupContext.Database.ExecuteSqlRawAsync(
-                """
-                DROP TRIGGER IF EXISTS fail_visit_insert_for_test ON visits;
-                DROP FUNCTION IF EXISTS fail_visit_insert_for_test();
-                """,
+                "ALTER TABLE visits DROP CONSTRAINT IF EXISTS fail_visit_insert_for_test;",
                 cancellationToken);
         }
 
