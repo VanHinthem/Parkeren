@@ -7,7 +7,7 @@ namespace Parkeren.Application.Visits;
 public sealed record ProviderStartRequest(string LicensePlate, string Location, DateTimeOffset EndAt);
 public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation, bool DefinitiveFailure = false);
 
-public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore)
+public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null)
 {
     public async Task<ProviderStartExecution> ExecuteAsync(
         ProviderStartPreparation preparation,
@@ -17,7 +17,18 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         ArgumentNullException.ThrowIfNull(preparation);
         ArgumentNullException.ThrowIfNull(request);
 
-        if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
+        if (preparation.Operation.Status == ProviderOperationStatus.Unknown)
+        {
+            if (reconciler is null)
+                return new(preparation, null, true);
+
+            var reconciled = await reconciler.ReconcileAsync(preparation, request.LicensePlate, cancellationToken);
+            if (!reconciled)
+                return new(preparation, null, true);
+
+            return new(preparation, null, false);
+        }
+        if (preparation.Operation.Status == ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
         if (preparation.IsReplay &&
             !preparation.AttemptStartedNow &&
