@@ -9,6 +9,7 @@ using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
 
@@ -35,9 +36,16 @@ if (app.Environment.IsDevelopment())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRateLimiter();
+app.UseAntiforgery();
 
 const string sessionCookie = "parkeren-session";
 var secureSessionCookie = !app.Environment.IsDevelopment();
+
+app.MapGet("/api/auth/csrf", (Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery, HttpContext context) =>
+{
+    var tokens = antiforgery.GetAndStoreTokens(context);
+    return Results.Ok(new { token = tokens.RequestToken });
+});
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
