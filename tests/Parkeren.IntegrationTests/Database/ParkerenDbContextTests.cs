@@ -400,7 +400,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 .ExecuteUpdateAsync(
                     setters => setters.SetProperty(
                         x => x.AttemptStartedAt,
-                        DateTimeOffset.UtcNow.AddMinutes(-3)),
+                        DateTimeOffset.UtcNow.AddMinutes(-6)),
                     cancellationToken);
         }
 
