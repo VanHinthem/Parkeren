@@ -62,7 +62,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Parkeren.Domain.Visits.ProviderOperation", b =>
         {
-            b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null).WithMany().HasForeignKey("ProviderParkingActionId").OnDelete(DeleteBehavior.Restrict);
+            b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null).WithMany().HasForeignKey("ProviderParkingActionId").OnDelete(DeleteBehavior.Restrict).HasConstraintName(null);
             b.HasOne("Parkeren.Domain.Visits.Visit", null).WithMany().HasForeignKey("VisitId").OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -148,7 +148,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
             b.Property<Guid>("UserId").HasColumnType("uuid");
             b.Property<Guid>("VehicleId").HasColumnType("uuid");
-            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnName("xmin").HasColumnType("xid");
             b.HasKey("Id");
             b.HasIndex("StartedByUserId");
             b.HasIndex("StartOperationId").IsUnique();
@@ -171,7 +171,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.Property<string>("ProviderStatus").HasMaxLength(100).HasColumnType("character varying(100)");
             b.Property<string>("State").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
             b.Property<Guid?>("VisitId").HasColumnType("uuid");
-            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnName("xmin").HasColumnType("xid");
             b.HasKey("Id");
             b.HasIndex("VisitId");
             b.ToTable("provider_parking_actions");
@@ -189,7 +189,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
             b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
             b.Property<string>("Type").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
             b.Property<Guid?>("VisitId").HasColumnType("uuid");
-            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnType("xid");
+            b.Property<uint>("Version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate().HasColumnName("xmin").HasColumnType("xid");
             b.HasKey("Id");
             b.HasIndex("OperationId").IsUnique();
             b.HasIndex("ProviderParkingActionId");
@@ -262,7 +262,7 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingCalendarException", b =>
         {
-            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired();
+            b.HasOne("Parkeren.Domain.Rules.ParkingRuleSet", null).WithMany("CalendarExceptions").HasForeignKey("ParkingRuleSetId").OnDelete(DeleteBehavior.Cascade).IsRequired().HasConstraintName(null);
         });
 
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
