@@ -86,4 +86,27 @@ public sealed class VisitTests
         var visit = CreateVisit();
         Assert.Throws<InvalidOperationException>(() => visit.Complete(visit.StartAt.AddHours(1)));
     }
+
+    [Fact]
+    public void Active_visit_rejects_manual_stop_when_snapshot_disallows_it()
+    {
+        var visit = CreateVisit(new EffectiveParkingPolicySnapshot(
+            TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, false));
+        visit.Activate();
+
+        Assert.Throws<InvalidOperationException>(() => visit.ChangeDesiredEndAt(null));
+    }
+
+    [Fact]
+    public void Active_visit_allows_manual_stop_when_snapshot_allows_it()
+    {
+        var visit = CreateVisit(new EffectiveParkingPolicySnapshot(
+            TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, true));
+        visit.Activate();
+
+        visit.ChangeDesiredEndAt(null);
+
+        Assert.Null(visit.DesiredEndAt);
+    }
+
 }
