@@ -21,3 +21,32 @@ public sealed class StartVisitTests
         Assert.Equal(policy.MaxPaidParkingDuration, result.Visit.PolicySnapshot.MaxPaidParkingDuration);
     }
 }
+
+
+public sealed class StartVisitClaimerTests
+{
+    [Fact]
+    public async Task Claim_reuses_existing_visit_for_replayed_operation()
+    {
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var userId = Guid.NewGuid();
+        var command = new StartVisitCommand(Guid.NewGuid(), userId, userId, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(2));
+        var context = new StartVisitContext(new(command.ActorUserId, UserRole.Visitor, true), new(command.OwnerUserId, true), new(command.VehicleId, true, true));
+        var preparation = new StartVisitPreparer().Prepare(command, context, policy, true);
+        var existing = preparation.Visit;
+        var claimer = new StartVisitClaimer(new ReplayCapacityClaimer(existing));
+
+        var result = await claimer.ClaimAsync(preparation, 5, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.True(result.IsReplay);
+        Assert.Same(existing, result.Visit);
+        Assert.True(result.RequiresProviderCoverageNow);
+    }
+
+    private sealed class ReplayCapacityClaimer(Visit existing) : IVisitCapacityClaimer
+    {
+        public Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxConcurrentVisits, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new VisitCapacityClaim(true, existing, true));
+    }
+}

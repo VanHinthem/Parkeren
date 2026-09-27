@@ -6,6 +6,7 @@ namespace Parkeren.Application.Visits;
 
 public sealed record StartVisitCommand(Guid OperationId, Guid OwnerUserId, Guid ActorUserId, Guid VehicleId, DateTimeOffset StartAt, DateTimeOffset? DesiredEndAt);
 public sealed record StartVisitPreparation(Visit Visit, Guid OperationId, bool RequiresProviderCoverageNow);
+public sealed record StartVisitClaimResult(Visit Visit, bool IsReplay, bool RequiresProviderCoverageNow);
 
 public sealed record StartVisitContext(StartVisitActor Actor, StartVisitOwner Owner, StartVisitVehicle Vehicle);
 
@@ -30,5 +31,29 @@ public sealed class StartVisitPreparer
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
+    }
+}
+
+public sealed class StartVisitClaimer(IVisitCapacityClaimer capacityClaimer)
+{
+    public async Task<StartVisitClaimResult?> ClaimAsync(
+        StartVisitPreparation preparation,
+        int maxConcurrentVisits,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+
+        var claim = await capacityClaimer.TryClaimAsync(
+            preparation.Visit,
+            maxConcurrentVisits,
+            cancellationToken);
+
+        if (!claim.Claimed || claim.Visit is null)
+            return null;
+
+        return new StartVisitClaimResult(
+            claim.Visit,
+            claim.IsReplay,
+            preparation.RequiresProviderCoverageNow);
     }
 }
