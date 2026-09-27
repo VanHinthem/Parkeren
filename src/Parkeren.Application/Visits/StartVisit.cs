@@ -28,7 +28,7 @@ public sealed class StartVisitPreparer
                 throw new InvalidOperationException("Requested Visit duration exceeds the effective parking policy.");
         }
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
-        var visit = new Visit(Guid.NewGuid(), command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
+        var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
     }
 }

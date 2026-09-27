@@ -154,6 +154,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
                 owned.Property(x => x.MaxVisitElapsedDuration).HasColumnName("PolicyMaxVisitElapsedDuration");
                 owned.Property(x => x.AllowAutoExtension).HasColumnName("PolicyAllowAutoExtension");
             });
+            entity.HasIndex(x => x.StartOperationId).IsUnique();
             entity.HasIndex(x => new { x.Status, x.StartAt });
         });
 

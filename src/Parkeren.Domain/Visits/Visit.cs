@@ -6,13 +6,14 @@ public sealed class Visit
 {
     private Visit() { }
 
-    public Visit(Guid id, Guid userId, Guid vehicleId, Guid startedByUserId, DateTimeOffset startAt, DateTimeOffset? desiredEndAt, EffectiveParkingPolicySnapshot policySnapshot)
+    public Visit(Guid id, Guid startOperationId, Guid userId, Guid vehicleId, Guid startedByUserId, DateTimeOffset startAt, DateTimeOffset? desiredEndAt, EffectiveParkingPolicySnapshot policySnapshot)
     {
         ArgumentNullException.ThrowIfNull(policySnapshot);
         if (desiredEndAt is not null && desiredEndAt <= startAt)
             throw new ArgumentOutOfRangeException(nameof(desiredEndAt), "Desired end must be after start.");
 
         Id = id;
+        StartOperationId = startOperationId;
         UserId = userId;
         VehicleId = vehicleId;
         StartedByUserId = startedByUserId;
@@ -25,6 +26,7 @@ public sealed class Visit
     }
 
     public Guid Id { get; private set; }
+    public Guid StartOperationId { get; private set; }
     public Guid UserId { get; private set; }
     public Guid VehicleId { get; private set; }
     public Guid StartedByUserId { get; private set; }
