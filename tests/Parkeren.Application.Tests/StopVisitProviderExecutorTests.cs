@@ -94,6 +94,42 @@ public sealed class StopVisitProviderExecutorTests
         Assert.Equal("read-back-unconfirmed", store.LastErrorCode);
     }
 
+    [Fact]
+    public async Task Unknown_stop_reconciles_stopped_provider_action_without_second_stop()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visitId, now.AddMinutes(-30), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-4", now.AddMinutes(-30), "active");
+        action.BeginStopping();
+        action.MarkUnknown();
+
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        operation.MarkUnknown("network");
+
+        var provider = new SuccessfulStopProvider(
+            new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                "provider-stop-4", "ST04OP", now.AddMinutes(-30), now.AddHours(1), "Oss", "stopped"));
+        var store = new TrackingStopResultStore();
+        var reconciler = new StopVisitProviderReconciler(provider, store);
+        var executor = new StopVisitProviderExecutor(provider, store, reconciler);
+
+        var result = await executor.ExecuteAsync(
+            new ProviderStopPreparation(operation, action, true, false),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Equal("provider-stop-4", result.ProviderAction?.ProviderActionId);
+        Assert.Equal(0, provider.StopCalls);
+        Assert.Equal(1, provider.ReadCalls);
+        Assert.Equal(1, store.ConfirmedCalls);
+        Assert.Equal(0, store.UnknownCalls);
+        Assert.Equal(ProviderOperationStatus.Reconciling, operation.Status);
+        Assert.Equal(ProviderActionHealth.Reconciling, action.Health);
+    }
+
     private sealed class SuccessfulStopProvider(
         Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
     {
