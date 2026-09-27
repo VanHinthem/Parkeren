@@ -4,9 +4,9 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 var actions = new ConcurrentDictionary<string, MockParkingAction>();
-var remainingMinutes = 1500 * 60;
 var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
+var remainingMinutes = 1500 * 60;
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
@@ -32,6 +32,9 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
 
     if (request.End - request.Start > maxActionDuration)
         return Results.BadRequest(new { error = "Provider action exceeds maximum duration." });
+
+    if ((request.End - request.Start).TotalMinutes > remainingMinutes)
+        return Results.Conflict(new { error = "Insufficient provider balance." });
 
     if (actions.Values.Count(x => x.Status == "active") >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
@@ -71,6 +74,12 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/balance", (MockBalanceRequest request) =>
+{
+    remainingMinutes = Math.Max(0, request.RemainingPaidMinutes);
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/max-action-duration", (MockMaxActionDurationRequest request) =>
 {
     maxActionDuration = TimeSpan.FromMinutes(Math.Max(1, request.Minutes));
@@ -90,6 +99,7 @@ app.MapPost("/api/test/reset", () =>
     outcome.Reset();
     maxConcurrentActions = 5;
     maxActionDuration = TimeSpan.FromHours(4);
+    remainingMinutes = 1500 * 60;
     return Results.NoContent();
 });
 
@@ -171,3 +181,5 @@ public sealed class MockUnknownOutcomeState
 public sealed record MockCapacityRequest(int MaxConcurrentActions);
 
 public sealed record MockMaxActionDurationRequest(int Minutes);
+
+public sealed record MockBalanceRequest(int RemainingPaidMinutes);
