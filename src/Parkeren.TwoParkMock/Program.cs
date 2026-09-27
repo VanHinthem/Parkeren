@@ -51,6 +51,8 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
 
 app.Run();
 
+public partial class Program;
+
 public sealed record MockActionRequest(string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location);
 public sealed record MockExtendRequest(DateTimeOffset End);
 public sealed record MockParkingAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status);
