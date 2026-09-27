@@ -46,10 +46,20 @@ public sealed class VisitEndTimeChange
 
     public void MarkApplied()
     {
-        if (Result != VisitEndTimeChangeResult.Pending)
-            throw new InvalidOperationException("Only a pending end-time change can be applied.");
-
+        EnsurePending();
         Result = VisitEndTimeChangeResult.Applied;
+    }
+
+    public void MarkRejected()
+    {
+        EnsurePending();
+        Result = VisitEndTimeChangeResult.Rejected;
+    }
+
+    private void EnsurePending()
+    {
+        if (Result != VisitEndTimeChangeResult.Pending)
+            throw new InvalidOperationException("Only a pending end-time change can be completed.");
     }
 }
 
