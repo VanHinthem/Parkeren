@@ -12,6 +12,7 @@ using Parkeren.Application.ParkingProvider;
 using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Infrastructure.Visits;
+using Parkeren.Infrastructure.Notifications;
 
 namespace Parkeren.Infrastructure;
 
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IVisitStartStore, VisitStartStore>();
         services.AddScoped<IProviderStartStore, ProviderStartStore>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
+        services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
 
         if (configuration["ParkingProvider:Type"] == "TwoParkMock")
         {
