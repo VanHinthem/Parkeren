@@ -27,6 +27,25 @@ public sealed class ProviderParkingAction
     public void MarkStarting() { Ensure(ProviderActionState.Planned); State = ProviderActionState.Starting; }
     public void CaptureStartResponse(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); if (string.IsNullOrWhiteSpace(providerActionId)) throw new ArgumentException("Provider action id is required.", nameof(providerActionId)); ProviderActionId = providerActionId; ActualStartAt = actualStartAt; ProviderStatus = providerStatus; }
     public void MarkActive(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); CaptureStartResponse(providerActionId, actualStartAt, providerStatus); State = ProviderActionState.Active; Health = ProviderActionHealth.Healthy; }
+    public void BeginStopping()
+    {
+        Ensure(ProviderActionState.Active);
+        if (string.IsNullOrWhiteSpace(ProviderActionId))
+            throw new InvalidOperationException("An active provider action must have a provider action id before it can be stopped.");
+        State = ProviderActionState.Stopping;
+    }
+
+    public void MarkStopped(DateTimeOffset actualEndAt, string? providerStatus = null)
+    {
+        Ensure(ProviderActionState.Stopping);
+        if (ActualStartAt is not null && actualEndAt < ActualStartAt)
+            throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        ActualEndAt = actualEndAt;
+        ProviderStatus = providerStatus;
+        State = ProviderActionState.Stopped;
+        Health = ProviderActionHealth.Healthy;
+    }
+
     public void MarkFailed() { if (State != ProviderActionState.Starting) throw new InvalidOperationException("Only a starting provider action can fail."); State = ProviderActionState.Failed; Health = ProviderActionHealth.Healthy; }
     public void MarkUnknown() { if (State is not ProviderActionState.Starting and not ProviderActionState.Stopping) throw new InvalidOperationException("Only an in-flight provider mutation can become unknown."); Health = ProviderActionHealth.Unknown; }
     public void BeginReconciliation() { if (Health != ProviderActionHealth.Unknown) throw new InvalidOperationException("Only an unknown provider action can be reconciled."); Health = ProviderActionHealth.Reconciling; }
