@@ -19,6 +19,10 @@ public interface IStopVisitClaimer
 
 public interface IStopVisitFinalizer
 {
+    Task<bool> RequiresProviderActionAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken = default);
+
     Task<Visit> CompleteWithoutProviderActionAsync(
         StopVisitClaim claim,
         DateTimeOffset actualEndAt,
