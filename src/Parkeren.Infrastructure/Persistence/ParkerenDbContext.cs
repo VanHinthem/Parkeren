@@ -4,6 +4,7 @@ using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Notifications;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -22,6 +23,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<Visit> Visits => Set<Visit>();
     public DbSet<ProviderParkingAction> ProviderParkingActions => Set<ProviderParkingAction>();
     public DbSet<ProviderOperation> ProviderOperations => Set<ProviderOperation>();
+    public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -136,6 +138,14 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasIndex(x => x.OperationId).IsUnique();
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<NotificationEvent>(entity =>
+        {
+            entity.ToTable("notification_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => new { x.Type, x.AggregateId }).IsUnique();
         });
 
         modelBuilder.Entity<Visit>(entity =>
