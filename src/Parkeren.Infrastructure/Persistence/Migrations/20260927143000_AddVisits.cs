@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Parkeren.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(ParkerenDbContext))]
+[Migration("20260927143000_AddVisits")]
 public partial class AddVisits : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Parkeren.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(ParkerenDbContext))]
+[Migration("20260927131500_AddParkingTariffs")]
 public partial class AddParkingTariffs : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
