@@ -44,6 +44,43 @@ public sealed class VisitTests
     }
 
     [Fact]
+    public void Active_visit_can_change_desired_end_without_changing_policy_snapshot()
+    {
+        var visit = CreateVisit();
+        visit.Activate();
+        var policySnapshot = visit.PolicySnapshot;
+        var desiredEndAt = visit.StartAt.AddHours(2);
+
+        visit.ChangeDesiredEndAt(desiredEndAt);
+
+        Assert.Equal(desiredEndAt, visit.DesiredEndAt);
+        Assert.Same(policySnapshot, visit.PolicySnapshot);
+
+        visit.ChangeDesiredEndAt(null);
+        Assert.Null(visit.DesiredEndAt);
+        Assert.Same(policySnapshot, visit.PolicySnapshot);
+    }
+
+    [Fact]
+    public void Stopping_visit_rejects_desired_end_change()
+    {
+        var visit = CreateVisit();
+        visit.Activate();
+        visit.BeginStopping();
+
+        Assert.Throws<InvalidOperationException>(() => visit.ChangeDesiredEndAt(visit.StartAt.AddHours(2)));
+    }
+
+    [Fact]
+    public void Desired_end_must_remain_after_visit_start()
+    {
+        var visit = CreateVisit();
+        visit.Activate();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => visit.ChangeDesiredEndAt(visit.StartAt));
+    }
+
+    [Fact]
     public void Invalid_lifecycle_transition_is_rejected()
     {
         var visit = CreateVisit();

@@ -47,6 +47,15 @@ public sealed class Visit
         Status = VisitStatus.Active;
     }
 
+    public void ChangeDesiredEndAt(DateTimeOffset? desiredEndAt)
+    {
+        EnsureStatus(VisitStatus.Active);
+        if (desiredEndAt is not null && desiredEndAt <= StartAt)
+            throw new ArgumentOutOfRangeException(nameof(desiredEndAt), "Desired end must be after start.");
+
+        DesiredEndAt = desiredEndAt;
+    }
+
     public void BeginStopping()
     {
         if (Status is not VisitStatus.Starting and not VisitStatus.Active)
