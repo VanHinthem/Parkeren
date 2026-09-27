@@ -31,6 +31,7 @@ public sealed class StartVisitProviderExecutorTests
     private sealed class NoopResultStore : IProviderStartResultStore
     {
         public Task RecordResponseAsync(ProviderStartPreparation preparation, Parkeren.Application.ParkingProvider.ProviderParkingAction providerAction, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RecordRetryableAsync(ProviderStartPreparation preparation, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RecordConfirmedAsync(ProviderStartPreparation preparation, Parkeren.Application.ParkingProvider.ProviderParkingAction providerAction, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RecordDefinitiveFailureAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RecordUnknownAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
