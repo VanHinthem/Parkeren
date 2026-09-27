@@ -57,6 +57,24 @@ public sealed class StartVisitFlow(
         if (claim is null)
             return null;
 
+        if (claim.IsReplay && claim.Visit.Status == VisitStatus.Active)
+        {
+            try
+            {
+                await notificationPublisher.PublishStartedAsync(claim.Visit, cancellationToken);
+            }
+            catch when (!cancellationToken.IsCancellationRequested)
+            {
+                // Notification delivery is best-effort and must never change Visit start state.
+            }
+
+            return new StartVisitFlowResult(
+                claim.Visit,
+                true,
+                claim.RequiresProviderCoverageNow,
+                StartVisitFlowOutcome.Active);
+        }
+
         var outcome = StartVisitFlowOutcome.Active;
 
         if (!claim.RequiresProviderCoverageNow)
