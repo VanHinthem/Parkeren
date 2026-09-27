@@ -1,3 +1,4 @@
+using Xunit;
 using Parkeren.Domain.Rules;
 namespace Parkeren.Domain.Tests;
 public sealed class ParkingTimeSegmenterTests
