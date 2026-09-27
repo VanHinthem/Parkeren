@@ -43,4 +43,13 @@ public sealed class VisitEndTimeChange
     public DateTimeOffset? RequestedDesiredEndAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public VisitEndTimeChangeResult Result { get; private set; }
+
+    public void MarkApplied()
+    {
+        if (Result != VisitEndTimeChangeResult.Pending)
+            throw new InvalidOperationException("Only a pending end-time change can be applied.");
+
+        Result = VisitEndTimeChangeResult.Applied;
+    }
 }
+
