@@ -12,7 +12,8 @@ public sealed class StartVisitFlow(
     StartVisitClaimer claimer,
     StartVisitFinalizer finalizer,
     StartVisitProviderReadiness providerReadiness,
-    IProviderStartStore providerStartStore)
+    IProviderStartStore providerStartStore,
+    StartVisitProviderExecutor providerExecutor)
 {
     public async Task<StartVisitFlowResult?> StartAsync(
         StartVisitCommand command,
@@ -57,7 +58,11 @@ public sealed class StartVisitFlow(
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
 
             await providerReadiness.CheckAsync(paidDuration, cancellationToken);
-            await providerStartStore.PrepareAttemptAsync(claim, paidEndAt, cancellationToken);
+            var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, paidEndAt, cancellationToken);
+            await providerExecutor.ExecuteAsync(
+                providerPreparation,
+                new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location, paidEndAt),
+                cancellationToken);
         }
 
         return new StartVisitFlowResult(
