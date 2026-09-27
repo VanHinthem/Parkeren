@@ -23,16 +23,18 @@ internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProvide
             var existingAction = existing.ProviderParkingActionId is Guid actionId
                 ? await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken)
                 : throw new InvalidOperationException("Existing start operation has no provider action.");
+            var attemptStartedNow = false;
             if (existing.Status == ProviderOperationStatus.Pending &&
                 existingAction.State == ProviderActionState.Planned)
             {
                 existingAction.MarkStarting();
                 existing.BeginAttempt();
+                attemptStartedNow = true;
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
-            return new ProviderStartPreparation(existing, existingAction, true);
+            return new ProviderStartPreparation(existing, existingAction, true, attemptStartedNow);
         }
 
         var prepared = new StartVisitProviderPreparer().Prepare(claim, providerEndAt);
