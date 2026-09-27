@@ -537,6 +537,86 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             cancellationToken));
     }
 
+    [Fact]
+    public async Task Retry_after_visit_commit_before_provider_prepare_creates_single_provider_attempt()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "handoff-restart", "HANDOFF-RESTART", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "KK-11-KK", "KK11KK", null);
+        var operationId = Guid.NewGuid();
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow;
+        var endAt = startAt.AddHours(1);
+        var proposedVisit = new Visit(Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        Visit persistedVisit;
+        await using (var claimScope = provider.CreateAsyncScope())
+        {
+            var capacity = claimScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            var claim = await capacity.TryClaimAsync(proposedVisit, 5, cancellationToken);
+            Assert.True(claim.Claimed);
+            Assert.False(claim.IsReplay);
+            persistedVisit = claim.Visit!;
+        }
+
+        // Simulate a process crash after the Visit transaction committed but before
+        // any provider operation was created. A retry must reuse the persisted Visit.
+        await using (var replayClaimScope = provider.CreateAsyncScope())
+        {
+            var capacity = replayClaimScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            var duplicateProposal = new Visit(
+                Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
+            var replay = await capacity.TryClaimAsync(duplicateProposal, 5, cancellationToken);
+
+            Assert.True(replay.Claimed);
+            Assert.True(replay.IsReplay);
+            Assert.Equal(persistedVisit.Id, replay.Visit!.Id);
+            persistedVisit = replay.Visit;
+        }
+
+        await using (var firstProviderScope = provider.CreateAsyncScope())
+        {
+            var store = firstProviderScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var preparation = await store.PrepareAttemptAsync(
+                new StartVisitClaimResult(persistedVisit, true, true), endAt, cancellationToken);
+            Assert.True(preparation.AttemptStartedNow);
+        }
+
+        await using (var retryProviderScope = provider.CreateAsyncScope())
+        {
+            var store = retryProviderScope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var replay = await store.PrepareAttemptAsync(
+                new StartVisitClaimResult(persistedVisit, true, true), endAt, cancellationToken);
+            Assert.True(replay.IsReplay);
+            Assert.False(replay.AttemptStartedNow);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(1, await verifyContext.Visits.CountAsync(x => x.StartOperationId == operationId, cancellationToken));
+        Assert.Equal(1, await verifyContext.ProviderOperations.CountAsync(x => x.OperationId == operationId, cancellationToken));
+        Assert.Equal(1, await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == persistedVisit.Id, cancellationToken));
+        var operation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        Assert.Equal(1, operation.AttemptCount);
+    }
+
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
