@@ -320,6 +320,23 @@ app.MapPut("/api/visits/{visitId:guid}/end-time", async (
     }
 });
 
+app.MapGet("/api/visits/capacity", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var used = await dbContext.Visits
+        .AsNoTracking()
+        .CountAsync(x => x.Status == VisitStatus.Starting || x.Status == VisitStatus.Active || x.Status == VisitStatus.Stopping, cancellationToken);
+
+    return Results.Ok(new { used, total = 5 });
+});
+
 app.MapGet("/api/visits/active", async (
     ParkerenDbContext dbContext,
     IAuthenticationService authentication,
