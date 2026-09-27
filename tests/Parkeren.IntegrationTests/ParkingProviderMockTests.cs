@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc.Testing;
+using System.Net.Http.Json;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Infrastructure.ParkingProvider;
 
@@ -30,5 +31,21 @@ public sealed class ParkingProviderMockTests
         await provider.StopActionAsync(created.ProviderActionId, cancellationToken);
         actions = await provider.GetActionsAsync(cancellationToken);
         Assert.Equal("stopped", actions.Single(x => x.ProviderActionId == created.ProviderActionId).Status);
+
+    }
+
+    [Fact]
+    public async Task Mock_can_inject_provider_failure()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var setup = await http.PostAsJsonAsync("api/test/failure", new { StatusCode = 503, Count = 1 }, cancellationToken);
+        setup.EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("TK01HF", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), "Oss"), cancellationToken));
     }
 }

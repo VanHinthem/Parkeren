@@ -5,19 +5,25 @@ var app = builder.Build();
 
 var actions = new ConcurrentDictionary<string, MockParkingAction>();
 var remainingMinutes = 1500 * 60;
+var failure = new MockFailureState();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "2park-mock" }));
 
-app.MapGet("/api/balance", () => Results.Ok(new
+app.MapGet("/api/balance", async () =>
+{
+    if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
+    return Results.Ok(new
 {
     remainingPaidMinutes = remainingMinutes,
     retrievedAt = DateTimeOffset.UtcNow
-}));
+    });
+});
 
 app.MapGet("/api/actions", () => Results.Ok(actions.Values.OrderBy(x => x.Start)));
 
-app.MapPost("/api/actions", (MockActionRequest request) =>
+app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
+    if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
     if (request.End <= request.Start)
         return Results.BadRequest(new { error = "End must be after start." });
 
@@ -49,6 +55,12 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/failure", (MockFailureRequest request) =>
+{
+    failure.Configure(request.StatusCode, request.DelayMilliseconds, request.Count);
+    return Results.NoContent();
+});
+
 app.Run();
 
 namespace Parkeren.TwoParkMock
@@ -59,3 +71,30 @@ namespace Parkeren.TwoParkMock
 public sealed record MockActionRequest(string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location);
 public sealed record MockExtendRequest(DateTimeOffset End);
 public sealed record MockParkingAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status);
+
+public sealed record MockFailureRequest(int StatusCode = 503, int DelayMilliseconds = 0, int Count = 1);
+
+public sealed class MockFailureState
+{
+    private int remaining;
+    public int StatusCode { get; private set; } = 503;
+    public int DelayMilliseconds { get; private set; }
+
+    public void Configure(int statusCode, int delayMilliseconds, int count)
+    {
+        StatusCode = statusCode;
+        DelayMilliseconds = Math.Max(0, delayMilliseconds);
+        Interlocked.Exchange(ref remaining, Math.Max(0, count));
+    }
+
+    public async Task<bool> ApplyAsync()
+    {
+        if (Interlocked.Decrement(ref remaining) < 0)
+        {
+            Interlocked.Exchange(ref remaining, 0);
+            return false;
+        }
+        if (DelayMilliseconds > 0) await Task.Delay(DelayMilliseconds);
+        return true;
+    }
+}
