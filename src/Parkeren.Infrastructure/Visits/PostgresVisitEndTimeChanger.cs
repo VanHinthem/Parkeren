@@ -42,6 +42,8 @@ internal sealed class PostgresVisitEndTimeChanger(
             return new ChangeVisitEndTimeResult(visit, existing, true);
         }
 
+        visit.EnsureDesiredEndCanChange(desiredEndAt);
+
         if (desiredEndAt is not null)
         {
             var operationalContext = await operationalContextResolver.ResolveAsync(

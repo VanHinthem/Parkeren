@@ -47,14 +47,18 @@ public sealed class Visit
         Status = VisitStatus.Active;
     }
 
-    public void ChangeDesiredEndAt(DateTimeOffset? desiredEndAt)
+    public void EnsureDesiredEndCanChange(DateTimeOffset? desiredEndAt)
     {
         EnsureStatus(VisitStatus.Active);
         if (desiredEndAt is null && !PolicySnapshot.AllowManualStop)
             throw new InvalidOperationException("Visit policy does not allow manual stop.");
         if (desiredEndAt is not null && desiredEndAt <= StartAt)
             throw new ArgumentOutOfRangeException(nameof(desiredEndAt), "Desired end must be after start.");
+    }
 
+    public void ChangeDesiredEndAt(DateTimeOffset? desiredEndAt)
+    {
+        EnsureDesiredEndCanChange(desiredEndAt);
         DesiredEndAt = desiredEndAt;
     }
 
