@@ -9,7 +9,7 @@ public sealed class ParkingProviderMockTests
     [Fact]
     public async Task Mock_adapter_supports_balance_start_read_extend_and_stop()
     {
-        await using var factory = new WebApplicationFactory<global::Program>();
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
         using var http = factory.CreateClient();
         var provider = new TwoParkMockProvider(http);
 

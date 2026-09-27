@@ -51,7 +51,10 @@ app.MapPost("/api/actions/{id}/stop", (string id) =>
 
 app.Run();
 
-public partial class Program;
+namespace Parkeren.TwoParkMock
+{
+    public partial class Program { }
+}
 
 public sealed record MockActionRequest(string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location);
 public sealed record MockExtendRequest(DateTimeOffset End);
