@@ -7,15 +7,13 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class PostgresStopVisitClaimer(ParkerenDbContext dbContext) : IStopVisitClaimer
 {
-    private const long StopVisitLockNamespace = 0x53544F50; // STOP
-
     public async Task<StopVisitClaim> ClaimAsync(StopVisitCommand command, CancellationToken cancellationToken = default)
     {
         if (command.OperationId == Guid.Empty) throw new ArgumentException("Operation id is required.", nameof(command));
         if (command.VisitId == Guid.Empty) throw new ArgumentException("Visit id is required.", nameof(command));
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var lockKey = StopVisitLockNamespace ^ command.VisitId.GetHashCode();
+        var lockKey = VisitAdvisoryLock.For(command.VisitId);
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == command.VisitId, cancellationToken);
