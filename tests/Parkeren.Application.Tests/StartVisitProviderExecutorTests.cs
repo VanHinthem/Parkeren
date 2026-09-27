@@ -109,6 +109,74 @@ public sealed class StartVisitProviderExecutorTests
         Assert.Equal(0, provider.StartCalls);
     }
 
+
+    [Fact]
+    public async Task Concurrent_replay_does_not_interrupt_live_provider_attempt()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+
+        var provider = new BlockingProvider();
+        var resultStore = new TrackingResultStore();
+        var executor = new StartVisitProviderExecutor(provider, resultStore);
+        var request = new ProviderStartRequest("TK01HF", "test", end);
+
+        var liveAttempt = executor.ExecuteAsync(
+            new ProviderStartPreparation(operation, action, false, AttemptStartedNow: true),
+            request,
+            cancellationToken);
+
+        await provider.StartEntered.Task.WaitAsync(cancellationToken);
+
+        var replay = await executor.ExecuteAsync(
+            new ProviderStartPreparation(operation, action, true, AttemptStartedNow: false),
+            request,
+            cancellationToken);
+
+        Assert.True(replay.RequiresReconciliation);
+        Assert.Equal(1, provider.StartCalls);
+        Assert.Equal(0, resultStore.UnknownCalls);
+        Assert.Equal(ProviderOperationStatus.InProgress, operation.Status);
+        Assert.Equal(ProviderActionState.Starting, action.State);
+
+        provider.ReleaseStart.SetResult();
+        await liveAttempt;
+    }
+
+    private sealed class BlockingProvider : IParkingProvider
+    {
+        public int StartCalls { get; private set; }
+        public TaskCompletionSource StartEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            StartCalls++;
+            StartEntered.TrySetResult();
+            await ReleaseStart.Task.WaitAsync(cancellationToken);
+            return new("provider-live", request.LicensePlate, request.Start, request.End, request.Location, "active");
+        }
+
+        public Task<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>(
+                [new("provider-live", "TK01HF", DateTimeOffset.MinValue, DateTimeOffset.MinValue, "test", "active")]);
+
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     private sealed class SuccessfulProvider(Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
     {
         public int StartCalls { get; private set; }
