@@ -17,6 +17,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<UserPolicyOverride> UserPolicyOverrides => Set<UserPolicyOverride>();
     public DbSet<ParkingRuleSet> ParkingRuleSets => Set<ParkingRuleSet>();
     public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
+    public DbSet<ParkingCalendarException> ParkingCalendarExceptions => Set<ParkingCalendarException>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,6 +69,14 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("parking_rule_sets"); entity.HasKey(x => x.Id);
             entity.HasMany(x => x.PaidWindows).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.CalendarExceptions).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ParkingCalendarException>(entity =>
+        {
+            entity.ToTable("parking_calendar_exceptions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Date).HasColumnType("date");
+            entity.HasIndex(x => new { x.ParkingRuleSetId, x.Date }).IsUnique();
         });
         modelBuilder.Entity<PaidWindow>(entity =>
         {
