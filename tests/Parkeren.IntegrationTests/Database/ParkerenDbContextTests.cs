@@ -1138,6 +1138,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderActionHealth.Unknown, action.Health);
         Assert.Equal(ProviderOperationStatus.Unknown, stopOperation.Status);
         Assert.Equal("network", stopOperation.LastErrorCode);
+        Assert.False(await verifyContext.NotificationEvents.AnyAsync(
+            x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id,
+            cancellationToken));
     }
 
 
