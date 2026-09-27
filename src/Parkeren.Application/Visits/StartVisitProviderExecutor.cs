@@ -35,7 +35,8 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             preparation.Operation.Status == ProviderOperationStatus.InProgress &&
             preparation.Action.State == ProviderActionState.Starting)
         {
-            await resultStore.RecordUnknownAsync(preparation, "interrupted-in-progress", cancellationToken);
+            // A replay can race with the request that currently owns this persisted
+            // attempt. Do not mutate its state and never issue a second provider call.
             return new(preparation, null, true);
         }
         if (preparation.Operation.Status == ProviderOperationStatus.Succeeded &&
