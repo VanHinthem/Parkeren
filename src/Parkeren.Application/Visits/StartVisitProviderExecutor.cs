@@ -19,6 +19,13 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
 
         if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
+        if (preparation.IsReplay &&
+            preparation.Operation.Status == ProviderOperationStatus.InProgress &&
+            preparation.Action.State == ProviderActionState.Starting)
+        {
+            await resultStore.RecordUnknownAsync(preparation, "interrupted-in-progress", cancellationToken);
+            return new(preparation, null, true);
+        }
         if (preparation.Operation.Status == ProviderOperationStatus.Succeeded &&
             preparation.Action.State == ProviderActionState.Active &&
             !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
