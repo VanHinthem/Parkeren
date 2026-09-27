@@ -15,6 +15,12 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet restore Parkeren.slnx
       - run: dotnet build Parkeren.slnx --no-restore --configuration Release
+      - name: Diagnose EF model drift
+        run: |
+          dotnet tool install --global dotnet-ef --version '10.0.*'
+          dotnet ef migrations add DiagnoseModelDrift --project src/Parkeren.Infrastructure --startup-project src/Parkeren.Infrastructure --output-dir Persistence/Migrations/Diagnostic
+          git diff -- src/Parkeren.Infrastructure/Persistence/Migrations/ParkerenDbContextModelSnapshot.cs
+          exit 1
       - run: dotnet test Parkeren.slnx --no-build --configuration Release
 
   frontend:
