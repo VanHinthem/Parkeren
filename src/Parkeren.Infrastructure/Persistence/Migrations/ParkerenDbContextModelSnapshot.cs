@@ -62,7 +62,8 @@ partial class ParkerenDbContextModelSnapshot : ModelSnapshot
         modelBuilder.Entity("Parkeren.Domain.Rules.ParkingTariff", b =>
         {
             b.Property<Guid>("Id").ValueGeneratedNever().HasColumnType("uuid");
-            b.Property<decimal>("HourlyRate").HasPrecision(18, 4).HasColumnType("numeric(18,4)");
+            b.Property<decimal>("Rate").HasPrecision(18, 4).HasColumnType("numeric(18,4)");
+            b.Property<int>("Unit").HasColumnType("integer");
             b.Property<DateTimeOffset>("ValidFrom").HasColumnType("timestamp with time zone");
             b.Property<DateTimeOffset?>("ValidUntil").HasColumnType("timestamp with time zone");
             b.HasKey("Id");
