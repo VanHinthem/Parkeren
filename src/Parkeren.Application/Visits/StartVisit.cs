@@ -15,7 +15,12 @@ public sealed class StartVisitPreparer
         if (command.OperationId == Guid.Empty) throw new ArgumentException("OperationId is required.", nameof(command));
         if (command.OwnerUserId == Guid.Empty || command.ActorUserId == Guid.Empty || command.VehicleId == Guid.Empty) throw new ArgumentException("Owner, actor and vehicle are required.", nameof(command));
 
-        VisitDurationPolicyValidator.Validate(command.StartAt, command.DesiredEndAt, policy);
+        if (command.DesiredEndAt is not null)
+        {
+            var durationValidation = VisitDurationPolicyValidator.Validate(policy, command.StartAt, command.DesiredEndAt.Value);
+            if (!durationValidation.IsAllowed)
+                throw new InvalidOperationException("Requested Visit duration exceeds the effective parking policy.");
+        }
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
