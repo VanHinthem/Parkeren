@@ -153,6 +153,34 @@ public sealed class StartVisitProviderExecutorTests
     }
 
     [Fact]
+    public async Task Two_minute_old_in_progress_replay_preserves_live_attempt()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+
+        var provider = new CountingProvider();
+        var resultStore = new TrackingResultStore();
+        var clock = new FixedTimeProvider(operation.AttemptStartedAt!.Value.AddMinutes(2));
+
+        var result = await new StartVisitProviderExecutor(provider, resultStore, timeProvider: clock).ExecuteAsync(
+            new ProviderStartPreparation(operation, action, true, AttemptStartedNow: false),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal(0, provider.StartCalls);
+        Assert.Equal(0, resultStore.UnknownCalls);
+        Assert.Equal(ProviderOperationStatus.InProgress, operation.Status);
+        Assert.Equal(ProviderActionState.Starting, action.State);
+    }
+
+    [Fact]
     public async Task Stale_in_progress_replay_is_reconciled_without_second_provider_start()
     {
         var start = DateTimeOffset.UtcNow;
@@ -168,7 +196,7 @@ public sealed class StartVisitProviderExecutorTests
         var provider = new SuccessfulProvider(providerAction);
         var resultStore = new TrackingResultStore();
         var reconciler = new StartVisitProviderReconciler(provider, resultStore);
-        var clock = new FixedTimeProvider(operation.AttemptStartedAt!.Value.AddMinutes(2));
+        var clock = new FixedTimeProvider(operation.AttemptStartedAt!.Value.AddMinutes(5));
 
         var result = await new StartVisitProviderExecutor(provider, resultStore, reconciler, clock).ExecuteAsync(
             new ProviderStartPreparation(operation, action, true, AttemptStartedNow: false),
