@@ -24,12 +24,12 @@ public sealed class StartVisitProviderReconcilerTests
         operation.MarkUnknown("timeout");
         var store = new TrackingResultStore();
 
-        var reconciled = await new StartVisitProviderReconciler(new EmptyProvider(), store).ReconcileAsync(
+        var reconciledAction = await new StartVisitProviderReconciler(new EmptyProvider(), store).ReconcileAsync(
             new ProviderStartPreparation(operation, action, true),
             "TK01HF",
             TestContext.Current.CancellationToken);
 
-        Assert.False(reconciled);
+        Assert.Null(reconciledAction);
         Assert.Equal(1, store.RetryableCalls);
     }
 
