@@ -1,6 +1,10 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Parkeren.Application.Authentication;
+using Parkeren.Domain.Users;
+using Parkeren.Infrastructure.Authentication;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure;
@@ -17,6 +21,9 @@ public static class DependencyInjection
 
         services.AddDbContext<ParkerenDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
 
         return services;
     }
