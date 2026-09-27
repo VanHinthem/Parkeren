@@ -1,15 +1,17 @@
 namespace Parkeren.Domain.Rules;
 
-public sealed record PaidWindow
+public sealed class PaidWindow
 {
     public PaidWindow(DayOfWeek day, TimeOnly start, TimeOnly end)
     {
         if (end <= start) throw new ArgumentException("Paid window end must be after start.");
         Day = day; Start = start; End = end;
     }
-    public DayOfWeek Day { get; }
-    public TimeOnly Start { get; }
-    public TimeOnly End { get; }
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    public Guid ParkingRuleSetId { get; private set; }
+    public DayOfWeek Day { get; private set; }
+    public TimeOnly Start { get; private set; }
+    public TimeOnly End { get; private set; }
 }
 
 public sealed class ParkingRuleSet
@@ -20,11 +22,11 @@ public sealed class ParkingRuleSet
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
         Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows;
     }
-    public Guid Id { get; }
-    public DateTimeOffset ValidFrom { get; }
-    public DateTimeOffset? ValidUntil { get; }
-    public TimeSpan MaxProviderActionDuration { get; }
-    public IReadOnlyCollection<PaidWindow> PaidWindows { get; }
+    public Guid Id { get; private set; }
+    public DateTimeOffset ValidFrom { get; private set; }
+    public DateTimeOffset? ValidUntil { get; private set; }
+    public TimeSpan MaxProviderActionDuration { get; private set; }
+    public IReadOnlyCollection<PaidWindow> PaidWindows { get; private set; }
 }
 
 public sealed record ParkingTimeSegment(DateTimeOffset Start, DateTimeOffset End, bool IsPaid);

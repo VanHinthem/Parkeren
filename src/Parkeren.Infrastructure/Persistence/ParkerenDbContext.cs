@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -14,6 +15,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
     public DbSet<DefaultParkingPolicy> DefaultParkingPolicies => Set<DefaultParkingPolicy>();
     public DbSet<UserPolicyOverride> UserPolicyOverrides => Set<UserPolicyOverride>();
+    public DbSet<ParkingRuleSet> ParkingRuleSets => Set<ParkingRuleSet>();
+    public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +63,19 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("default_parking_policy");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.MaxPaidParkingDuration).IsRequired();
+        });
+        modelBuilder.Entity<ParkingRuleSet>(entity =>
+        {
+            entity.ToTable("parking_rule_sets"); entity.HasKey(x => x.Id);
+            entity.HasMany(x => x.PaidWindows).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PaidWindow>(entity =>
+        {
+            entity.ToTable("paid_windows"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Day).HasConversion<int>();
+            entity.Property(x => x.Start).HasColumnType("time without time zone");
+            entity.Property(x => x.End).HasColumnType("time without time zone");
+            entity.HasIndex(x => new { x.ParkingRuleSetId, x.Day, x.Start, x.End }).IsUnique();
         });
         modelBuilder.Entity<UserPolicyOverride>(entity =>
         {
