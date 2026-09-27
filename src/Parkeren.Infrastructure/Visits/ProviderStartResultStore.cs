@@ -35,6 +35,7 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.Activate();
+        visit.SetHealth(VisitHealth.Healthy);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
