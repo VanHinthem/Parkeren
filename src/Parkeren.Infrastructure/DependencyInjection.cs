@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
         services.AddScoped<IVisitStartStore, VisitStartStore>();
+        services.AddScoped<IStartVisitRequestResolver, StartVisitRequestResolver>();
         services.AddScoped<IProviderStartStore, ProviderStartStore>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
