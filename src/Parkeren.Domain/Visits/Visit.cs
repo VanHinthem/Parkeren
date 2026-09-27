@@ -35,6 +35,7 @@ public sealed class Visit
     public VisitHealth Health { get; private set; }
     public EffectiveParkingPolicySnapshot PolicySnapshot { get; private set; } = null!;
     public DateTimeOffset CreatedAt { get; private set; }
+    public uint Version { get; private set; }
 
     public bool OccupiesCapacity => Status is not VisitStatus.Completed and not VisitStatus.Cancelled;
 

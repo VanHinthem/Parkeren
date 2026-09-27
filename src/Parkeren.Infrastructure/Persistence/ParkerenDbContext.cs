@@ -3,6 +3,7 @@ using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Visits;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -18,6 +19,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<ParkingRuleSet> ParkingRuleSets => Set<ParkingRuleSet>();
     public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
     public DbSet<ParkingCalendarException> ParkingCalendarExceptions => Set<ParkingCalendarException>();
+    public DbSet<Visit> Visits => Set<Visit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +108,25 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("parking_budget_periods");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.ValidFrom);
+        });
+
+        modelBuilder.Entity<Visit>(entity =>
+        {
+            entity.ToTable("visits");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Version).IsRowVersion();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.StartedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.OwnsOne(x => x.PolicySnapshot, owned =>
+            {
+                owned.Property(x => x.MaxPaidParkingDuration).HasColumnName("PolicyMaxPaidParkingDuration");
+                owned.Property(x => x.MaxVisitElapsedDuration).HasColumnName("PolicyMaxVisitElapsedDuration");
+                owned.Property(x => x.AllowAutoExtension).HasColumnName("PolicyAllowAutoExtension");
+            });
+            entity.HasIndex(x => new { x.Status, x.StartAt });
         });
 
     }
