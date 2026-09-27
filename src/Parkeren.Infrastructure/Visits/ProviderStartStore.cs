@@ -7,11 +7,16 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProviderStartStore
 {
+    private const long StartOperationLockNamespace = 0x53544152; // STAR
     public async Task<ProviderStartPreparation> PrepareAttemptAsync(StartVisitClaimResult claim, DateTimeOffset providerEndAt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(claim);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var operationLockKey = StartOperationLockNamespace ^ claim.Visit.StartOperationId.GetHashCode();
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({operationLockKey})", cancellationToken);
+
         var existing = await dbContext.ProviderOperations.SingleOrDefaultAsync(x => x.OperationId == claim.Visit.StartOperationId, cancellationToken);
         if (existing is not null)
         {
