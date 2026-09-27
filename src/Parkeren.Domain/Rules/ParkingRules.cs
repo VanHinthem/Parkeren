@@ -26,20 +26,22 @@ public sealed class ParkingCalendarException
 
 public sealed class ParkingRuleSet
 {
-    private ParkingRuleSet() { PaidWindows = Array.Empty<PaidWindow>(); CalendarExceptions = Array.Empty<ParkingCalendarException>(); }
+    private ParkingRuleSet() { }
 
     public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null, bool publicHolidaysAreFree = false)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
-        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; PaidWindows=paidWindows; CalendarExceptions=calendarExceptions ?? Array.Empty<ParkingCalendarException>(); PublicHolidaysAreFree=publicHolidaysAreFree;
+        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; _paidWindows.AddRange(paidWindows); _calendarExceptions.AddRange(calendarExceptions ?? Array.Empty<ParkingCalendarException>()); PublicHolidaysAreFree=publicHolidaysAreFree;
     }
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
     public DateTimeOffset? ValidUntil { get; private set; }
     public TimeSpan MaxProviderActionDuration { get; private set; }
-    public IReadOnlyCollection<PaidWindow> PaidWindows { get; private set; }
-    public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions { get; private set; } = Array.Empty<ParkingCalendarException>();
+    private readonly List<PaidWindow> _paidWindows = new();
+    private readonly List<ParkingCalendarException> _calendarExceptions = new();
+    public IReadOnlyCollection<PaidWindow> PaidWindows => _paidWindows;
+    public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions => _calendarExceptions;
     public bool PublicHolidaysAreFree { get; private set; }
 }
 
