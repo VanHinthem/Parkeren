@@ -41,7 +41,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     private static string DescribeOperation(MigrationOperation operation) => operation switch
     {
         RenameColumnOperation rename => $"RenameColumn({rename.Table}.{rename.Name}->{rename.NewName})",
-        AddForeignKeyOperation add => $"AddFK({add.Table}[{string.Join("+", add.Columns)}]->{add.PrincipalTable}[{string.Join("+", add.PrincipalColumns)}])",
+        AddForeignKeyOperation add => $"AddFK({add.Table}[{string.Join("+", add.Columns)}]->{add.PrincipalTable}[{string.Join("+", add.PrincipalColumns ?? [])}])",
         DropForeignKeyOperation drop => $"DropFK({drop.Table}.{drop.Name})",
         _ => operation.GetType().Name
     };
