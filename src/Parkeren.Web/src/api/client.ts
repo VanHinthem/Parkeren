@@ -42,6 +42,11 @@ export async function getActiveVisit():Promise<ActiveVisit|null>{
   return json<ActiveVisit>(response);
 }
 
+export type VisitCapacity={used:number;total:number};
+export async function getVisitCapacity():Promise<VisitCapacity>{
+  return json<VisitCapacity>(await apiFetch("/api/visits/capacity"));
+}
+
 export async function getRecentVisits():Promise<ActiveVisit[]>{
   return json<ActiveVisit[]>(await apiFetch("/api/visits/recent"));
 }
