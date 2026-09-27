@@ -24,6 +24,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<ProviderParkingAction> ProviderParkingActions => Set<ProviderParkingAction>();
     public DbSet<ProviderOperation> ProviderOperations => Set<ProviderOperation>();
     public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
+    public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,6 +148,18 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
             entity.HasIndex(x => new { x.Type, x.AggregateId }).IsUnique();
+        });
+
+
+        modelBuilder.Entity<VisitEndTimeChange>(entity =>
+        {
+            entity.ToTable("visit_end_time_changes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Result).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.HasIndex(x => x.OperationId).IsUnique();
+            entity.HasIndex(x => x.VisitId);
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Visit>(entity =>

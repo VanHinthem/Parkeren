@@ -454,6 +454,47 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.ToTable("provider_parking_actions", (string)null);
                 });
 
+            modelBuilder.Entity("Parkeren.Domain.Visits.VisitEndTimeChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("PreviousDesiredEndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RequestedDesiredEndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("VisitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("VisitId");
+
+                    b.ToTable("visit_end_time_changes", (string)null);
+                });
+
             modelBuilder.Entity("Parkeren.Domain.Visits.Visit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -588,6 +629,21 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("VisitId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Parkeren.Domain.Visits.VisitEndTimeChange", b =>
+                {
+                    b.HasOne("Parkeren.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Parkeren.Domain.Visits.Visit", null)
+                        .WithMany()
+                        .HasForeignKey("VisitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Parkeren.Domain.Visits.Visit", b =>
