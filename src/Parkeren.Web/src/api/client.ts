@@ -42,3 +42,7 @@ export async function getAuthorizedVehicles(){return json<VehicleSummary[]>(awai
 export async function unassignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"DELETE"});if(!r.ok)throw new Error("Toewijzing kon niet worden verwijderd.");}
 
 export async function logout(){const response=await apiFetch("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("Uitloggen is mislukt.");csrfToken=null;}
+
+export async function changePin(currentPin:string,newPin:string){const r=await apiFetch("/api/auth/change-pin",{method:"POST",body:JSON.stringify({currentPin,newPin})});if(!r.ok)throw new Error("PIN kon niet worden gewijzigd.");}
+export async function resetUserPin(userId:string,newPin:string){const r=await apiFetch(`/api/admin/users/${userId}/reset-pin`,{method:"POST",body:JSON.stringify({newPin})});if(!r.ok)throw new Error("PIN kon niet worden gereset.");}
+export async function revokeUserSessions(userId:string){const r=await apiFetch(`/api/admin/users/${userId}/revoke-sessions`,{method:"POST"});if(!r.ok)throw new Error("Sessies konden niet worden ingetrokken.");}

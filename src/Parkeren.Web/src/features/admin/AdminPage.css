@@ -3,3 +3,4 @@
 
 @media(max-width:799px){.admin-card--users{order:1}.admin-card--wide{order:2}.admin-card--vehicles{order:3}}
 @media(min-width:800px){.admin-card--users{grid-column:1}.admin-card--vehicles{grid-column:2}.admin-card--wide{grid-column:1/-1}}
+.admin-account-actions{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--color-border)}.admin-account-actions h3{font-size:.95rem;margin:0 0 .75rem}.admin-action-buttons{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem}.admin-action-buttons .button{width:auto}
