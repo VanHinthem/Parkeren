@@ -617,6 +617,102 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(1, operation.AttemptCount);
     }
 
+    [Fact]
+    public async Task Failed_visit_insert_rolls_back_claim_and_same_operation_can_retry()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "rollback-retry", "ROLLBACK-RETRY", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "LL-22-LL", "LL22LL", null);
+        var operationId = Guid.NewGuid();
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var startAt = DateTimeOffset.UtcNow;
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            await seedContext.SaveChangesAsync(cancellationToken);
+
+            await seedContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE OR REPLACE FUNCTION fail_visit_insert_for_test()
+                RETURNS trigger AS $
+                BEGIN
+                    RAISE EXCEPTION 'simulated crash before visit commit';
+                END;
+                $ LANGUAGE plpgsql;
+
+                CREATE TRIGGER fail_visit_insert_for_test
+                BEFORE INSERT ON visits
+                FOR EACH ROW EXECUTE FUNCTION fail_visit_insert_for_test();
+                """,
+                cancellationToken);
+        }
+
+        try
+        {
+            await using var failedScope = new ServiceCollection()
+                .AddInfrastructure(new ConfigurationManager
+                {
+                    { "ConnectionStrings:Parkeren", fixture.ConnectionString }
+                })
+                .BuildServiceProvider()
+                .CreateAsyncScope();
+
+            var capacity = failedScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            var visit = new Visit(
+                Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id,
+                startAt, startAt.AddHours(1), snapshot);
+
+            await Assert.ThrowsAnyAsync<Exception>(() => capacity.TryClaimAsync(visit, 1, cancellationToken));
+        }
+        finally
+        {
+            await using var cleanupContext = fixture.CreateDbContext();
+            await cleanupContext.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER IF EXISTS fail_visit_insert_for_test ON visits;
+                DROP FUNCTION IF EXISTS fail_visit_insert_for_test();
+                """,
+                cancellationToken);
+        }
+
+        await using (var afterFailureContext = fixture.CreateDbContext())
+        {
+            Assert.Equal(0, await afterFailureContext.Visits.CountAsync(
+                x => x.StartOperationId == operationId,
+                cancellationToken));
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var retryScope = provider.CreateAsyncScope())
+        {
+            var capacity = retryScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            var retryVisit = new Visit(
+                Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id,
+                startAt, startAt.AddHours(1), snapshot);
+            var retry = await capacity.TryClaimAsync(retryVisit, 1, cancellationToken);
+
+            Assert.True(retry.Claimed);
+            Assert.False(retry.IsReplay);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(1, await verifyContext.Visits.CountAsync(
+            x => x.StartOperationId == operationId,
+            cancellationToken));
+    }
+
     private async Task ClearVisitsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
