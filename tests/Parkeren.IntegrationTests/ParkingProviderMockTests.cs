@@ -35,6 +35,22 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_state_can_be_reset_between_scenarios()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var provider = new TwoParkMockProvider(http);
+        var start = DateTimeOffset.UtcNow;
+
+        await provider.StartActionAsync(new ProviderParkingActionRequest("RESET1", start, start.AddHours(1), "Oss"), cancellationToken);
+        var reset = await http.PostAsync("api/test/reset", null, cancellationToken);
+        reset.EnsureSuccessStatusCode();
+
+        Assert.Empty(await provider.GetActionsAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_can_apply_action_before_returning_unknown_outcome()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

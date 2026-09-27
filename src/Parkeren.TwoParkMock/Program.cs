@@ -63,6 +63,14 @@ app.MapPost("/api/test/unknown-outcome", (MockUnknownOutcomeRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/reset", () =>
+{
+    actions.Clear();
+    failure.Reset();
+    outcome.Reset();
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/failure", (MockFailureRequest request) =>
 {
     failure.Configure(request.StatusCode, request.DelayMilliseconds, request.Count);
@@ -95,6 +103,8 @@ public sealed class MockFailureState
         Interlocked.Exchange(ref remaining, Math.Max(0, count));
     }
 
+    public void Reset() => Configure(503, 0, 0);
+
     public async Task<bool> ApplyAsync()
     {
         if (Interlocked.Decrement(ref remaining) < 0)
@@ -121,6 +131,8 @@ public sealed class MockUnknownOutcomeState
         DelayMilliseconds = Math.Max(0, delayMilliseconds);
         Interlocked.Exchange(ref remaining, Math.Max(0, count));
     }
+
+    public void Reset() => Configure(504, 0, 0);
 
     public async Task<bool> ApplyAsync()
     {
