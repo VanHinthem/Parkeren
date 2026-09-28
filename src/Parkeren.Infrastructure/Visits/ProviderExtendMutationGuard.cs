@@ -43,13 +43,20 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
             return false;
         }
 
-        var hasOtherMutation = await dbContext.ProviderOperations.AnyAsync(
-            x => x.VisitId == visitId &&
-                 x.ProviderParkingActionId != providerParkingActionId &&
-                 x.Status == ProviderOperationStatus.InProgress,
-            cancellationToken);
+        var inProgressOperations = await dbContext.ProviderOperations
+            .Where(x => x.VisitId == visitId &&
+                        x.Status == ProviderOperationStatus.InProgress)
+            .ToListAsync(cancellationToken);
+
+        var hasConflictingMutation = inProgressOperations.Any(x =>
+            x.Type != ProviderOperationType.Extend ||
+            x.ProviderParkingActionId != providerParkingActionId);
+
+        var matchingExtendCount = inProgressOperations.Count(x =>
+            x.Type == ProviderOperationType.Extend &&
+            x.ProviderParkingActionId == providerParkingActionId);
 
         await transaction.CommitAsync(cancellationToken);
-        return !hasOtherMutation;
+        return !hasConflictingMutation && matchingExtendCount == 1;
     }
 }
