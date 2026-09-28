@@ -62,6 +62,9 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AllowManualStop")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("MaxConcurrentVisits")
+                        .HasColumnType("integer");
+
                     b.Property<TimeSpan>("MaxPaidParkingDuration")
                         .HasColumnType("interval");
 
@@ -86,6 +89,9 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
                     b.Property<bool?>("AllowManualStop")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxConcurrentVisits")
+                        .HasColumnType("integer");
 
                     b.Property<TimeSpan?>("MaxPaidParkingDuration")
                         .HasColumnType("interval");
