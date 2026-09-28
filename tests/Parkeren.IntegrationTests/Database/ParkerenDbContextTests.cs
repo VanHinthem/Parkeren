@@ -63,7 +63,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         {
             await using var scope = provider.CreateAsyncScope();
             var claimer = scope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
-            return await claimer.TryClaimAsync(visit, 1, cancellationToken);
+            return await claimer.TryClaimAsync(visit, 1, 1, cancellationToken);
         }
 
         var claims = await Task.WhenAll(ClaimAsync(visit1), ClaimAsync(visit2));
@@ -111,7 +111,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         {
             await using var scope = provider.CreateAsyncScope();
             var claimer = scope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
-            return await claimer.TryClaimAsync(visit, 5, cancellationToken);
+            return await claimer.TryClaimAsync(visit, 5, 5, cancellationToken);
         }
 
         var claims = await Task.WhenAll(ClaimAsync(visit1), ClaimAsync(visit2));
@@ -833,7 +833,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using (var claimScope = provider.CreateAsyncScope())
         {
             var capacity = claimScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
-            var claim = await capacity.TryClaimAsync(proposedVisit, 5, cancellationToken);
+            var claim = await capacity.TryClaimAsync(proposedVisit, 5, 5, cancellationToken);
             Assert.True(claim.Claimed);
             Assert.False(claim.IsReplay);
             persistedVisit = claim.Visit!;
@@ -846,7 +846,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             var capacity = replayClaimScope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
             var duplicateProposal = new Visit(
                 Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
-            var replay = await capacity.TryClaimAsync(duplicateProposal, 5, cancellationToken);
+            var replay = await capacity.TryClaimAsync(duplicateProposal, 5, 5, cancellationToken);
 
             Assert.True(replay.Claimed);
             Assert.True(replay.IsReplay);
@@ -921,7 +921,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id,
                 startAt, startAt.AddHours(1), snapshot);
 
-            await Assert.ThrowsAnyAsync<Exception>(() => capacity.TryClaimAsync(visit, 1, cancellationToken));
+            await Assert.ThrowsAnyAsync<Exception>(() => capacity.TryClaimAsync(visit, 1, 1, cancellationToken));
         }
         finally
         {
@@ -953,7 +953,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             var retryVisit = new Visit(
                 Guid.NewGuid(), operationId, user.Id, vehicle.Id, user.Id,
                 startAt, startAt.AddHours(1), snapshot);
-            var retry = await capacity.TryClaimAsync(retryVisit, 1, cancellationToken);
+            var retry = await capacity.TryClaimAsync(retryVisit, 1, 1, cancellationToken);
 
             Assert.True(retry.Claimed);
             Assert.False(retry.IsReplay);
