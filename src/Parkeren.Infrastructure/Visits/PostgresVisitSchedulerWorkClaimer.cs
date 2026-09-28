@@ -20,10 +20,10 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
 
         var work = await dbContext.VisitSchedulerWork
             .FromSqlInterpolated($"""
-                SELECT *
-                FROM visit_scheduler_work
-                WHERE "Status" = 'Pending' AND "DueAt" <= {now}
-                ORDER BY "DueAt", "CreatedAt"
+                SELECT w.*, w.xmin
+                FROM visit_scheduler_work AS w
+                WHERE w."Status" = 'Pending' AND w."DueAt" <= {now}
+                ORDER BY w."DueAt", w."CreatedAt"
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
                 """)
