@@ -5,7 +5,7 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class VisitRecoveryService(ParkerenDbContext dbContext) : IVisitRecoveryService
+internal sealed class VisitRecoveryService(ParkerenDbContext dbContext) : Parkeren.Application.Visits.IVisitRecoveryService
 {
     public async Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
         CancellationToken cancellationToken = default)
