@@ -1,6 +1,8 @@
 using Xunit;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 
 namespace Parkeren.Application.Tests;
 
@@ -77,23 +79,23 @@ public sealed class VisitRecoveryClassifierTests
 
     private static Visit CreateVisit(VisitStatus status)
     {
+        var now = DateTimeOffset.UtcNow;
         var visit = new Visit(
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
-            DateTimeOffset.UtcNow.AddMinutes(-10),
-            DateTimeOffset.UtcNow.AddHours(1),
-            new EffectiveParkingPolicySnapshot(
-                TimeSpan.FromHours(8),
-                TimeSpan.FromHours(12),
-                true,
-                true));
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            now.AddMinutes(-10),
+            now.AddHours(1),
+            EffectiveParkingPolicySnapshot.Capture(
+                new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
 
         if (status == VisitStatus.Active)
-            visit.MarkActive();
+            visit.Activate();
         else if (status == VisitStatus.Stopping)
         {
-            visit.MarkActive();
+            visit.Activate();
             visit.BeginStopping();
         }
 
