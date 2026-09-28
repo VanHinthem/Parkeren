@@ -9,3 +9,11 @@ public interface IVisitSchedulerWorkClaimer
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 }
+
+
+public interface IVisitSchedulerWorkProcessor
+{
+    Task ProcessAsync(
+        VisitSchedulerWork work,
+        CancellationToken cancellationToken = default);
+}
