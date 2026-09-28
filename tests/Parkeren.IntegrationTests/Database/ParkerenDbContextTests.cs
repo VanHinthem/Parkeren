@@ -1399,6 +1399,36 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
 
     [Fact]
+    public async Task Parking_rule_persists_action_duration_and_continuation_strategy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var ossRules = new ParkingRuleSet(Guid.NewGuid(), now.AddDays(-1), null,
+            TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        var extendingRules = new ParkingRuleSet(Guid.NewGuid(), now.AddDays(-1), null,
+            TimeSpan.FromHours(6), Array.Empty<PaidWindow>(),
+            continuation: ProviderCoverageContinuation.ExtendAction);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.ParkingRuleSets.AddRange(ossRules, extendingRules);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persisted = await verifyContext.ParkingRuleSets
+            .Where(x => x.Id == ossRules.Id || x.Id == extendingRules.Id)
+            .ToListAsync(cancellationToken);
+        Assert.Equal(TimeSpan.FromHours(4), persisted.Single(x => x.Id == ossRules.Id).MaxProviderActionDuration);
+        Assert.Equal(ProviderCoverageContinuation.StartNewAction,
+            persisted.Single(x => x.Id == ossRules.Id).Continuation);
+        Assert.Equal(ProviderCoverageContinuation.ExtendAction,
+            persisted.Single(x => x.Id == extendingRules.Id).Continuation);
+    }
+
+    [Fact]
     public async Task End_time_change_retry_is_idempotent()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

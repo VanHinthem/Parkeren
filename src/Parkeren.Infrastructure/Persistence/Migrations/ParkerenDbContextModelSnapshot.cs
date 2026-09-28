@@ -197,6 +197,11 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Parkeren.Domain.Rules.ParkingRuleSet", b =>
                 {
+                    b.Property<string>("Continuation")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");

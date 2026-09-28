@@ -24,20 +24,28 @@ public sealed class ParkingCalendarException
     public bool IsPaid { get; private set; }
 }
 
+public enum ProviderCoverageContinuation
+{
+    ExtendAction,
+    StartNewAction
+}
+
 public sealed class ParkingRuleSet
 {
     private ParkingRuleSet() { }
 
-    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null, bool publicHolidaysAreFree = false)
+    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null, bool publicHolidaysAreFree = false, ProviderCoverageContinuation continuation = ProviderCoverageContinuation.StartNewAction)
     {
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
-        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; _paidWindows.AddRange(paidWindows); _calendarExceptions.AddRange(calendarExceptions ?? Array.Empty<ParkingCalendarException>()); PublicHolidaysAreFree=publicHolidaysAreFree;
+        if (!Enum.IsDefined(continuation)) throw new ArgumentOutOfRangeException(nameof(continuation));
+        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; Continuation=continuation; _paidWindows.AddRange(paidWindows); _calendarExceptions.AddRange(calendarExceptions ?? Array.Empty<ParkingCalendarException>()); PublicHolidaysAreFree=publicHolidaysAreFree;
     }
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
     public DateTimeOffset? ValidUntil { get; private set; }
     public TimeSpan MaxProviderActionDuration { get; private set; }
+    public ProviderCoverageContinuation Continuation { get; private set; }
     private readonly List<PaidWindow> _paidWindows = new();
     private readonly List<ParkingCalendarException> _calendarExceptions = new();
     public IReadOnlyCollection<PaidWindow> PaidWindows => _paidWindows;

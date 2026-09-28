@@ -65,6 +65,7 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     ValidFrom = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     ValidUntil = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     MaxProviderActionDuration = table.Column<TimeSpan>(type: "interval", nullable: false),
+                    Continuation = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
                     PublicHolidaysAreFree = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>

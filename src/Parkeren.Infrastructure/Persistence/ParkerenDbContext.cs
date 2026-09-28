@@ -83,6 +83,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         modelBuilder.Entity<ParkingRuleSet>(entity =>
         {
             entity.ToTable("parking_rule_sets"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Continuation).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.HasMany(x => x.PaidWindows).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.CalendarExceptions).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
         });
