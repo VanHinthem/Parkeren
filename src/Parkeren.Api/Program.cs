@@ -16,6 +16,7 @@ builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHostedService<VisitSchedulerWorker>();
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
 
 builder.Services.AddRateLimiter(options =>
