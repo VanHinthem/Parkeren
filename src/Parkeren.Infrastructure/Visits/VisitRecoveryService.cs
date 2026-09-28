@@ -9,7 +9,8 @@ internal sealed class VisitRecoveryService(
     ParkerenDbContext dbContext,
     ContinueVisitProviderReconciler extendReconciler,
     StopVisitProviderReconciler stopReconciler,
-    StartVisitProviderReconciler startReconciler) : IVisitRecoveryService
+    StartVisitProviderReconciler startReconciler,
+    Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
@@ -20,6 +21,15 @@ internal sealed class VisitRecoveryService(
         {
             var decision = VisitRecoveryClassifier.Classify(item);
 
+            logger.LogInformation(
+                "Visit recovery classified Visit {VisitId} as {RecoveryKind}; status {VisitStatus}; operation {OperationId} ({OperationType}/{OperationStatus}).",
+                item.Visit.Id,
+                decision.Kind,
+                item.Visit.Status,
+                decision.Operation?.Id,
+                decision.Operation?.Type,
+                decision.Operation?.Status);
+
             if (decision.Kind == VisitRecoveryKind.RebuildScheduler)
             {
                 await RebuildSchedulerAsync(item, cancellationToken);
@@ -28,6 +38,11 @@ internal sealed class VisitRecoveryService(
 
             if (decision.Kind == VisitRecoveryKind.Ambiguous)
             {
+                logger.LogError(
+                    "Ambiguous startup recovery for Visit {VisitId}; status {VisitStatus}; unresolved operations {OperationCount}. Automatic provider mutation is blocked and the Visit requires attention.",
+                    item.Visit.Id,
+                    item.Visit.Status,
+                    item.UnresolvedOperations.Count);
                 await MarkAmbiguousAsync(item, cancellationToken);
                 continue;
             }
@@ -35,11 +50,25 @@ internal sealed class VisitRecoveryService(
             if (decision.Operation is null ||
                 decision.Operation.Status != ProviderOperationStatus.Unknown ||
                 decision.Operation.ProviderParkingActionId is not Guid actionId)
+            {
+                logger.LogWarning(
+                    "Visit recovery cannot execute {RecoveryKind} for Visit {VisitId}: operation is missing, not Unknown, or has no provider action reference.",
+                    decision.Kind,
+                    item.Visit.Id);
                 continue;
+            }
 
             var action = item.ProviderActions.SingleOrDefault(x => x.Id == actionId);
             if (action is null)
+            {
+                logger.LogError(
+                    "Visit recovery cannot execute {RecoveryKind} for Visit {VisitId}: provider action {ProviderActionId} is missing locally.",
+                    decision.Kind,
+                    item.Visit.Id,
+                    actionId);
+                await MarkAmbiguousAsync(item, cancellationToken);
                 continue;
+            }
 
             if (decision.Kind == VisitRecoveryKind.ReconcileStart)
             {
@@ -50,7 +79,14 @@ internal sealed class VisitRecoveryService(
                     .SingleOrDefaultAsync(cancellationToken);
 
                 if (string.IsNullOrWhiteSpace(licensePlate))
+                {
+                    logger.LogError(
+                        "Visit recovery cannot reconcile Start for Visit {VisitId}: vehicle {VehicleId} has no license plate.",
+                        item.Visit.Id,
+                        item.Visit.VehicleId);
+                    await MarkAmbiguousAsync(item, cancellationToken);
                     continue;
+                }
 
                 var preparation = new ProviderStartPreparation(
                     decision.Operation,
