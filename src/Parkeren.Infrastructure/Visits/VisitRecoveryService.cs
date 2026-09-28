@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
