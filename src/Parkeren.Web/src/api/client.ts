@@ -64,7 +64,7 @@ async function visitError(response:Response,fallback:string):Promise<Error>{
 }
 
 export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
-export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string=crypto.randomUUID()):Promise<StartVisitResult>{
+export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string):Promise<StartVisitResult>{
   const response=await apiFetch("/api/visits/start",{
     method:"POST",
     body:JSON.stringify({operationId,vehicleId,desiredEndAt})
