@@ -35,6 +35,14 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
             return null;
         }
 
+        // Serialize scheduler claims with Stop/end-time mutations for this Visit.
+        // The work row remains locked while waiting for the Visit lock, then Visit
+        // state is re-read before continuation is handed to a worker.
+        var lockKey = VisitAdvisoryLock.For(work.VisitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
         // Revalidate the owning Visit while the work item is locked. Stop wins over
         // continuation: once a Visit has left Active state, pending continuation
         // work is cancelled instead of being handed to a worker.
