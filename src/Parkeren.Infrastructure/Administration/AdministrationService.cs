@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Administration;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure.Persistence;
 
@@ -47,6 +48,32 @@ internal sealed class AdministrationService(
             return false;
 
         if (isActive) user.Activate(); else user.Deactivate();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> SetUserMaxConcurrentVisitsAsync(
+        Guid actorUserId, Guid userId, int? maxConcurrentVisits, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (maxConcurrentVisits <= 0)
+            return false;
+
+        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+            return false;
+
+        var policyOverride = await dbContext.UserPolicyOverrides
+            .SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        if (policyOverride is null)
+        {
+            if (maxConcurrentVisits is null)
+                return true;
+
+            policyOverride = new UserPolicyOverride(userId);
+            dbContext.UserPolicyOverrides.Add(policyOverride);
+        }
+
+        policyOverride.SetMaxConcurrentVisits(maxConcurrentVisits);
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
