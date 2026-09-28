@@ -7,6 +7,7 @@ public interface IAdministrationService
     Task<IReadOnlyList<UserSummary>> GetUsersAsync(Guid actorUserId, CancellationToken cancellationToken);
     Task<CreateUserResult?> CreateUserAsync(Guid actorUserId, string username, string pin, UserRole role, CancellationToken cancellationToken);
     Task<bool> SetUserActiveAsync(Guid actorUserId, Guid userId, bool isActive, CancellationToken cancellationToken);
+    Task<bool> SetUserMaxConcurrentVisitsAsync(Guid actorUserId, Guid userId, int? maxConcurrentVisits, CancellationToken cancellationToken);
     Task<IReadOnlyList<VehicleSummary>> GetVehiclesAsync(Guid actorUserId, CancellationToken cancellationToken);
     Task<VehicleSummary?> CreateVehicleAsync(Guid actorUserId, string licensePlate, string? displayName, CancellationToken cancellationToken);
     Task<bool> SetVehicleActiveAsync(Guid actorUserId, Guid vehicleId, bool isActive, CancellationToken cancellationToken);
