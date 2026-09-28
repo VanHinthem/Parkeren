@@ -4,6 +4,7 @@ using Parkeren.Application.Administration;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Administration;
@@ -68,6 +69,14 @@ internal sealed class AdministrationService(
         if (maxConcurrentVisits <= 0)
             return false;
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        var globalLimit = await dbContext.ParkingSystemSettings
+            .Select(x => x.MaxConcurrentVisits)
+            .SingleAsync(cancellationToken);
+        if (maxConcurrentVisits > globalLimit)
+            return false;
+
         if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
             return false;
 
@@ -76,7 +85,10 @@ internal sealed class AdministrationService(
         if (policyOverride is null)
         {
             if (maxConcurrentVisits is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
                 return true;
+            }
 
             policyOverride = new UserPolicyOverride(userId);
             dbContext.UserPolicyOverrides.Add(policyOverride);
@@ -84,8 +96,45 @@ internal sealed class AdministrationService(
 
         policyOverride.SetMaxConcurrentVisits(maxConcurrentVisits);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
+
+    public async Task<int> GetGlobalMaxConcurrentVisitsAsync(Guid actorUserId, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        return await dbContext.ParkingSystemSettings.AsNoTracking()
+            .Select(x => x.MaxConcurrentVisits).SingleAsync(cancellationToken);
+    }
+
+    public async Task<bool> SetGlobalMaxConcurrentVisitsAsync(
+        Guid actorUserId, int maxConcurrentVisits, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (maxConcurrentVisits <= 0)
+            return false;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        if (await dbContext.Visits.AnyAsync(
+                x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled, cancellationToken))
+            return false;
+
+        var settings = await dbContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+        settings.SetMaxConcurrentVisits(maxConcurrentVisits);
+        var overrides = await dbContext.UserPolicyOverrides
+            .Where(x => x.MaxConcurrentVisits > maxConcurrentVisits)
+            .ToListAsync(cancellationToken);
+        foreach (var policyOverride in overrides)
+            policyOverride.SetMaxConcurrentVisits(maxConcurrentVisits);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    private Task LockCapacitySettingsAsync(CancellationToken cancellationToken) =>
+        dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({0x5041524B})", cancellationToken);
 
     public async Task<IReadOnlyList<VehicleSummary>> GetVehiclesAsync(Guid actorUserId, CancellationToken cancellationToken)
     {

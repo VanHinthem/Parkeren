@@ -5,6 +5,7 @@ using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
@@ -41,6 +42,12 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
     await db.Database.MigrateAsync();
+
+    if (!await db.ParkingSystemSettings.AnyAsync())
+    {
+        db.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
+        await db.SaveChangesAsync();
+    }
 
     if (!await db.Users.AnyAsync())
     {
@@ -512,6 +519,27 @@ app.MapPut("/api/admin/users/{userId:guid}/policy/max-concurrent-visits", async 
     return await administration.SetUserMaxConcurrentVisitsAsync(authenticated.User.Id, userId, request.MaxConcurrentVisits, cancellationToken)
         ? Results.NoContent()
         : Results.BadRequest();
+});
+
+app.MapGet("/api/admin/parking-settings/max-concurrent-visits", async (
+    IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return Results.Ok(new { maxConcurrentVisits = await administration.GetGlobalMaxConcurrentVisitsAsync(authenticated.User.Id, cancellationToken) });
+});
+
+app.MapPut("/api/admin/parking-settings/max-concurrent-visits", async (
+    SetMaxConcurrentVisitsRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    if (request.MaxConcurrentVisits is not > 0) return Results.BadRequest();
+    return await administration.SetGlobalMaxConcurrentVisitsAsync(authenticated.User.Id, request.MaxConcurrentVisits.Value, cancellationToken)
+        ? Results.NoContent()
+        : Results.Conflict();
 });
 
 app.MapGet("/api/admin/vehicles", async (
