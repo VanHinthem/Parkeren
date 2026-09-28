@@ -2352,6 +2352,60 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Scheduler_processor_reschedules_when_provider_coverage_is_still_active()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "scheduler-jit", "SCHEDULER-JIT", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "SC-33-HD", "SC33HD", null);
+        var now = DateTimeOffset.UtcNow;
+        var coverageEnd = now.AddMinutes(30);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, now.AddHours(-1), now.AddHours(2), snapshot);
+        visit.Activate();
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, now.AddHours(-1), coverageEnd);
+        action.MarkStarting();
+        action.MarkActive("provider-jit", now.AddHours(-1));
+        var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, now.AddMinutes(-1));
+        work.Claim("worker-jit-test", now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var processor = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>();
+            var claimed = await scope.ServiceProvider.GetRequiredService<ParkerenDbContext>()
+                .VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await processor.ProcessAsync(claimed, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persisted = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
+        Assert.Equal(coverageEnd, persisted.DueAt);
+        Assert.Null(persisted.ClaimedAt);
+        Assert.Null(persisted.ClaimedBy);
+    }
+
+    [Fact]
     public async Task Scheduler_work_claim_cancels_due_item_when_visit_is_stopping()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
