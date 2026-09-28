@@ -460,7 +460,7 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProviderActionId")
                         .IsUnique()
-                        .HasFilter("\\\"ProviderActionId\\\" IS NOT NULL");
+                        .HasFilter("\"ProviderActionId\" IS NOT NULL");
 
                     b.HasIndex("VisitId");
 
