@@ -18,8 +18,8 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         ArgumentNullException.ThrowIfNull(providerAction);
         preparation.Action.CaptureStartResponse(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
-           await transaction.CommitAsync(cancellationToken);
- }
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public async Task RecordRetryableAsync(ProviderStartPreparation preparation, CancellationToken cancellationToken = default)
     {
@@ -34,8 +34,8 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.SetHealth(VisitHealth.Healthy);
         await dbContext.SaveChangesAsync(cancellationToken);
-           await transaction.CommitAsync(cancellationToken);
- }
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public async Task RecordConfirmedAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
     {
@@ -64,8 +64,8 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-           await transaction.CommitAsync(cancellationToken);
- }
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public async Task RecordDefinitiveFailureAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
     {
@@ -80,8 +80,8 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.Cancel();
         await dbContext.SaveChangesAsync(cancellationToken);
-           await transaction.CommitAsync(cancellationToken);
- }
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     public async Task RecordUnknownAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
     {
@@ -96,6 +96,6 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.SetHealth(VisitHealth.Reconciling);
         await dbContext.SaveChangesAsync(cancellationToken);
-           await transaction.CommitAsync(cancellationToken);
- }
+        await transaction.CommitAsync(cancellationToken);
+    }
 }
