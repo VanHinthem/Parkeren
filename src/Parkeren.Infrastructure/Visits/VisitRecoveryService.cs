@@ -8,7 +8,8 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class VisitRecoveryService(
     ParkerenDbContext dbContext,
     ContinueVisitProviderReconciler extendReconciler,
-    StopVisitProviderReconciler stopReconciler) : IVisitRecoveryService
+    StopVisitProviderReconciler stopReconciler,
+    StartVisitProviderReconciler startReconciler) : IVisitRecoveryService
 {
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
@@ -26,7 +27,26 @@ internal sealed class VisitRecoveryService(
             if (action is null)
                 continue;
 
-            if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
+            if (decision.Kind == VisitRecoveryKind.ReconcileStart)
+            {
+                var licensePlate = await dbContext.Vehicles
+                    .AsNoTracking()
+                    .Where(x => x.Id == item.Visit.VehicleId)
+                    .Select(x => x.LicensePlate)
+                    .SingleOrDefaultAsync(cancellationToken);
+
+                if (string.IsNullOrWhiteSpace(licensePlate))
+                    continue;
+
+                var preparation = new ProviderStartPreparation(
+                    decision.Operation,
+                    action,
+                    true,
+                    false);
+
+                await startReconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
+            }
+            else if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
                 decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
             {
                 var preparation = new ProviderExtendPreparation(
