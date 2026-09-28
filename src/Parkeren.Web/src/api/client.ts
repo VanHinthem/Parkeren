@@ -58,13 +58,18 @@ export async function getVisitHistory():Promise<ActiveVisit[]>{
   return json<ActiveVisit[]>(await apiFetch("/api/visits/history"));
 }
 
+async function visitError(response:Response,fallback:string):Promise<Error>{
+  try{const body=await response.json() as {error?:string;detail?:string};const message=body.error??body.detail;if(message)return new Error(message);}catch{}
+  return new Error(`${fallback} (HTTP ${response.status}).`);
+}
+
 export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
 export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string=crypto.randomUUID()):Promise<StartVisitResult>{
   const response=await apiFetch("/api/visits/start",{
     method:"POST",
     body:JSON.stringify({operationId,vehicleId,desiredEndAt})
   });
-  if(!response.ok)throw new Error(`Parkeeractie kon niet worden gestart (HTTP ${response.status}).`);
+  if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gestart");
   const result=await response.json() as {visit:ActiveVisit};
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
@@ -75,7 +80,7 @@ export async function stopVisit(visitId:string,operationId:string):Promise<StopV
     method:"POST",
     body:JSON.stringify({operationId})
   });
-  if(!response.ok)throw new Error(`Parkeeractie kon niet worden gestopt (HTTP ${response.status}).`);
+  if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gestopt");
   const result=await response.json() as {visit:ActiveVisit};
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
@@ -90,7 +95,7 @@ export async function changeVisitEndTime(
     method:"PUT",
     body:JSON.stringify({operationId,desiredEndAt})
   });
-  if(!response.ok)throw new Error(`Eindtijd kon niet worden gewijzigd (HTTP ${response.status}).`);
+  if(!response.ok)throw await visitError(response,"Eindtijd kon niet worden gewijzigd");
   const result=await response.json() as {visit:ActiveVisit};
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
