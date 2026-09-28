@@ -51,6 +51,13 @@ internal sealed class PostgresStopVisitClaimer(ParkerenDbContext dbContext) : IS
         }
 
         visit.BeginStopping();
+
+        var pendingSchedulerWork = await dbContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visit.Id && x.Status == VisitSchedulerWorkStatus.Pending)
+            .ToListAsync(cancellationToken);
+        foreach (var work in pendingSchedulerWork)
+            work.Cancel();
+
         var operation = new ProviderOperation(Guid.NewGuid(), command.OperationId, visit.Id, null, ProviderOperationType.Stop);
         dbContext.ProviderOperations.Add(operation);
         await dbContext.SaveChangesAsync(cancellationToken);
