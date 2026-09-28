@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Policies;
 using Parkeren.Infrastructure.Persistence;
@@ -7,8 +6,7 @@ using Parkeren.Infrastructure.Persistence;
 namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class StartVisitOperationalContextResolver(
-    ParkerenDbContext dbContext,
-    IConfiguration configuration) : IStartVisitOperationalContextResolver
+    ParkerenDbContext dbContext) : IStartVisitOperationalContextResolver
 {
     public async Task<StartVisitOperationalContext?> ResolveAsync(
         Guid ownerUserId,
@@ -43,14 +41,13 @@ internal sealed class StartVisitOperationalContextResolver(
         if (ruleSets.Count == 0)
             return null;
 
-        var maxConcurrentVisits = configuration.GetValue<int?>("Parking:MaxConcurrentVisits") ?? 5;
-        if (maxConcurrentVisits <= 0)
-            throw new InvalidOperationException("Parking:MaxConcurrentVisits must be greater than zero.");
+        var settings = await dbContext.ParkingSystemSettings.AsNoTracking()
+            .SingleAsync(cancellationToken);
 
         return new StartVisitOperationalContext(
             policy,
             ruleSets,
             evaluationEndAt,
-            maxConcurrentVisits);
+            settings.MaxConcurrentVisits);
     }
 }

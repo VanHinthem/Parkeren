@@ -25,6 +25,18 @@ internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) 
             return new VisitCapacityClaim(true, existing, true);
         }
 
+        // Administration uses the same lock. Recheck persisted limits after taking it,
+        // since the operational context may have been resolved before an admin update.
+        var globalLimit = await dbContext.ParkingSystemSettings.AsNoTracking()
+            .Select(x => x.MaxConcurrentVisits).SingleAsync(cancellationToken);
+        var userOverride = await dbContext.UserPolicyOverrides.AsNoTracking()
+            .Where(x => x.UserId == visit.UserId)
+            .Select(x => x.MaxConcurrentVisits)
+            .SingleOrDefaultAsync(cancellationToken);
+        maxGlobalConcurrentVisits = Math.Min(maxGlobalConcurrentVisits, globalLimit);
+        if (userOverride is { } userLimit)
+            maxUserConcurrentVisits = Math.Min(maxUserConcurrentVisits, userLimit);
+
         var occupiedByUser = await dbContext.Visits.CountAsync(x => x.UserId == visit.UserId && x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled, cancellationToken);
         if (occupiedByUser >= maxUserConcurrentVisits)
         {

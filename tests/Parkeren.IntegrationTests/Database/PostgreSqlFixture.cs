@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Domain.Policies;
 using Testcontainers.PostgreSql;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -20,6 +21,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
         await using var dbContext = CreateDbContext();
         await dbContext.Database.MigrateAsync();
+        dbContext.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
+        await dbContext.SaveChangesAsync();
     }
 
     public async ValueTask DisposeAsync()
