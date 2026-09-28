@@ -32,8 +32,8 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             x => x.Id == preparation.Operation.Id,
             cancellationToken);
 
-        if (operation.Status != ProviderOperationStatus.InProgress)
-            throw new InvalidOperationException("Provider continuation operation is not in progress.");
+        if (operation.Status is not (ProviderOperationStatus.InProgress or ProviderOperationStatus.Reconciling))
+            throw new InvalidOperationException("Provider continuation operation is not in progress or reconciliation.");
 
         action.ExtendPlannedEnd(providerAction.End);
         operation.Succeed(DateTimeOffset.UtcNow);
