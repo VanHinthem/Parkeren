@@ -6,5 +6,5 @@ public sealed record VisitCapacityClaim(bool Claimed, Visit? Visit, bool IsRepla
 
 public interface IVisitCapacityClaimer
 {
-    Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxConcurrentVisits, CancellationToken cancellationToken = default);
+    Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxGlobalConcurrentVisits, int maxUserConcurrentVisits, CancellationToken cancellationToken = default);
 }
