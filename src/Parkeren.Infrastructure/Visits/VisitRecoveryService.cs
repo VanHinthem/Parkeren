@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Parkeren.Application.Visits;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -11,6 +12,7 @@ internal sealed class VisitRecoveryService(
     ContinueVisitProviderReconciler extendReconciler,
     StopVisitProviderReconciler stopReconciler,
     StartVisitProviderReconciler startReconciler,
+    IParkingProvider provider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
@@ -178,10 +180,30 @@ internal sealed class VisitRecoveryService(
             .OrderByDescending(x => x.PlannedEndAt)
             .FirstOrDefault();
 
-        if (activeAction is null || desiredEndAt <= activeAction.PlannedEndAt)
+        if (activeAction is null || string.IsNullOrWhiteSpace(activeAction.ProviderActionId))
+        {
+            await MarkAmbiguousAsync(item, cancellationToken);
+            return;
+        }
+
+        var providerActions = await provider.GetActionsAsync(cancellationToken);
+        var confirmedAction = providerActions.SingleOrDefault(x =>
+            x.ProviderActionId == activeAction.ProviderActionId);
+
+        if (confirmedAction is null)
+        {
+            logger.LogError(
+                "Visit recovery cannot rebuild scheduler for Visit {VisitId}: provider action {ProviderActionId} was not confirmed by the provider.",
+                item.Visit.Id,
+                activeAction.ProviderActionId);
+            await MarkAmbiguousAsync(item, cancellationToken);
+            return;
+        }
+
+        if (desiredEndAt <= confirmedAction.End)
             return;
 
-        var dueAt = activeAction.PlannedEndAt;
+        var dueAt = confirmedAction.End;
         var exists = await dbContext.VisitSchedulerWork.AnyAsync(
             x => x.VisitId == item.Visit.Id &&
                  x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
