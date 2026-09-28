@@ -16,6 +16,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<UserVehicle> UserVehicles => Set<UserVehicle>();
     public DbSet<DefaultParkingPolicy> DefaultParkingPolicies => Set<DefaultParkingPolicy>();
+    public DbSet<ParkingSystemSettings> ParkingSystemSettings => Set<ParkingSystemSettings>();
     public DbSet<UserPolicyOverride> UserPolicyOverrides => Set<UserPolicyOverride>();
     public DbSet<ParkingRuleSet> ParkingRuleSets => Set<ParkingRuleSet>();
     public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
@@ -66,6 +67,12 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => new { x.UserId, x.VehicleId });
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ParkingSystemSettings>(entity =>
+        {
+            entity.ToTable("parking_system_settings");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.MaxConcurrentVisits).IsRequired();
         });
         modelBuilder.Entity<DefaultParkingPolicy>(entity =>
         {
