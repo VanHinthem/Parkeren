@@ -46,15 +46,29 @@ export function clearPendingOperation(type: PendingOperationType, logicalKey: st
   write(read().filter(item => item.type !== type || item.logicalKey !== logicalKey));
 }
 
-export function clearResolvedVisitOperations(activeVisitId: string | null) {
-  if (activeVisitId === null) {
+export type ResolvedVisit = {
+  id: string;
+  startOperationId: string;
+  desiredEndAt: string | null;
+};
+
+function sameEndAt(requested: string, actual: string | null): boolean {
+  if (actual === null) return requested === "null";
+  const requestedTime = Date.parse(requested);
+  const actualTime = Date.parse(actual);
+  return Number.isFinite(requestedTime) && requestedTime === actualTime;
+}
+
+export function clearResolvedVisitOperations(activeVisit: ResolvedVisit | null) {
+  if (activeVisit === null) {
     write([]);
     return;
   }
 
   write(read().filter(item => {
-    if (item.type === "start") return true;
-    if (item.type === "stop") return item.logicalKey === activeVisitId;
-    return item.logicalKey.startsWith(`${activeVisitId}:`);
+    if (item.type === "start") return item.operationId !== activeVisit.startOperationId;
+    if (item.type === "stop") return item.logicalKey === activeVisit.id;
+    if (!item.logicalKey.startsWith(`${activeVisit.id}:`)) return false;
+    return !sameEndAt(item.logicalKey.slice(activeVisit.id.length + 1), activeVisit.desiredEndAt);
   }));
 }

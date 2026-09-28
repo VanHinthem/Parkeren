@@ -28,6 +28,7 @@ export async function getCurrentUser():Promise<AuthenticatedUser|null>{
 
 export type ActiveVisit={
   id:string;
+  startOperationId:string;
   userId:string;
   vehicleId:string;
   startAt:string;
