@@ -43,10 +43,16 @@ await using (var scope = app.Services.CreateAsyncScope())
     var db = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
     await db.Database.MigrateAsync();
 
-    if (!await db.ParkingSystemSettings.AnyAsync())
+    await using (var settingsTransaction = await db.Database.BeginTransactionAsync())
     {
-        db.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
-        await db.SaveChangesAsync();
+        // Serialize the singleton seed with capacity claims and administration writes.
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({0x5041524B})");
+        if (!await db.ParkingSystemSettings.AnyAsync())
+        {
+            db.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
+            await db.SaveChangesAsync();
+        }
+        await settingsTransaction.CommitAsync();
     }
 
     if (!await db.Users.AnyAsync())
