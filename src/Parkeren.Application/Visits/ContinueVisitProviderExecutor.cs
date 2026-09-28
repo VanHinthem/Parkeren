@@ -119,3 +119,41 @@ public sealed class ContinueVisitProviderExecutor(
         }
     }
 }
+
+
+public sealed class ContinueVisitProviderReconciler(
+    IParkingProvider provider,
+    IProviderExtendResultStore resultStore)
+{
+    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
+
+    public async Task<ProviderAction?> ReconcileAsync(
+        ProviderExtendPreparation preparation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+
+        if (preparation.Operation.Status != ProviderOperationStatus.Unknown)
+            throw new InvalidOperationException("Only an unknown provider continuation can be reconciled.");
+        if (string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
+            throw new InvalidOperationException("Provider continuation requires a provider action id.");
+
+        var requestedEndAt = preparation.Operation.RequestedEndAt
+            ?? throw new InvalidOperationException("Provider continuation requires a persisted requested end.");
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        var match = actions.SingleOrDefault(x =>
+            x.ProviderActionId == preparation.Action.ProviderActionId &&
+            TimestampsMatch(x.End, requestedEndAt));
+
+        if (match is null)
+            return null;
+
+        preparation.Operation.BeginReconciliation();
+        await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
+        return match;
+    }
+
+    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
+        (left - right).Duration() < TimestampTolerance;
+}
