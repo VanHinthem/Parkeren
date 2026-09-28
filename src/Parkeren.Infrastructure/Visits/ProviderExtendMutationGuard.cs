@@ -43,16 +43,20 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
             return false;
         }
 
-        var inProgressOperations = await dbContext.ProviderOperations
+        var unresolvedOperations = await dbContext.ProviderOperations
             .Where(x => x.VisitId == visitId &&
-                        x.Status == ProviderOperationStatus.InProgress)
+                        (x.Status == ProviderOperationStatus.InProgress ||
+                         x.Status == ProviderOperationStatus.Unknown ||
+                         x.Status == ProviderOperationStatus.Reconciling))
             .ToListAsync(cancellationToken);
 
-        var hasConflictingMutation = inProgressOperations.Any(x =>
+        var hasConflictingMutation = unresolvedOperations.Any(x =>
+            x.Status != ProviderOperationStatus.InProgress ||
             x.Type != ProviderOperationType.Extend ||
             x.ProviderParkingActionId != providerParkingActionId);
 
-        var matchingExtendCount = inProgressOperations.Count(x =>
+        var matchingExtendCount = unresolvedOperations.Count(x =>
+            x.Status == ProviderOperationStatus.InProgress &&
             x.Type == ProviderOperationType.Extend &&
             x.ProviderParkingActionId == providerParkingActionId);
 
