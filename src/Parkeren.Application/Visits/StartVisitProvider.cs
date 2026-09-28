@@ -26,6 +26,7 @@ public sealed class StartVisitProviderPreparer
 public sealed record ProviderExtendPreparation(
     ProviderOperation Operation,
     ProviderParkingAction Action,
+    DateTimeOffset ProviderEndAt,
     bool IsReplay,
     bool AttemptStartedNow = false);
 
@@ -55,6 +56,6 @@ public sealed class ContinueVisitProviderPreparer
             action.Id,
             ProviderOperationType.Extend);
 
-        return new ProviderExtendPreparation(operation, action, false, true);
+        return new ProviderExtendPreparation(operation, action, providerEndAt, false, false);
     }
 }
