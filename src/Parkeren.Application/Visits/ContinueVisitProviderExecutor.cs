@@ -51,6 +51,9 @@ public sealed class ContinueVisitProviderExecutor(
         if (preparation.Operation.Status is ProviderOperationStatus.Unknown or ProviderOperationStatus.Reconciling)
             return new(preparation, null, true);
 
+        if (preparation.Operation.Status == ProviderOperationStatus.Succeeded)
+            return new(preparation, null, false);
+
         if (preparation.IsReplay &&
             !preparation.AttemptStartedNow &&
             preparation.Operation.Status == ProviderOperationStatus.InProgress)
