@@ -26,6 +26,12 @@ internal sealed class VisitRecoveryService(
                 continue;
             }
 
+            if (decision.Kind == VisitRecoveryKind.Ambiguous)
+            {
+                await MarkAmbiguousAsync(item, cancellationToken);
+                continue;
+            }
+
             if (decision.Operation is null ||
                 decision.Operation.Status != ProviderOperationStatus.Unknown ||
                 decision.Operation.ProviderParkingActionId is not Guid actionId)
@@ -79,6 +85,28 @@ internal sealed class VisitRecoveryService(
         }
     }
 
+
+
+    private async Task MarkAmbiguousAsync(
+        VisitRecoveryItem item,
+        CancellationToken cancellationToken)
+    {
+        var visit = await dbContext.Visits
+            .SingleAsync(x => x.Id == item.Visit.Id, cancellationToken);
+
+        visit.SetHealth(VisitHealth.AttentionRequired);
+
+        var schedulerWork = await dbContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visit.Id &&
+                        (x.Status == VisitSchedulerWorkStatus.Pending ||
+                         x.Status == VisitSchedulerWorkStatus.Claimed))
+            .ToListAsync(cancellationToken);
+
+        foreach (var work in schedulerWork)
+            work.Cancel();
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 
 
     private async Task ReleaseClaimedSchedulerWorkAsync(CancellationToken cancellationToken)
