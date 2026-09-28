@@ -1,6 +1,6 @@
 namespace Parkeren.Domain.Visits;
 
-public enum ProviderOperationType { Start, Extend, Stop }
+public enum ProviderOperationType { Start, ContinueStart, Extend, Stop }
 public enum ProviderOperationStatus { Pending, InProgress, Succeeded, Failed, Unknown, Reconciling }
 
 public sealed class ProviderOperation

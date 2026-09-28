@@ -2537,6 +2537,69 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Continuation_start_preparation_replays_without_creating_another_action()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"next-action-{suffix}", $"NEXT-ACTION-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"NA-{suffix[..2]}-{suffix[2..4]}", $"NA{suffix[..4]}", null);
+        var boundary = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            boundary.AddHours(-4), boundary.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var previous = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, visit.StartAt, boundary);
+        previous.MarkStarting();
+        previous.MarkActive($"provider-{suffix}", visit.StartAt);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(previous);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        var operationId = Guid.NewGuid();
+        var requestedEnd = boundary.AddHours(2);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartStore>();
+            var first = await store.PrepareAttemptAsync(visit, previous, operationId, requestedEnd, cancellationToken);
+            Assert.False(first.IsReplay);
+            Assert.True(first.AttemptStartedNow);
+            Assert.Equal(ProviderOperationType.ContinueStart, first.Operation.Type);
+        }
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartStore>();
+            var replay = await store.PrepareAttemptAsync(visit, previous, operationId, requestedEnd, cancellationToken);
+            Assert.True(replay.IsReplay);
+            Assert.False(replay.AttemptStartedNow);
+            Assert.Equal(ProviderOperationStatus.InProgress, replay.Operation.Status);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(2, await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == visit.Id, cancellationToken));
+        Assert.Single(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Provider_extend_store_replays_same_operation_without_duplicate()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

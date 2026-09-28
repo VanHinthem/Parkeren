@@ -1,0 +1,13 @@
+using Parkeren.Domain.Visits;
+
+namespace Parkeren.Application.Visits;
+
+public interface IProviderContinuationStartStore
+{
+    Task<ProviderStartPreparation> PrepareAttemptAsync(
+        Visit visit,
+        ProviderParkingAction precedingAction,
+        Guid operationId,
+        DateTimeOffset newEndAt,
+        CancellationToken cancellationToken = default);
+}
