@@ -18,6 +18,13 @@ internal sealed class VisitRecoveryService(
         foreach (var item in items)
         {
             var decision = VisitRecoveryClassifier.Classify(item);
+
+            if (decision.Kind == VisitRecoveryKind.RebuildScheduler)
+            {
+                await RebuildSchedulerAsync(item, cancellationToken);
+                continue;
+            }
+
             if (decision.Operation is null ||
                 decision.Operation.Status != ProviderOperationStatus.Unknown ||
                 decision.Operation.ProviderParkingActionId is not Guid actionId)
@@ -69,6 +76,44 @@ internal sealed class VisitRecoveryService(
                 await stopReconciler.ReconcileAsync(preparation, cancellationToken);
             }
         }
+    }
+
+
+    private async Task RebuildSchedulerAsync(
+        VisitRecoveryItem item,
+        CancellationToken cancellationToken)
+    {
+        if (item.Visit.Status != VisitStatus.Active ||
+            item.Visit.DesiredEndAt is not DateTimeOffset desiredEndAt)
+            return;
+
+        var activeAction = item.ProviderActions
+            .Where(x => x.State == ProviderActionState.Active)
+            .OrderByDescending(x => x.PlannedEndAt)
+            .FirstOrDefault();
+
+        if (activeAction is null || desiredEndAt <= activeAction.PlannedEndAt)
+            return;
+
+        var dueAt = activeAction.PlannedEndAt;
+        var exists = await dbContext.VisitSchedulerWork.AnyAsync(
+            x => x.VisitId == item.Visit.Id &&
+                 x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                 (x.Status == VisitSchedulerWorkStatus.Pending ||
+                  x.Status == VisitSchedulerWorkStatus.Claimed) &&
+                 x.DueAt == dueAt,
+            cancellationToken);
+
+        if (exists)
+            return;
+
+        dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+            Guid.NewGuid(),
+            item.Visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            dueAt));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
