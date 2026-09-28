@@ -127,6 +127,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(x => x.VisitId);
+            entity.HasIndex(x => x.ProviderActionId).IsUnique().HasFilter('"ProviderActionId" IS NOT NULL');
         });
 
         modelBuilder.Entity<ProviderOperation>(entity =>
