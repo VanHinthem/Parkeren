@@ -5,8 +5,39 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class VisitRecoveryService(ParkerenDbContext dbContext) : Parkeren.Application.Visits.IVisitRecoveryService
+internal sealed class VisitRecoveryService(
+    ParkerenDbContext dbContext,
+    ContinueVisitProviderReconciler extendReconciler) : IVisitRecoveryService
 {
+    public async Task RecoverAsync(CancellationToken cancellationToken = default)
+    {
+        var items = await LoadAsync(cancellationToken);
+
+        foreach (var item in items)
+        {
+            var decision = VisitRecoveryClassifier.Classify(item);
+            if (decision.Kind != VisitRecoveryKind.ReconcileExtend ||
+                decision.Operation is null ||
+                decision.Operation.Status != ProviderOperationStatus.Unknown ||
+                decision.Operation.ProviderParkingActionId is not Guid actionId ||
+                decision.Operation.RequestedEndAt is not DateTimeOffset requestedEndAt)
+                continue;
+
+            var action = item.ProviderActions.SingleOrDefault(x => x.Id == actionId);
+            if (action is null)
+                continue;
+
+            var preparation = new ProviderExtendPreparation(
+                decision.Operation,
+                action,
+                requestedEndAt,
+                true,
+                false);
+
+            await extendReconciler.ReconcileAsync(preparation, cancellationToken);
+        }
+    }
+
     public async Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
         CancellationToken cancellationToken = default)
     {
