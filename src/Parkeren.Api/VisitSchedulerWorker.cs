@@ -12,6 +12,17 @@ internal sealed class VisitSchedulerWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await using (var recoveryScope = scopeFactory.CreateAsyncScope())
+        {
+            var recovery = recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
+            var items = await recovery.LoadAsync(stoppingToken);
+            logger.LogInformation(
+                "Visit recovery inventory loaded {VisitCount} unfinished visits, {ActionCount} provider actions and {OperationCount} unresolved operations.",
+                items.Count,
+                items.Sum(x => x.ProviderActions.Count),
+                items.Sum(x => x.UnresolvedOperations.Count));
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
