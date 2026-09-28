@@ -146,6 +146,36 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/visits/policy", async (
+    IStartVisitOperationalContextResolver operationalContextResolver,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var now = DateTimeOffset.UtcNow;
+    var operationalContext = await operationalContextResolver.ResolveAsync(
+        authenticated.User.Id,
+        now,
+        null,
+        cancellationToken);
+    if (operationalContext is null)
+        return Results.Problem("Parkeerbeleid is niet beschikbaar.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    return Results.Ok(new
+    {
+        maxPaidParkingDurationMinutes = (int)operationalContext.Policy.MaxPaidParkingDuration.TotalMinutes,
+        maxVisitElapsedDurationMinutes = operationalContext.Policy.MaxVisitElapsedDuration is null
+            ? (int?)null
+            : (int)operationalContext.Policy.MaxVisitElapsedDuration.Value.TotalMinutes,
+        operationalContext.Policy.AllowAutoExtension,
+        operationalContext.Policy.AllowManualStop
+    });
+});
+
 app.MapPost("/api/visits/start", async (
     StartVisitRequest request,
     StartVisitFlow flow,
