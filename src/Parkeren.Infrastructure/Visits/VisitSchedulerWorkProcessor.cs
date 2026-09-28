@@ -170,11 +170,11 @@ internal sealed class VisitSchedulerWorkProcessor(
                 .Where(x => x.Id == visit.VehicleId)
                 .Select(x => x.LicensePlate)
                 .SingleAsync(cancellationToken);
-            var preparation = await continuationStartStore.PrepareAttemptAsync(
+            var startPreparation = await continuationStartStore.PrepareAttemptAsync(
                 visit, latestAction, work.Id, nextEndAt, cancellationToken);
-            var execution = await executor.ExecuteAsync(
-                preparation, licensePlate, location, cancellationToken);
-            if (execution.RequiresReconciliation)
+            var startExecution = await executor.ExecuteAsync(
+                startPreparation, licensePlate, location, cancellationToken);
+            if (startExecution.RequiresReconciliation)
             {
                 work.Release(now.AddMinutes(1));
                 await dbContext.SaveChangesAsync(cancellationToken);
