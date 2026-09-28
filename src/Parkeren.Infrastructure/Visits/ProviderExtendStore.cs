@@ -17,6 +17,11 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
         ArgumentNullException.ThrowIfNull(visit);
         ArgumentNullException.ThrowIfNull(action);
 
+        // PostgreSQL timestamp with time zone has microsecond precision. Normalize
+        // before persisting/comparing so a replay of the same .NET instant (100 ns
+        // precision) remains idempotent after a database round-trip.
+        providerEndAt = NormalizeForPostgres(providerEndAt);
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         var lockKey = VisitAdvisoryLock.For(visit.Id);
@@ -50,7 +55,7 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
                 existing.ProviderParkingActionId != persistedAction.Id)
                 throw new InvalidOperationException("Existing provider operation does not match this continuation.");
 
-            if (existing.RequestedEndAt.HasValue && existing.RequestedEndAt.Value.ToUniversalTime() != providerEndAt.ToUniversalTime())
+            if (existing.RequestedEndAt.HasValue && NormalizeForPostgres(existing.RequestedEndAt.Value) != providerEndAt)
                 throw new InvalidOperationException("Existing provider continuation has a different requested end.");
 
             if (!existing.RequestedEndAt.HasValue && existing.Status == ProviderOperationStatus.Pending)
@@ -83,5 +88,11 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
         await transaction.CommitAsync(cancellationToken);
 
         return prepared with { AttemptStartedNow = true };
+    }
+
+    private static DateTimeOffset NormalizeForPostgres(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        return new DateTimeOffset(utc.Ticks - (utc.Ticks % 10), TimeSpan.Zero);
     }
 }
