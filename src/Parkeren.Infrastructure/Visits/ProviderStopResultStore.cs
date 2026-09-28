@@ -17,6 +17,9 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
         ArgumentNullException.ThrowIfNull(preparation);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         var operation = await dbContext.ProviderOperations.SingleAsync(x => x.Id == preparation.Operation.Id, cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == preparation.Action.Id, cancellationToken);
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
@@ -42,6 +45,9 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
         ArgumentNullException.ThrowIfNull(providerAction);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         var operation = await dbContext.ProviderOperations.SingleAsync(x => x.Id == preparation.Operation.Id, cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == preparation.Action.Id, cancellationToken);
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
