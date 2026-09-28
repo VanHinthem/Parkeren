@@ -49,14 +49,16 @@ public sealed class StartVisitClaimer(IVisitCapacityClaimer capacityClaimer)
 {
     public async Task<StartVisitClaimResult?> ClaimAsync(
         StartVisitPreparation preparation,
-        int maxConcurrentVisits,
+        int maxGlobalConcurrentVisits,
+        int maxUserConcurrentVisits,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
 
         var claim = await capacityClaimer.TryClaimAsync(
             preparation.Visit,
-            maxConcurrentVisits,
+            maxGlobalConcurrentVisits,
+            maxUserConcurrentVisits,
             cancellationToken);
 
         if (!claim.Claimed || claim.Visit is null)
