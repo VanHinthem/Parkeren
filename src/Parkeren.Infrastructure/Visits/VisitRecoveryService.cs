@@ -7,7 +7,8 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitRecoveryService(
     ParkerenDbContext dbContext,
-    ContinueVisitProviderReconciler extendReconciler) : IVisitRecoveryService
+    ContinueVisitProviderReconciler extendReconciler,
+    StopVisitProviderReconciler stopReconciler) : IVisitRecoveryService
 {
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
@@ -16,25 +17,37 @@ internal sealed class VisitRecoveryService(
         foreach (var item in items)
         {
             var decision = VisitRecoveryClassifier.Classify(item);
-            if (decision.Kind != VisitRecoveryKind.ReconcileExtend ||
-                decision.Operation is null ||
+            if (decision.Operation is null ||
                 decision.Operation.Status != ProviderOperationStatus.Unknown ||
-                decision.Operation.ProviderParkingActionId is not Guid actionId ||
-                decision.Operation.RequestedEndAt is not DateTimeOffset requestedEndAt)
+                decision.Operation.ProviderParkingActionId is not Guid actionId)
                 continue;
 
             var action = item.ProviderActions.SingleOrDefault(x => x.Id == actionId);
             if (action is null)
                 continue;
 
-            var preparation = new ProviderExtendPreparation(
-                decision.Operation,
-                action,
-                requestedEndAt,
-                true,
-                false);
+            if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
+                decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
+            {
+                var preparation = new ProviderExtendPreparation(
+                    decision.Operation,
+                    action,
+                    requestedEndAt,
+                    true,
+                    false);
 
-            await extendReconciler.ReconcileAsync(preparation, cancellationToken);
+                await extendReconciler.ReconcileAsync(preparation, cancellationToken);
+            }
+            else if (decision.Kind == VisitRecoveryKind.ReconcileStop)
+            {
+                var preparation = new ProviderStopPreparation(
+                    decision.Operation,
+                    action,
+                    true,
+                    false);
+
+                await stopReconciler.ReconcileAsync(preparation, cancellationToken);
+            }
         }
     }
 
