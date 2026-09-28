@@ -27,6 +27,15 @@ public sealed class ProviderParkingAction
     public void MarkStarting() { Ensure(ProviderActionState.Planned); State = ProviderActionState.Starting; }
     public void CaptureStartResponse(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); if (string.IsNullOrWhiteSpace(providerActionId)) throw new ArgumentException("Provider action id is required.", nameof(providerActionId)); ProviderActionId = providerActionId; ActualStartAt = actualStartAt; ProviderStatus = providerStatus; }
     public void MarkActive(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); CaptureStartResponse(providerActionId, actualStartAt, providerStatus); State = ProviderActionState.Active; Health = ProviderActionHealth.Healthy; }
+    public void ExtendPlannedEnd(DateTimeOffset newEndAt)
+    {
+        Ensure(ProviderActionState.Active);
+        if (newEndAt <= PlannedEndAt)
+            throw new ArgumentOutOfRangeException(nameof(newEndAt), "Extended provider action end must be later than the current planned end.");
+
+        PlannedEndAt = newEndAt;
+    }
+
     public void BeginStopping()
     {
         Ensure(ProviderActionState.Active);
