@@ -23,6 +23,7 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("Parkeren")
             ?? throw new InvalidOperationException("Connection string 'Parkeren' is not configured.");
 
+        services.AddSingleton(configuration);
         services.AddDbContext<ParkerenDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();

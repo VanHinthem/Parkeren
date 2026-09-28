@@ -53,10 +53,10 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if ((request.End - request.Start).TotalMinutes > remainingMinutes)
         return Results.Conflict(new { error = "Insufficient provider balance." });
 
-    if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.LicensePlate == request.LicensePlate))
+    if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.End > DateTimeOffset.UtcNow && x.LicensePlate == request.LicensePlate))
         return Results.Conflict(new { error = "Duplicate active provider action." });
 
-    if (actions.Values.Count(x => x.Status == "active") >= maxConcurrentActions)
+    if (actions.Values.Count(x => x.Status == "active" && x.End > DateTimeOffset.UtcNow) >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");

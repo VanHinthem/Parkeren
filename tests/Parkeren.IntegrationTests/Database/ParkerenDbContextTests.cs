@@ -2483,6 +2483,76 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Scheduler_starts_a_new_action_for_oss_after_the_previous_action_ends()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"oss-next-{suffix}", $"OSS-NEXT-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ON-{suffix[..2]}-{suffix[2..4]}", $"ON{suffix[..4]}", null);
+        var boundary = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var startAt = boundary.AddHours(-4);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            startAt, boundary.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var previous = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, boundary);
+        previous.MarkStarting();
+        previous.MarkActive($"provider-old-{suffix}", startAt);
+        var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage, boundary.AddMinutes(-5));
+        work.Claim("worker-oss-next", DateTimeOffset.UtcNow);
+        var windows = Enumerable.Range(0, 7)
+            .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+            .ToArray();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(previous);
+            seedContext.VisitSchedulerWork.Add(work);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), startAt.AddDays(-1), null, TimeSpan.FromHours(4), windows));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString,
+            ["ParkingProvider:Location"] = "Oss"
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimed = await context.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                .ProcessAsync(claimed, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Equal(VisitSchedulerWorkStatus.Completed,
+            (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+        Assert.Equal(2, await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == visit.Id, cancellationToken));
+        var operation = Assert.Single(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken));
+        Assert.Equal(ProviderOperationType.ContinueStart, operation.Type);
+        Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
+        Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Scheduler_processor_reschedules_when_provider_coverage_is_still_active()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

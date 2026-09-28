@@ -4,12 +4,15 @@ using Parkeren.Domain.Visits;
 using Parkeren.Domain.Rules;
 using Parkeren.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitSchedulerWorkProcessor(
     ParkerenDbContext dbContext,
     IProviderExtendStore providerExtendStore,
+    IProviderContinuationStartStore continuationStartStore,
+    IConfiguration configuration,
     IServiceProvider serviceProvider)
     : IVisitSchedulerWorkProcessor
 {
@@ -31,7 +34,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         }
 
         var latestAction = await dbContext.ProviderParkingActions
-            .Where(x => x.VisitId == visit.Id)
+            .Where(x => x.VisitId == visit.Id && x.State == ProviderActionState.Active)
             .OrderByDescending(x => x.PlannedEndAt)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -43,6 +46,17 @@ internal sealed class VisitSchedulerWorkProcessor(
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (await dbContext.ProviderOperations.AnyAsync(
+                x => x.OperationId == work.Id &&
+                     x.ProviderParkingActionId == latestAction.Id &&
+                     x.Status == ProviderOperationStatus.Succeeded,
+                cancellationToken))
+        {
+            // A previous attempt already confirmed a later provider action.
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
         if (latestAction.PlannedEndAt > now)
         {
             work.Release(latestAction.PlannedEndAt);
@@ -118,6 +132,69 @@ internal sealed class VisitSchedulerWorkProcessor(
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
+        }
+
+        var actionRules = ruleSets
+            .Where(x => x.ValidFrom <= latestAction.PlannedEndAt &&
+                        (x.ValidUntil is null || x.ValidUntil > latestAction.PlannedEndAt))
+            .OrderByDescending(x => x.ValidFrom)
+            .FirstOrDefault();
+        if (actionRules is null)
+        {
+            work.Release(now.AddMinutes(1));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (actionRules.Continuation == ProviderCoverageContinuation.StartNewAction)
+        {
+            var existing = await dbContext.ProviderOperations.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.OperationId == work.Id, cancellationToken);
+            var nextEndAt = existing?.ProviderParkingActionId is Guid existingActionId
+                ? (await dbContext.ProviderParkingActions.AsNoTracking()
+                    .SingleAsync(x => x.Id == existingActionId, cancellationToken)).PlannedEndAt
+                : desiredEndAt < latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration
+                    ? desiredEndAt
+                    : latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration;
+
+            var location = configuration["ParkingProvider:Location"];
+            var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
+            if (string.IsNullOrWhiteSpace(location) || executor is null)
+            {
+                work.Release(now.AddMinutes(1));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var licensePlate = await dbContext.Vehicles.AsNoTracking()
+                .Where(x => x.Id == visit.VehicleId)
+                .Select(x => x.LicensePlate)
+                .SingleAsync(cancellationToken);
+            var preparation = await continuationStartStore.PrepareAttemptAsync(
+                visit, latestAction, work.Id, nextEndAt, cancellationToken);
+            var execution = await executor.ExecuteAsync(
+                preparation, licensePlate, location, cancellationToken);
+            if (execution.RequiresReconciliation)
+            {
+                work.Release(now.AddMinutes(1));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var maxExistingEndAt = latestAction.PlannedStartAt + actionRules.MaxProviderActionDuration;
+        if (desiredEndAt > maxExistingEndAt)
+            desiredEndAt = maxExistingEndAt;
+        if (desiredEndAt <= latestAction.PlannedEndAt)
+        {
+            visit.SetHealth(VisitHealth.Reconciling);
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
         }
 
         var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
