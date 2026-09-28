@@ -27,6 +27,16 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
         if (visit.Status != VisitStatus.Stopping)
             throw new InvalidOperationException($"Visit must be Stopping before provider Stop preparation, but was {visit.Status}.");
 
+        var conflictingMutationExists = await dbContext.ProviderOperations.AnyAsync(
+            x => x.VisitId == visit.Id &&
+                 x.Id != operation.Id &&
+                 (x.Status == ProviderOperationStatus.InProgress ||
+                  x.Status == ProviderOperationStatus.Unknown ||
+                  x.Status == ProviderOperationStatus.Reconciling),
+            cancellationToken);
+        if (conflictingMutationExists)
+            throw new InvalidOperationException("Another provider mutation is in progress or requires reconciliation for this Visit.");
+
         ProviderParkingAction action;
         if (operation.ProviderParkingActionId is Guid actionId)
         {
