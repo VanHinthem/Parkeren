@@ -458,6 +458,10 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProviderActionId")
+                        .IsUnique()
+                        .HasFilter("\\\"ProviderActionId\\\" IS NOT NULL");
+
                     b.HasIndex("VisitId");
 
                     b.ToTable("provider_parking_actions", (string)null);
