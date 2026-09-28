@@ -352,6 +352,7 @@ app.MapPut("/api/visits/{visitId:guid}/end-time", async (
 
 app.MapGet("/api/visits/capacity", async (
     ParkerenDbContext dbContext,
+    IStartVisitOperationalContextResolver operationalContextResolver,
     IAuthenticationService authentication,
     HttpContext context,
     CancellationToken cancellationToken) =>
@@ -360,11 +361,20 @@ app.MapGet("/api/visits/capacity", async (
     if (authenticated.User is null)
         return Results.Unauthorized();
 
+    var operationalContext = await operationalContextResolver.ResolveAsync(
+        authenticated.User.Id,
+        DateTimeOffset.UtcNow,
+        null,
+        cancellationToken);
+
+    if (operationalContext is null)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
     var used = await dbContext.Visits
         .AsNoTracking()
         .CountAsync(x => x.Status == VisitStatus.Starting || x.Status == VisitStatus.Active || x.Status == VisitStatus.Stopping, cancellationToken);
 
-    return Results.Ok(new { used, total = 5 });
+    return Results.Ok(new { used, total = operationalContext.MaxConcurrentVisits });
 });
 
 app.MapGet("/api/visits/active", async (
