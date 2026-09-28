@@ -5,7 +5,10 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class VisitSchedulerWorkProcessor(ParkerenDbContext dbContext, IProviderExtendStore providerExtendStore)
+internal sealed class VisitSchedulerWorkProcessor(
+    ParkerenDbContext dbContext,
+    IProviderExtendStore providerExtendStore,
+    ContinueVisitProviderExecutor providerExtendExecutor)
     : IVisitSchedulerWorkProcessor
 {
     public async Task ProcessAsync(
@@ -52,15 +55,21 @@ internal sealed class VisitSchedulerWorkProcessor(ParkerenDbContext dbContext, I
             return;
         }
 
-        await providerExtendStore.PrepareAttemptAsync(
+        var preparation = await providerExtendStore.PrepareAttemptAsync(
             visit,
             latestAction,
             work.Id,
             desiredEndAt,
             cancellationToken);
 
-        // The durable provider operation now owns continuation recovery. The
-        // external mutation is deliberately executed by a later slice.
+        var execution = await providerExtendExecutor.ExecuteAsync(preparation, cancellationToken);
+        if (execution.RequiresReconciliation || execution.DefinitiveFailure)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
