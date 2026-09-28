@@ -15,9 +15,18 @@ internal sealed class AdministrationService(
     public async Task<IReadOnlyList<UserSummary>> GetUsersAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
-        return await dbContext.Users.AsNoTracking()
-            .OrderBy(x => x.Username)
-            .Select(x => new UserSummary(x.Id, x.Username, x.Role, x.IsActive))
+        return await (
+            from user in dbContext.Users.AsNoTracking()
+            join policyOverride in dbContext.UserPolicyOverrides.AsNoTracking()
+                on user.Id equals policyOverride.UserId into overrides
+            from policyOverride in overrides.DefaultIfEmpty()
+            orderby user.Username
+            select new UserSummary(
+                user.Id,
+                user.Username,
+                user.Role,
+                user.IsActive,
+                policyOverride == null ? null : policyOverride.MaxConcurrentVisits))
             .ToListAsync(cancellationToken);
     }
 
