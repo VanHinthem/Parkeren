@@ -100,10 +100,20 @@ export async function changeVisitEndTime(
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
-export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
+export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean;maxConcurrentVisits:number|null};
 export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
+export async function getGlobalMaxConcurrentVisits(){return json<{maxConcurrentVisits:number}>(await apiFetch("/api/admin/parking-settings/max-concurrent-visits"));}
+export async function setGlobalMaxConcurrentVisits(maxConcurrentVisits:number){
+ const response=await apiFetch("/api/admin/parking-settings/max-concurrent-visits",{method:"PUT",body:JSON.stringify({maxConcurrentVisits})});
+ if(response.status===409)throw new Error("De limiet kan niet worden gewijzigd zolang er een parkeeractie actief is.");
+ if(!response.ok)throw new Error("De globale limiet kon niet worden opgeslagen.");
+}
+export async function setUserMaxConcurrentVisits(userId:string,maxConcurrentVisits:number|null){
+ const response=await apiFetch(`/api/admin/users/${userId}/policy/max-concurrent-visits`,{method:"PUT",body:JSON.stringify({maxConcurrentVisits})});
+ if(!response.ok)throw new Error("De gebruikerslimiet kon niet worden opgeslagen. Controleer de globale limiet.");
+}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
 export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Gebruiker kon niet worden gewijzigd.");}
 export async function getVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/admin/vehicles"));}
