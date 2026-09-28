@@ -51,14 +51,15 @@ export async function getRecentVisits():Promise<ActiveVisit[]>{
   return json<ActiveVisit[]>(await apiFetch("/api/visits/recent"));
 }
 
-export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string=crypto.randomUUID()):Promise<ActiveVisit>{
+export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
+export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string=crypto.randomUUID()):Promise<StartVisitResult>{
   const response=await apiFetch("/api/visits/start",{
     method:"POST",
     body:JSON.stringify({operationId,vehicleId,desiredEndAt})
   });
   if(!response.ok)throw new Error(`Parkeeractie kon niet worden gestart (HTTP ${response.status}).`);
   const result=await response.json() as {visit:ActiveVisit};
-  return result.visit;
+  return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
 export type StopVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
