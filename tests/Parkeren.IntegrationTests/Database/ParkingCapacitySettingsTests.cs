@@ -21,10 +21,10 @@ public sealed class ParkingCapacitySettingsTests(PostgreSqlFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var actorName = $"admin-{Guid.NewGuid():N}";
         var actor = new User(Guid.NewGuid(), actorName, actorName.ToUpperInvariant(), "hash", UserRole.Admin);
-        await using (var context = fixture.CreateDbContext())
+        await using (var seedContext = fixture.CreateDbContext())
         {
-            context.Users.Add(actor);
-            await context.SaveChangesAsync(ct);
+            seedContext.Users.Add(actor);
+            await seedContext.SaveChangesAsync(ct);
         }
 
         var services = CreateServices();
