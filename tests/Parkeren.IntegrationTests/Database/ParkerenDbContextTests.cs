@@ -2252,6 +2252,55 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Stop_claim_cancels_pending_scheduler_work()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"stop-scheduler-{suffix}", $"STOP-SCHEDULER-{suffix}".ToUpperInvariant(), "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"SS-{suffix[..6]}", $"SS{suffix[..6]}".ToUpperInvariant(), null);
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, now.AddHours(-1), now.AddHours(2), snapshot);
+        visit.Activate();
+        var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, now.AddMinutes(5));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var claimer = scope.ServiceProvider.GetRequiredService<IStopVisitClaimer>();
+            await claimer.ClaimAsync(new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id), cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var persistedWork = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(VisitSchedulerWorkStatus.Cancelled, persistedWork.Status);
+        Assert.Null(persistedWork.ClaimedAt);
+        Assert.Null(persistedWork.ClaimedBy);
+    }
+
+    [Fact]
     public async Task Scheduler_work_claim_allows_only_one_worker_to_claim_due_item()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
