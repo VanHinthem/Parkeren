@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Rules;
 using Parkeren.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -79,6 +80,46 @@ internal sealed class VisitSchedulerWorkProcessor(
             }
         }
 
+        var ruleSets = await dbContext.ParkingRuleSets
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ValidFrom < desiredEndAt &&
+                        (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
+            .ToListAsync(cancellationToken);
+
+        var paidThroughNow = ParkingRuleSetPaidTimeCalculator.Calculate(
+            visit.StartAt,
+            now,
+            ruleSets);
+
+        if (paidThroughNow >= visit.PolicySnapshot.MaxPaidParkingDuration)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var paidThroughDesiredEnd = ParkingRuleSetPaidTimeCalculator.Calculate(
+            visit.StartAt,
+            desiredEndAt,
+            ruleSets);
+
+        if (paidThroughDesiredEnd > visit.PolicySnapshot.MaxPaidParkingDuration)
+        {
+            desiredEndAt = FindPaidDurationBoundary(
+                visit.StartAt,
+                desiredEndAt,
+                visit.PolicySnapshot.MaxPaidParkingDuration,
+                ruleSets);
+
+            if (desiredEndAt <= now)
+            {
+                work.Complete(now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+
         var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
         if (providerExtendExecutor is null)
         {
@@ -126,5 +167,30 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+    private static DateTimeOffset FindPaidDurationBoundary(
+        DateTimeOffset start,
+        DateTimeOffset end,
+        TimeSpan maxPaidDuration,
+        IReadOnlyCollection<ParkingRuleSet> ruleSets)
+    {
+        var periods = ParkingRuleSetPeriodSegmenter.Segment(start, end, ruleSets);
+        var paid = TimeSpan.Zero;
+
+        foreach (var segment in periods
+                     .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                     .OrderBy(x => x.Start))
+        {
+            if (!segment.IsPaid)
+                continue;
+
+            var duration = segment.End - segment.Start;
+            if (paid + duration >= maxPaidDuration)
+                return segment.Start + (maxPaidDuration - paid);
+
+            paid += duration;
+        }
+
+        return end;
     }
 }
