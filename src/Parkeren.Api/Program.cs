@@ -503,6 +503,17 @@ app.MapPut("/api/admin/users/{userId:guid}/active", async (
     return await administration.SetUserActiveAsync(authenticated.User.Id, userId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
 });
 
+app.MapPut("/api/admin/users/{userId:guid}/policy/max-concurrent-visits", async (
+    Guid userId, SetMaxConcurrentVisitsRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    return await administration.SetUserMaxConcurrentVisitsAsync(authenticated.User.Id, userId, request.MaxConcurrentVisits, cancellationToken)
+        ? Results.NoContent()
+        : Results.BadRequest();
+});
+
 app.MapGet("/api/admin/vehicles", async (
     IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
 {
@@ -605,6 +616,7 @@ public sealed record ResetPinRequest(string NewPin);
 public sealed record CreateUserRequest(string Username, string Pin, UserRole Role);
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
+public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
 public sealed record StartVisitRequest(Guid OperationId, Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 public sealed record StopVisitRequest(Guid OperationId);
 public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);
