@@ -460,6 +460,56 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.ToTable("provider_parking_actions", (string)null);
                 });
 
+            modelBuilder.Entity("Parkeren.Domain.Visits.VisitSchedulerWork", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClaimedBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("DueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid>("VisitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VisitId", "Type", "DueAt")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "DueAt");
+
+                    b.ToTable("visit_scheduler_work", (string)null);
+                });
+
             modelBuilder.Entity("Parkeren.Domain.Visits.VisitEndTimeChange", b =>
                 {
                     b.Property<Guid>("Id")
@@ -635,6 +685,15 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("VisitId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Parkeren.Domain.Visits.VisitSchedulerWork", b =>
+                {
+                    b.HasOne("Parkeren.Domain.Visits.Visit", null)
+                        .WithMany()
+                        .HasForeignKey("VisitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Parkeren.Domain.Visits.VisitEndTimeChange", b =>
