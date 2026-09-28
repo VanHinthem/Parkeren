@@ -53,6 +53,19 @@ public sealed class VisitSchedulerWork
         ClaimedAt = claimedAt;
     }
 
+    public void Release(DateTimeOffset dueAt)
+    {
+        if (Status != VisitSchedulerWorkStatus.Claimed)
+            throw new InvalidOperationException("Only claimed scheduler work can be released.");
+        if (dueAt <= ClaimedAt)
+            throw new ArgumentOutOfRangeException(nameof(dueAt), "Released scheduler work must be due after it was claimed.");
+
+        Status = VisitSchedulerWorkStatus.Pending;
+        DueAt = dueAt;
+        ClaimedAt = null;
+        ClaimedBy = null;
+    }
+
     public void Complete(DateTimeOffset completedAt)
     {
         if (Status != VisitSchedulerWorkStatus.Claimed)
