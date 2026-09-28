@@ -10,6 +10,14 @@ public sealed record ProviderExtendExecution(
     bool RequiresReconciliation,
     bool DefinitiveFailure = false);
 
+public interface IProviderExtendMutationGuard
+{
+    Task<bool> CanExtendAsync(
+        Guid visitId,
+        Guid providerParkingActionId,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IProviderExtendResultStore
 {
     Task RecordConfirmedAsync(
@@ -30,7 +38,8 @@ public interface IProviderExtendResultStore
 
 public sealed class ContinueVisitProviderExecutor(
     IParkingProvider provider,
-    IProviderExtendResultStore resultStore)
+    IProviderExtendResultStore resultStore,
+    IProviderExtendMutationGuard? mutationGuard = null)
 {
     public async Task<ProviderExtendExecution> ExecuteAsync(
         ProviderExtendPreparation preparation,
@@ -53,6 +62,14 @@ public sealed class ContinueVisitProviderExecutor(
 
         try
         {
+            if (!preparation.Operation.VisitId.HasValue ||
+                (mutationGuard is not null &&
+                 !await mutationGuard.CanExtendAsync(
+                     preparation.Operation.VisitId.Value,
+                     preparation.Action.Id,
+                     cancellationToken)))
+                return new(preparation, null, true);
+
             var action = await provider.ExtendActionAsync(
                 preparation.Action.ProviderActionId,
                 preparation.ProviderEndAt,
