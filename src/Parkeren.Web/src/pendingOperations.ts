@@ -47,10 +47,14 @@ export function clearPendingOperation(type: PendingOperationType, logicalKey: st
 }
 
 export function clearResolvedVisitOperations(activeVisitId: string | null) {
+  if (activeVisitId === null) {
+    write([]);
+    return;
+  }
+
   write(read().filter(item => {
-    if (item.type === "start") return activeVisitId !== null;
-    if (item.type === "stop" || item.type === "end-time")
-      return activeVisitId !== null && item.logicalKey.startsWith(`${activeVisitId}:`) || item.logicalKey === activeVisitId;
-    return false;
+    if (item.type === "start") return true;
+    if (item.type === "stop") return item.logicalKey === activeVisitId;
+    return item.logicalKey.startsWith(`${activeVisitId}:`);
   }));
 }
