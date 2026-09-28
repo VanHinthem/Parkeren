@@ -50,7 +50,7 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
                 existing.ProviderParkingActionId != persistedAction.Id)
                 throw new InvalidOperationException("Existing provider operation does not match this continuation.");
 
-            if (existing.RequestedEndAt.HasValue && existing.RequestedEndAt.Value != providerEndAt)
+            if (existing.RequestedEndAt.HasValue && existing.RequestedEndAt.Value.ToUniversalTime() != providerEndAt.ToUniversalTime())
                 throw new InvalidOperationException("Existing provider continuation has a different requested end.");
 
             if (!existing.RequestedEndAt.HasValue && existing.Status == ProviderOperationStatus.Pending)
