@@ -11,6 +11,9 @@ public interface IVisitRecoveryService
 {
     Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
         CancellationToken cancellationToken = default);
+
+    Task RecoverAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public enum VisitRecoveryKind
