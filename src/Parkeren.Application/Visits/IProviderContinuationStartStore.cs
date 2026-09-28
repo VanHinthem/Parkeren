@@ -11,3 +11,7 @@ public interface IProviderContinuationStartStore
         DateTimeOffset newEndAt,
         CancellationToken cancellationToken = default);
 }
+
+public interface IProviderContinuationStartResultStore : IProviderStartResultStore
+{
+}

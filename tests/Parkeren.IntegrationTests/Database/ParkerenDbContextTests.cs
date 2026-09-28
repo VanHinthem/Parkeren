@@ -2591,12 +2591,22 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             Assert.True(replay.IsReplay);
             Assert.False(replay.AttemptStartedNow);
             Assert.Equal(ProviderOperationStatus.InProgress, replay.Operation.Status);
+            var results = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartResultStore>();
+            await results.RecordConfirmedAsync(replay,
+                new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                    $"provider-next-{suffix}", vehicle.NormalizedLicensePlate,
+                    boundary, requestedEnd, "Oss", "active"), cancellationToken);
         }
 
         await using var verifyContext = fixture.CreateDbContext();
         Assert.Equal(2, await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == visit.Id, cancellationToken));
-        Assert.Single(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
+        var operation = Assert.Single(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
             .ToListAsync(cancellationToken));
+        Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
+        Assert.Equal(VisitStatus.Active,
+            (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Status);
+        Assert.Equal(ProviderActionState.Active,
+            (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == operation.ProviderParkingActionId, cancellationToken)).State);
     }
 
     [Fact]
