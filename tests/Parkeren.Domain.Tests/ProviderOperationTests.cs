@@ -17,4 +17,14 @@ public sealed class ProviderOperationTests
         Assert.Equal(1, operation.AttemptCount);
         Assert.NotNull(operation.AttemptStartedAt);
     }
+
+    [Fact]
+    public void Extend_operation_persists_requested_end()
+    {
+        var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ProviderOperationType.Extend);
+        operation.SetRequestedEndAt(requestedEnd);
+        operation.BeginAttempt();
+        Assert.Equal(requestedEnd, operation.RequestedEndAt);
+    }
 }
