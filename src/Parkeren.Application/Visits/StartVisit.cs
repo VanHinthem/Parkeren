@@ -39,6 +39,19 @@ public sealed class StartVisitPreparer
         }
         var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
             command.StartAt, coverageEvaluationEndAt, rules);
+        if (requiresProviderCoverageNow)
+        {
+            var activeRules = rules
+                .Where(x => x.ValidFrom <= command.StartAt &&
+                            (x.ValidUntil is null || x.ValidUntil > command.StartAt))
+                .OrderByDescending(x => x.ValidFrom)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException("No parking rules cover the provider action start.");
+            var providerEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
+            if (providerEndAt > command.StartAt + activeRules.MaxProviderActionDuration)
+                throw new InvalidOperationException(
+                    "Visit requires a new provider action after the parking rule's maximum action duration.");
+        }
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);

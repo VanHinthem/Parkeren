@@ -9,6 +9,26 @@ namespace Parkeren.Application.Tests;
 public sealed class StartVisitTests
 {
     [Fact]
+    public void Prepare_rejects_a_paid_start_that_would_exceed_the_provider_action_limit()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.Zero);
+        var ownerId = Guid.NewGuid();
+        var command = new StartVisitCommand(Guid.NewGuid(), ownerId, ownerId, Guid.NewGuid(),
+            start, start.AddHours(5));
+        var context = new StartVisitContext(new(ownerId, UserRole.Visitor, true),
+            new(ownerId, true), new(command.VehicleId, true, true));
+        var rules = new[]
+        {
+            new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+                [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0))])
+        };
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true);
+
+        Assert.Throws<InvalidOperationException>(() => new StartVisitPreparer().Prepare(
+            command, context, policy, rules, start.AddMinutes(1)));
+    }
+
+    [Fact]
     public void Prepare_captures_policy_and_keeps_visit_starting_until_capacity_and_provider_work_are_committed()
     {
         var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(12), true);
