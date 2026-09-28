@@ -565,6 +565,58 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Confirmed_provider_start_schedules_coverage_at_action_boundary()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"scheduled-{suffix}", $"SCHEDULED-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"SC-{suffix[..2]}-{suffix[2..4]}", $"SC{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var actionEndAt = now.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now, now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var startStore = scope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var resultStore = scope.ServiceProvider.GetRequiredService<IProviderStartResultStore>();
+            var preparation = await startStore.PrepareAttemptAsync(
+                new StartVisitClaimResult(visit, false, true), actionEndAt, cancellationToken);
+            await resultStore.RecordConfirmedAsync(preparation,
+                new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                    $"provider-{suffix}", vehicle.NormalizedLicensePlate, now, actionEndAt, "Oss", "active"),
+                cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var work = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        Assert.Equal(VisitStatus.Active, persistedVisit.Status);
+        Assert.Equal(VisitSchedulerWorkType.ContinueProviderCoverage, work.Type);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, work.Status);
+        Assert.InRange((work.DueAt - actionEndAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
     public async Task Late_provider_start_success_preserves_concurrent_stop_claim()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

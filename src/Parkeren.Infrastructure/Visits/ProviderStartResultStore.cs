@@ -57,6 +57,21 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         {
             visit.Activate();
             visit.SetHealth(VisitHealth.Healthy);
+
+            if (visit.PolicySnapshot.AllowAutoExtension &&
+                visit.DesiredEndAt is { } desiredEndAt &&
+                desiredEndAt > preparation.Action.PlannedEndAt &&
+                !await dbContext.VisitSchedulerWork.AnyAsync(
+                    work => work.VisitId == visit.Id &&
+                            work.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                            (work.Status == VisitSchedulerWorkStatus.Pending ||
+                             work.Status == VisitSchedulerWorkStatus.Claimed),
+                    cancellationToken))
+            {
+                dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                    Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+                    preparation.Action.PlannedEndAt));
+            }
         }
         else if (visit.Status != VisitStatus.Stopping)
         {
