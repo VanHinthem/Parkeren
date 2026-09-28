@@ -59,3 +59,14 @@ public sealed class ContinueVisitProviderPreparer
         return new ProviderExtendPreparation(operation, action, providerEndAt, false, false);
     }
 }
+
+
+public interface IProviderExtendStore
+{
+    Task<ProviderExtendPreparation> PrepareAttemptAsync(
+        Visit visit,
+        ProviderParkingAction action,
+        Guid operationId,
+        DateTimeOffset providerEndAt,
+        CancellationToken cancellationToken = default);
+}
