@@ -56,6 +56,29 @@ internal sealed class VisitSchedulerWorkProcessor(
             return;
         }
 
+        if (!visit.PolicySnapshot.AllowAutoExtension ||
+            (visit.PolicySnapshot.MaxVisitElapsedDuration is TimeSpan maxElapsed &&
+             visit.StartAt + maxElapsed <= now))
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (visit.PolicySnapshot.MaxVisitElapsedDuration is TimeSpan remainingMaxElapsed)
+        {
+            var hardEndAt = visit.StartAt + remainingMaxElapsed;
+            if (desiredEndAt > hardEndAt)
+                desiredEndAt = hardEndAt;
+
+            if (desiredEndAt <= now)
+            {
+                work.Complete(now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+
         var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
         if (providerExtendExecutor is null)
         {
