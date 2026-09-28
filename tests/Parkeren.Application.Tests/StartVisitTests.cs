@@ -9,7 +9,7 @@ namespace Parkeren.Application.Tests;
 public sealed class StartVisitTests
 {
     [Fact]
-    public void Prepare_rejects_a_paid_start_that_would_exceed_the_provider_action_limit()
+    public void Prepare_allows_longer_visit_when_a_second_provider_action_is_permitted()
     {
         var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.Zero);
         var ownerId = Guid.NewGuid();
@@ -24,8 +24,14 @@ public sealed class StartVisitTests
         };
         var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true);
 
+        var prepared = new StartVisitPreparer().Prepare(
+            command, context, policy, rules, start.AddMinutes(1));
+        Assert.True(prepared.RequiresProviderCoverageNow);
+        Assert.Equal(start.AddHours(4), ProviderActionStartPlanner.PlanEnd(start, command.DesiredEndAt!.Value, rules));
+
+        var noContinuation = policy with { AllowAutoExtension = false };
         Assert.Throws<InvalidOperationException>(() => new StartVisitPreparer().Prepare(
-            command, context, policy, rules, start.AddMinutes(1)));
+            command, context, noContinuation, rules, start.AddMinutes(1)));
     }
 
     [Fact]

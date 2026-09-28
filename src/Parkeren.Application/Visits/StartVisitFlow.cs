@@ -90,16 +90,19 @@ public sealed class StartVisitFlow(
                 throw new InvalidOperationException("Provider context must contain a license plate and location.");
 
             var paidEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
+            var providerEndAt = ProviderActionStartPlanner.PlanEnd(
+                command.StartAt, paidEndAt, ruleSets);
             var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(command.StartAt, paidEndAt, ruleSets)
                 .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                 .Where(x => x.IsPaid)
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
 
             await providerReadiness.CheckAsync(paidDuration, cancellationToken);
-            var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, paidEndAt, cancellationToken);
+            var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, providerEndAt, cancellationToken);
             var execution = await providerExecutor.ExecuteAsync(
                 providerPreparation,
-                new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location, paidEndAt),
+                new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location,
+                    providerPreparation.Action.PlannedEndAt),
                 cancellationToken);
 
             if (execution.RequiresReconciliation)

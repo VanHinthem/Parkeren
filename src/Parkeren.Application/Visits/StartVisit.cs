@@ -41,20 +41,35 @@ public sealed class StartVisitPreparer
             command.StartAt, coverageEvaluationEndAt, rules);
         if (requiresProviderCoverageNow)
         {
-            var activeRules = rules
-                .Where(x => x.ValidFrom <= command.StartAt &&
-                            (x.ValidUntil is null || x.ValidUntil > command.StartAt))
-                .OrderByDescending(x => x.ValidFrom)
-                .FirstOrDefault()
-                ?? throw new InvalidOperationException("No parking rules cover the provider action start.");
             var providerEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
-            if (providerEndAt > command.StartAt + activeRules.MaxProviderActionDuration)
+            var initialActionEndAt = ProviderActionStartPlanner.PlanEnd(
+                command.StartAt, providerEndAt, rules);
+            if (initialActionEndAt < providerEndAt && !policy.AllowAutoExtension)
                 throw new InvalidOperationException(
-                    "Visit requires a new provider action after the parking rule's maximum action duration.");
+                    "Visit requires provider continuation, but auto extension is disabled.");
         }
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
+    }
+}
+
+public static class ProviderActionStartPlanner
+{
+    public static DateTimeOffset PlanEnd(
+        DateTimeOffset startAt, DateTimeOffset desiredEndAt, IEnumerable<ParkingRuleSet> ruleSets)
+    {
+        if (desiredEndAt <= startAt)
+            throw new ArgumentOutOfRangeException(nameof(desiredEndAt));
+
+        var activeRules = ruleSets
+            .Where(x => x.ValidFrom <= startAt && (x.ValidUntil is null || x.ValidUntil > startAt))
+            .OrderByDescending(x => x.ValidFrom)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("No parking rules cover the provider action start.");
+
+        var maxEndAt = startAt + activeRules.MaxProviderActionDuration;
+        return desiredEndAt < maxEndAt ? desiredEndAt : maxEndAt;
     }
 }
 
