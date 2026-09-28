@@ -56,13 +56,6 @@ internal sealed class VisitSchedulerWorkProcessor(
             return;
         }
 
-        var preparation = await providerExtendStore.PrepareAttemptAsync(
-            visit,
-            latestAction,
-            work.Id,
-            desiredEndAt,
-            cancellationToken);
-
         var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
         if (providerExtendExecutor is null)
         {
@@ -70,6 +63,13 @@ internal sealed class VisitSchedulerWorkProcessor(
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
+
+        var preparation = await providerExtendStore.PrepareAttemptAsync(
+            visit,
+            latestAction,
+            work.Id,
+            desiredEndAt,
+            cancellationToken);
 
         var execution = await providerExtendExecutor.ExecuteAsync(preparation, cancellationToken);
         if (execution.RequiresReconciliation)
