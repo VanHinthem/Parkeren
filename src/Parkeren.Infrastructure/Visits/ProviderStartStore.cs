@@ -17,6 +17,20 @@ internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProvide
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({operationLockKey})", cancellationToken);
 
+        var visitLockKey = VisitAdvisoryLock.For(claim.Visit.Id);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({visitLockKey})", cancellationToken);
+
+        var conflictingMutationExists = await dbContext.ProviderOperations.AnyAsync(
+            x => x.VisitId == claim.Visit.Id &&
+                 x.OperationId != claim.Visit.StartOperationId &&
+                 (x.Status == ProviderOperationStatus.InProgress ||
+                  x.Status == ProviderOperationStatus.Unknown ||
+                  x.Status == ProviderOperationStatus.Reconciling),
+            cancellationToken);
+        if (conflictingMutationExists)
+            throw new InvalidOperationException("Another provider mutation is in progress or requires reconciliation for this Visit.");
+
         var existing = await dbContext.ProviderOperations.SingleOrDefaultAsync(x => x.OperationId == claim.Visit.StartOperationId, cancellationToken);
         if (existing is not null)
         {
