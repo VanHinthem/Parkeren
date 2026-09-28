@@ -28,6 +28,14 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
         if (persistedVisit.Status != VisitStatus.Active)
             throw new InvalidOperationException("Provider continuation can only be prepared for an Active Visit.");
 
+        var otherMutationExists = await dbContext.ProviderOperations.AnyAsync(
+            x => x.VisitId == persistedVisit.Id &&
+                 x.Status == ProviderOperationStatus.InProgress &&
+                 x.OperationId != operationId,
+            cancellationToken);
+        if (otherMutationExists)
+            throw new InvalidOperationException("Another provider mutation is already in progress for this Visit.");
+
         var persistedAction = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
         if (persistedAction.VisitId != persistedVisit.Id || persistedAction.State != ProviderActionState.Active)
             throw new InvalidOperationException("Provider continuation requires the Visit's active provider action.");
