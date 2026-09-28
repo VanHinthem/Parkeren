@@ -16,6 +16,7 @@ public sealed class UserPolicyOverride
 {
     private UserPolicyOverride() { }
     public UserPolicyOverride(Guid userId){UserId=userId;UpdatedAt=DateTimeOffset.UtcNow;}
+    public void SetMaxConcurrentVisits(int? maxConcurrentVisits) { if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits)); MaxConcurrentVisits=maxConcurrentVisits; UpdatedAt=DateTimeOffset.UtcNow; }
     public Guid UserId { get; private set; }
     public TimeSpan? MaxPaidParkingDuration { get; private set; }
     public TimeSpan? MaxVisitElapsedDuration { get; private set; }
