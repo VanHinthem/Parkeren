@@ -44,7 +44,7 @@ public sealed class StartVisitClaimerTests
         var existing = preparation.Visit;
         var claimer = new StartVisitClaimer(new ReplayCapacityClaimer(existing));
 
-        var result = await claimer.ClaimAsync(preparation, 5, TestContext.Current.CancellationToken);
+        var result = await claimer.ClaimAsync(preparation, 5, 1, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.True(result.IsReplay);
@@ -60,7 +60,7 @@ public sealed class StartVisitClaimerTests
 
     private sealed class ReplayCapacityClaimer(Visit existing) : IVisitCapacityClaimer
     {
-        public Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxConcurrentVisits, CancellationToken cancellationToken = default) =>
+        public Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxGlobalConcurrentVisits, int maxUserConcurrentVisits, CancellationToken cancellationToken = default) =>
             Task.FromResult(new VisitCapacityClaim(true, existing, true));
     }
 }
