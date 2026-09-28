@@ -7,8 +7,6 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProviderStopStore
 {
-    private const long StopOperationLockNamespace = 0x53544F50; // STOP
-
     public async Task<ProviderStopPreparation> PrepareAttemptAsync(
         StopVisitClaim claim,
         CancellationToken cancellationToken = default)
@@ -18,7 +16,7 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
             throw new InvalidOperationException("A persisted Stop operation is required.");
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var lockKey = StopOperationLockNamespace ^ claim.Operation.OperationId.GetHashCode();
+        var lockKey = VisitAdvisoryLock.For(claim.Visit.Id);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
