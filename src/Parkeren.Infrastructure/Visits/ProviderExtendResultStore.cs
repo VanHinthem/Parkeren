@@ -39,7 +39,29 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
         operation.Succeed(DateTimeOffset.UtcNow);
 
         if (visit.Status == VisitStatus.Active)
+        {
             visit.SetHealth(VisitHealth.Healthy);
+
+            if (visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
+                desiredEndAt > providerAction.End)
+            {
+                var nextDueAt = providerAction.End;
+                var nextWorkExists = await dbContext.VisitSchedulerWork.AnyAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                         x.DueAt == nextDueAt,
+                    cancellationToken);
+
+                if (!nextWorkExists)
+                {
+                    dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                        Guid.NewGuid(),
+                        visit.Id,
+                        VisitSchedulerWorkType.ContinueProviderCoverage,
+                        nextDueAt));
+                }
+            }
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
