@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
@@ -10,25 +11,39 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
     public async Task RecordResponseAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         ArgumentNullException.ThrowIfNull(providerAction);
         preparation.Action.CaptureStartResponse(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
+           await transaction.CommitAsync(cancellationToken);
+ }
 
     public async Task RecordRetryableAsync(ProviderStartPreparation preparation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         preparation.Action.ResetForRetry();
         preparation.Operation.ResetForRetry();
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.SetHealth(VisitHealth.Healthy);
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
+           await transaction.CommitAsync(cancellationToken);
+ }
 
     public async Task RecordConfirmedAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         ArgumentNullException.ThrowIfNull(providerAction);
         preparation.Action.MarkActive(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         preparation.Operation.Succeed(DateTimeOffset.UtcNow);
@@ -49,27 +64,38 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
+           await transaction.CommitAsync(cancellationToken);
+ }
 
     public async Task RecordDefinitiveFailureAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         preparation.Operation.Fail(errorCode, DateTimeOffset.UtcNow);
         preparation.Action.MarkFailed();
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.Cancel();
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
+           await transaction.CommitAsync(cancellationToken);
+ }
 
     public async Task RecordUnknownAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         preparation.Action.MarkUnknown();
         preparation.Operation.MarkUnknown(errorCode);
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
         visit.SetHealth(VisitHealth.Reconciling);
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
+           await transaction.CommitAsync(cancellationToken);
+ }
 }
