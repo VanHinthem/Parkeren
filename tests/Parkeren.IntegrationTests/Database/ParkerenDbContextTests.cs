@@ -2364,7 +2364,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, now.AddHours(-1), now.AddHours(2), snapshot);
         visit.Activate();
-        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, now.AddHours(-1), coverageEnd);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, now.AddHours(-1), coverageEnd);
         action.MarkStarting();
         action.MarkActive("provider-jit", now.AddHours(-1));
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, now.AddMinutes(-1));
@@ -2392,7 +2392,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using (var scope = provider.CreateAsyncScope())
         {
             var processor = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>();
-            var claimed = await scope.ServiceProvider.GetRequiredService<ParkerenDbContext>()
+            var claimed = await scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>()
                 .VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
             await processor.ProcessAsync(claimed, cancellationToken);
         }
