@@ -17,6 +17,6 @@ public interface IAdministrationService
     Task<IReadOnlyList<VehicleSummary>?> GetAssignedVehiclesAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken);
 }
 
-public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive);
+public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
 public sealed record CreateUserResult(Guid Id, string Username, UserRole Role, bool IsActive);
 public sealed record VehicleSummary(Guid Id, string LicensePlate, string? DisplayName, bool IsActive);
