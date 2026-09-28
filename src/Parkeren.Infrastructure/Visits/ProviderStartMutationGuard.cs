@@ -9,8 +9,18 @@ internal sealed class ProviderStartMutationGuard(ParkerenDbContext dbContext) : 
 {
     public async Task<bool> CanStartAsync(Guid visitId, CancellationToken cancellationToken = default)
     {
-        return await dbContext.Visits
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        var lockKey = VisitAdvisoryLock.For(visitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var canStart = await dbContext.Visits
             .AsNoTracking()
             .AnyAsync(x => x.Id == visitId && x.Status == VisitStatus.Starting, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        return canStart;
     }
 }
