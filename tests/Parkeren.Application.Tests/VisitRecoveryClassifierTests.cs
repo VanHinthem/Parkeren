@@ -1,3 +1,4 @@
+using Xunit;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 
