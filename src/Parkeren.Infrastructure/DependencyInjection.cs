@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
+        services.AddScoped<IVisitSchedulerWorkClaimer, PostgresVisitSchedulerWorkClaimer>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IVisitEndTimeChanger, PostgresVisitEndTimeChanger>();
         services.AddScoped<ChangeVisitEndTimeFlow>();
