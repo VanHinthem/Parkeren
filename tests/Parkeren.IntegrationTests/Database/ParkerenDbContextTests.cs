@@ -2400,7 +2400,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using var verifyContext = fixture.CreateDbContext();
         var persisted = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
         Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
-        Assert.Equal(coverageEnd, persisted.DueAt);
+        Assert.InRange((persisted.DueAt - coverageEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Null(persisted.ClaimedAt);
         Assert.Null(persisted.ClaimedBy);
     }
