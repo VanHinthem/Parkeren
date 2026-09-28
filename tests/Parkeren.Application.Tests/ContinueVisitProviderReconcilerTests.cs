@@ -18,6 +18,7 @@ public sealed class ContinueVisitProviderReconcilerTests
             "TK01HF",
             preparation.Action.PlannedStartAt,
             requestedEnd,
+            "Oss",
             "active");
         var store = new TrackingResultStore();
 
@@ -55,6 +56,7 @@ public sealed class ContinueVisitProviderReconcilerTests
             "TK01HF",
             preparation.Action.PlannedStartAt,
             requestedEnd.AddMinutes(-5),
+            "Oss",
             "active");
         var store = new TrackingResultStore();
 
@@ -72,8 +74,7 @@ public sealed class ContinueVisitProviderReconcilerTests
         var start = requestedEnd.AddHours(-2);
         var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), start, requestedEnd.AddHours(-1));
         action.MarkStarting();
-        action.CaptureStartResponse("provider-1", start, "active");
-        action.MarkActive();
+        action.MarkActive("provider-1", start, "active");
 
         var operation = new ProviderOperation(
             Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Extend);
