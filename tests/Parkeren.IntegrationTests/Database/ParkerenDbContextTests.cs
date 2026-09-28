@@ -626,7 +626,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             x => x.VisitId == result.Visit.Id, cancellationToken);
         Assert.InRange((action.PlannedEndAt - startAt.AddHours(4)).Duration(),
             TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
-        Assert.Equal(desiredEndAt, result.Visit.DesiredEndAt);
+        Assert.NotNull(result.Visit.DesiredEndAt);
+        Assert.InRange((result.Visit.DesiredEndAt.Value - desiredEndAt).Duration(),
+            TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.InRange((work.DueAt - startAt.AddHours(4).AddMinutes(-5)).Duration(),
             TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
