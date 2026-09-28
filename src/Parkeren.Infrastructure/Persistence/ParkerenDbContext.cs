@@ -180,7 +180,9 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasIndex(x => new { x.Status, x.DueAt });
-            entity.HasIndex(x => new { x.VisitId, x.Type, x.DueAt }).IsUnique();
+            entity.HasIndex(x => new { x.VisitId, x.Type, x.DueAt })
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('Pending', 'Claimed')");
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
         });
 

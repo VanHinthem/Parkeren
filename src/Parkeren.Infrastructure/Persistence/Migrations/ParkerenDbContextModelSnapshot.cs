@@ -638,7 +638,8 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status", "DueAt");
 
                     b.HasIndex("VisitId", "Type", "DueAt")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Pending', 'Claimed')");
 
                     b.ToTable("visit_scheduler_work", (string)null);
                 });

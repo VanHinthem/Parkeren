@@ -72,5 +72,12 @@ public sealed class VisitEndTimeSchedulerTests(PostgreSqlFixture fixture)
         Assert.NotNull(persistedEnd);
         Assert.InRange((persistedEnd.Value - now.AddHours(1)).Duration(),
             TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+
+        // A later extension may need work at the same boundary again.
+        var replacement = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage, work.DueAt);
+        verify.VisitSchedulerWork.Add(replacement);
+        await verify.SaveChangesAsync(ct);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, replacement.Status);
     }
 }

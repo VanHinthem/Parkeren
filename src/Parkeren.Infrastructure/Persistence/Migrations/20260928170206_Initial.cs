@@ -516,7 +516,8 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 name: "IX_visit_scheduler_work_VisitId_Type_DueAt",
                 table: "visit_scheduler_work",
                 columns: new[] { "VisitId", "Type", "DueAt" },
-                unique: true);
+                unique: true,
+                filter: "\"Status\" IN ('Pending', 'Claimed')");
 
             migrationBuilder.CreateIndex(
                 name: "IX_visits_StartedByUserId",
