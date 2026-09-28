@@ -41,6 +41,7 @@ public sealed class ContinueVisitProviderExecutor(
     IProviderExtendResultStore resultStore,
     IProviderExtendMutationGuard? mutationGuard = null)
 {
+    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
     public async Task<ProviderExtendExecution> ExecuteAsync(
         ProviderExtendPreparation preparation,
         CancellationToken cancellationToken = default)
@@ -77,6 +78,37 @@ public sealed class ContinueVisitProviderExecutor(
                      preparation.Action.Id,
                      cancellationToken)))
                 return new(preparation, null, true);
+
+            // A scheduler/recovery continuation must never rely on local state alone.
+            // Read the current provider action immediately before the mutation so a
+            // continuation already applied externally or during downtime is not repeated.
+            var currentActions = await provider.GetActionsAsync(cancellationToken);
+            var currentAction = currentActions.SingleOrDefault(x =>
+                x.ProviderActionId == preparation.Action.ProviderActionId);
+
+            if (currentAction is null)
+            {
+                await resultStore.RecordUnknownAsync(
+                    preparation,
+                    "provider-action-not-found",
+                    cancellationToken);
+                return new(preparation, null, true);
+            }
+
+            if (TimestampsMatch(currentAction.End, preparation.ProviderEndAt))
+            {
+                await resultStore.RecordConfirmedAsync(preparation, currentAction, cancellationToken);
+                return new(preparation, currentAction, false);
+            }
+
+            if (currentAction.End > preparation.ProviderEndAt)
+            {
+                await resultStore.RecordUnknownAsync(
+                    preparation,
+                    "provider-action-ahead",
+                    cancellationToken);
+                return new(preparation, currentAction, true);
+            }
 
             var action = await provider.ExtendActionAsync(
                 preparation.Action.ProviderActionId,
@@ -118,6 +150,9 @@ public sealed class ContinueVisitProviderExecutor(
             return new(preparation, null, false, true);
         }
     }
+
+    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
+        (left - right).Duration() < TimestampTolerance;
 }
 
 
