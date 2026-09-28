@@ -121,10 +121,37 @@ internal sealed class VisitRecoveryService(
 
                 await stopReconciler.ReconcileAsync(preparation, cancellationToken);
             }
+
+            await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
         }
     }
 
 
+
+    private async Task ReevaluateAfterReconciliationAsync(
+        Guid visitId,
+        CancellationToken cancellationToken)
+    {
+        var refreshedItems = await LoadAsync(cancellationToken);
+        var refreshedItem = refreshedItems.SingleOrDefault(x => x.Visit.Id == visitId);
+        if (refreshedItem is null)
+            return;
+
+        var refreshedDecision = VisitRecoveryClassifier.Classify(refreshedItem);
+        if (refreshedDecision.Kind == VisitRecoveryKind.RebuildScheduler)
+        {
+            await RebuildSchedulerAsync(refreshedItem, cancellationToken);
+            return;
+        }
+
+        if (refreshedDecision.Kind == VisitRecoveryKind.Ambiguous)
+        {
+            logger.LogError(
+                "Visit {VisitId} remained ambiguous after startup reconciliation. Automatic provider mutation is blocked and the Visit requires attention.",
+                visitId);
+            await MarkAmbiguousAsync(refreshedItem, cancellationToken);
+        }
+    }
 
     private async Task MarkAmbiguousAsync(
         VisitRecoveryItem item,
