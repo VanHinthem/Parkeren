@@ -74,6 +74,12 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
     {
         ArgumentNullException.ThrowIfNull(preparation);
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
         var operation = await dbContext.ProviderOperations.SingleAsync(
             x => x.Id == preparation.Operation.Id,
             cancellationToken);
@@ -87,6 +93,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             visit.SetHealth(VisitHealth.Reconciling);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task RecordDefinitiveFailureAsync(
@@ -95,6 +102,12 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
 
         var operation = await dbContext.ProviderOperations.SingleAsync(
             x => x.Id == preparation.Operation.Id,
@@ -109,5 +122,6 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             visit.SetHealth(VisitHealth.Reconciling);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 }
