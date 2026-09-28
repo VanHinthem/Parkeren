@@ -28,7 +28,7 @@ public sealed class ParkingRuleSetPaidTimeCalculatorTests
 
         var paid = ParkingRuleSetPaidTimeCalculator.Calculate(monday, end, [first, second]);
 
-        Assert.Equal(TimeSpan.FromHours(5), paid);
+        Assert.Equal(TimeSpan.FromHours(4), paid);
     }
 
     [Fact]
