@@ -58,6 +58,12 @@ internal sealed class PostgresVisitEndTimeChanger(
         {
             visit.EnsureDesiredEndCanChange(desiredEndAt);
 
+            if (await dbContext.VisitSchedulerWork.AnyAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.Status == VisitSchedulerWorkStatus.Claimed,
+                    cancellationToken))
+                throw new InvalidOperationException("End-time cannot change while scheduler work is being processed.");
+
             if (desiredEndAt is not null && visit.DesiredEndAt is not null && desiredEndAt < visit.DesiredEndAt)
             {
                 var providerActions = await dbContext.ProviderParkingActions
@@ -92,6 +98,16 @@ internal sealed class PostgresVisitEndTimeChanger(
             }
 
             visit.ChangeDesiredEndAt(desiredEndAt);
+            if (desiredEndAt is DateTimeOffset newEndAt)
+            {
+                var obsoleteWork = await dbContext.VisitSchedulerWork
+                    .Where(x => x.VisitId == visit.Id &&
+                                x.Status == VisitSchedulerWorkStatus.Pending &&
+                                x.DueAt >= newEndAt)
+                    .ToListAsync(cancellationToken);
+                foreach (var work in obsoleteWork)
+                    work.Cancel();
+            }
             change.MarkApplied();
             dbContext.VisitEndTimeChanges.Add(change);
         }
