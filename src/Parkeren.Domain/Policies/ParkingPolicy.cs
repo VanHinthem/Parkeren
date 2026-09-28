@@ -1,4 +1,25 @@
 namespace Parkeren.Domain.Policies;
+public sealed class ParkingSystemSettings
+{
+    private ParkingSystemSettings() { }
+    public ParkingSystemSettings(Guid id, int maxConcurrentVisits)
+    {
+        if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
+        Id = id;
+        MaxConcurrentVisits = maxConcurrentVisits;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    public Guid Id { get; private set; }
+    public int MaxConcurrentVisits { get; private set; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+    public void SetMaxConcurrentVisits(int maxConcurrentVisits)
+    {
+        if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
+        MaxConcurrentVisits = maxConcurrentVisits;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+}
+
 public sealed class DefaultParkingPolicy
 {
     private DefaultParkingPolicy() { }
