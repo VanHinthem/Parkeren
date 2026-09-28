@@ -72,7 +72,29 @@ internal sealed class VisitSchedulerWorkProcessor(
         }
 
         var execution = await providerExtendExecutor.ExecuteAsync(preparation, cancellationToken);
-        if (execution.RequiresReconciliation || execution.DefinitiveFailure)
+        if (execution.RequiresReconciliation)
+        {
+            if (preparation.Operation.Status == ProviderOperationStatus.Unknown)
+            {
+                var reconciler = serviceProvider.GetService<ContinueVisitProviderReconciler>();
+                if (reconciler is not null)
+                {
+                    var reconciled = await reconciler.ReconcileAsync(preparation, cancellationToken);
+                    if (reconciled is not null)
+                    {
+                        work.Complete(now);
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        return;
+                    }
+                }
+            }
+
+            work.Release(now.AddMinutes(1));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (execution.DefinitiveFailure)
         {
             work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
