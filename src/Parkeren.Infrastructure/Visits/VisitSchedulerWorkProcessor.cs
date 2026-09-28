@@ -2,13 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitSchedulerWorkProcessor(
     ParkerenDbContext dbContext,
     IProviderExtendStore providerExtendStore,
-    ContinueVisitProviderExecutor providerExtendExecutor)
+    IServiceProvider serviceProvider)
     : IVisitSchedulerWorkProcessor
 {
     public async Task ProcessAsync(
@@ -61,6 +62,14 @@ internal sealed class VisitSchedulerWorkProcessor(
             work.Id,
             desiredEndAt,
             cancellationToken);
+
+        var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
+        if (providerExtendExecutor is null)
+        {
+            work.Release(now.AddMinutes(1));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
 
         var execution = await providerExtendExecutor.ExecuteAsync(preparation, cancellationToken);
         if (execution.RequiresReconciliation || execution.DefinitiveFailure)
