@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<IProviderExtendResultStore, ProviderExtendResultStore>();
         services.AddScoped<IProviderExtendMutationGuard, ProviderExtendMutationGuard>();
         services.AddScoped<ContinueVisitProviderExecutor>();
+        services.AddScoped<ContinueVisitProviderReconciler>();
         services.AddScoped<IProviderStartMutationGuard, ProviderStartMutationGuard>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
