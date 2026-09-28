@@ -73,18 +73,19 @@ export async function stopVisit(visitId:string,operationId:string):Promise<StopV
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
+export type ChangeVisitEndTimeResult={visit:ActiveVisit;reconciliationRequired:boolean};
 export async function changeVisitEndTime(
   visitId:string,
   operationId:string,
   desiredEndAt:string|null
-):Promise<ActiveVisit>{
+):Promise<ChangeVisitEndTimeResult>{
   const response=await apiFetch(`/api/visits/${visitId}/end-time`,{
     method:"PUT",
     body:JSON.stringify({operationId,desiredEndAt})
   });
   if(!response.ok)throw new Error(`Eindtijd kon niet worden gewijzigd (HTTP ${response.status}).`);
   const result=await response.json() as {visit:ActiveVisit};
-  return result.visit;
+  return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
 export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
