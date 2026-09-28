@@ -2582,6 +2582,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             Assert.False(first.IsReplay);
             Assert.True(first.AttemptStartedNow);
             Assert.Equal(ProviderOperationType.ContinueStart, first.Operation.Type);
+            var guard = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartMutationGuard>();
+            Assert.True(await guard.CanStartAsync(visit.Id, cancellationToken));
         }
 
         await using (var scope = provider.CreateAsyncScope())

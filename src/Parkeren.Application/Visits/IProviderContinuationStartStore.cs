@@ -15,3 +15,7 @@ public interface IProviderContinuationStartStore
 public interface IProviderContinuationStartResultStore : IProviderStartResultStore
 {
 }
+
+public interface IProviderContinuationStartMutationGuard : IProviderStartMutationGuard
+{
+}

@@ -49,6 +49,8 @@ public static class DependencyInjection
         services.AddScoped<IProviderStartStore, ProviderStartStore>();
         services.AddScoped<IProviderContinuationStartStore, ProviderContinuationStartStore>();
         services.AddScoped<IProviderContinuationStartResultStore, ProviderContinuationStartResultStore>();
+        services.AddScoped<IProviderContinuationStartMutationGuard, ProviderContinuationStartMutationGuard>();
+        services.AddScoped<ContinueVisitStartExecutor>();
         services.AddScoped<IProviderExtendStore, ProviderExtendStore>();
         services.AddScoped<IProviderExtendResultStore, ProviderExtendResultStore>();
         services.AddScoped<IProviderExtendMutationGuard, ProviderExtendMutationGuard>();
