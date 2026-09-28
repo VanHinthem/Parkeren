@@ -9,10 +9,11 @@ internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) 
 {
     private const long CapacityLockKey = 0x5041524B; // PARK
 
-    public async Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxConcurrentVisits, CancellationToken cancellationToken = default)
+    public async Task<VisitCapacityClaim> TryClaimAsync(Visit visit, int maxGlobalConcurrentVisits, int maxUserConcurrentVisits, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(visit);
-        if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
+        if (maxGlobalConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxGlobalConcurrentVisits));
+        if (maxUserConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxUserConcurrentVisits));
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({CapacityLockKey})", cancellationToken);
@@ -24,8 +25,15 @@ internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) 
             return new VisitCapacityClaim(true, existing, true);
         }
 
+        var occupiedByUser = await dbContext.Visits.CountAsync(x => x.UserId == visit.UserId && x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled, cancellationToken);
+        if (occupiedByUser >= maxUserConcurrentVisits)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new VisitCapacityClaim(false, null, false);
+        }
+
         var occupied = await dbContext.Visits.CountAsync(x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled, cancellationToken);
-        if (occupied >= maxConcurrentVisits)
+        if (occupied >= maxGlobalConcurrentVisits)
         {
             await transaction.RollbackAsync(cancellationToken);
             return new VisitCapacityClaim(false, null, false);
