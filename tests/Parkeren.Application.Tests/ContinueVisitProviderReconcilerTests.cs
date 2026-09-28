@@ -101,7 +101,7 @@ public sealed class ContinueVisitProviderReconcilerTests
             Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Extend);
         operation.SetRequestedEndAt(requestedEnd);
         operation.BeginAttempt();
-        operation.Succeed();
+        operation.Succeed(DateTimeOffset.UtcNow);
 
         return new ProviderExtendPreparation(operation, action, requestedEnd, true);
     }
