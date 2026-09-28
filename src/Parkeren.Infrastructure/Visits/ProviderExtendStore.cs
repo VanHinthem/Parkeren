@@ -35,11 +35,13 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
 
         var otherMutationExists = await dbContext.ProviderOperations.AnyAsync(
             x => x.VisitId == persistedVisit.Id &&
-                 x.Status == ProviderOperationStatus.InProgress &&
-                 x.OperationId != operationId,
+                 x.OperationId != operationId &&
+                 (x.Status == ProviderOperationStatus.InProgress ||
+                  x.Status == ProviderOperationStatus.Unknown ||
+                  x.Status == ProviderOperationStatus.Reconciling),
             cancellationToken);
         if (otherMutationExists)
-            throw new InvalidOperationException("Another provider mutation is already in progress for this Visit.");
+            throw new InvalidOperationException("Another provider mutation is in progress or requires reconciliation for this Visit.");
 
         var persistedAction = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
         if (persistedAction.VisitId != persistedVisit.Id || persistedAction.State != ProviderActionState.Active)
