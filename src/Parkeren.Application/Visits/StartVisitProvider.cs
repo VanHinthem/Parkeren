@@ -21,3 +21,40 @@ public sealed class StartVisitProviderPreparer
         return new ProviderStartPreparation(operation, action, claim.IsReplay, true);
     }
 }
+
+
+public sealed record ProviderExtendPreparation(
+    ProviderOperation Operation,
+    ProviderParkingAction Action,
+    bool IsReplay,
+    bool AttemptStartedNow = false);
+
+public sealed class ContinueVisitProviderPreparer
+{
+    public ProviderExtendPreparation Prepare(
+        Visit visit,
+        ProviderParkingAction action,
+        Guid operationId,
+        DateTimeOffset providerEndAt)
+    {
+        ArgumentNullException.ThrowIfNull(visit);
+        ArgumentNullException.ThrowIfNull(action);
+        if (visit.Status != VisitStatus.Active)
+            throw new InvalidOperationException("Provider continuation can only be prepared for an Active Visit.");
+        if (action.VisitId != visit.Id || action.State != ProviderActionState.Active)
+            throw new InvalidOperationException("Provider continuation requires the Visit's active provider action.");
+        if (operationId == Guid.Empty)
+            throw new ArgumentException("Operation id is required.", nameof(operationId));
+        if (providerEndAt <= action.PlannedEndAt)
+            throw new ArgumentOutOfRangeException(nameof(providerEndAt));
+
+        var operation = new ProviderOperation(
+            Guid.NewGuid(),
+            operationId,
+            visit.Id,
+            action.Id,
+            ProviderOperationType.Extend);
+
+        return new ProviderExtendPreparation(operation, action, false, true);
+    }
+}
