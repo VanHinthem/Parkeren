@@ -13,6 +13,7 @@ internal sealed class VisitRecoveryService(
 {
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
+        await ReleaseClaimedSchedulerWorkAsync(cancellationToken);
         var items = await LoadAsync(cancellationToken);
 
         foreach (var item in items)
@@ -78,6 +79,26 @@ internal sealed class VisitRecoveryService(
         }
     }
 
+
+
+    private async Task ReleaseClaimedSchedulerWorkAsync(CancellationToken cancellationToken)
+    {
+        var claimedWork = await dbContext.VisitSchedulerWork
+            .Where(x => x.Status == VisitSchedulerWorkStatus.Claimed)
+            .ToListAsync(cancellationToken);
+
+        foreach (var work in claimedWork)
+        {
+            var dueAt = work.DueAt;
+            if (work.ClaimedAt is DateTimeOffset claimedAt && dueAt <= claimedAt)
+                dueAt = claimedAt.AddTicks(1);
+
+            work.Release(dueAt);
+        }
+
+        if (claimedWork.Count > 0)
+            await dbContext.SaveChangesAsync(cancellationToken);
+    }
 
     private async Task RebuildSchedulerAsync(
         VisitRecoveryItem item,
