@@ -378,6 +378,27 @@ app.MapGet("/api/visits/recent", async (
     return Results.Ok(visits);
 });
 
+app.MapGet("/api/visits/history", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var visits = await dbContext.Visits
+        .AsNoTracking()
+        .Where(x => x.UserId == authenticated.User.Id)
+        .Where(x => x.Status == VisitStatus.Completed || x.Status == VisitStatus.Cancelled)
+        .OrderByDescending(x => x.ActualEndAt ?? x.StartAt)
+        .Take(100)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(visits);
+});
+
 app.MapGet("/api/visits/{visitId:guid}", async (
     Guid visitId,
     ParkerenDbContext dbContext,
