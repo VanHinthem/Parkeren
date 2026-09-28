@@ -6,7 +6,41 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/Parkeren.Api/**'
+              - 'src/Parkeren.Application/**'
+              - 'src/Parkeren.Domain/**'
+              - 'src/Parkeren.Infrastructure/**'
+              - 'src/Parkeren.TwoParkMock/**'
+              - 'tests/Parkeren.Application.Tests/**'
+              - 'tests/Parkeren.Domain.Tests/**'
+              - 'tests/Parkeren.IntegrationTests/**'
+              - '*.slnx'
+              - '*.props'
+              - '*.targets'
+              - 'global.json'
+              - 'Directory.Packages.props'
+              - 'compose*.yml'
+              - '.github/workflows/**'
+            frontend:
+              - 'src/Parkeren.Web/**'
+              - 'compose*.yml'
+              - '.github/workflows/**'
+
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +52,8 @@ jobs:
       - run: dotnet test Parkeren.slnx --no-build --configuration Release
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +63,6 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - run: npm test
