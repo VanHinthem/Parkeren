@@ -5,7 +5,7 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class VisitSchedulerWorkProcessor(ParkerenDbContext dbContext)
+internal sealed class VisitSchedulerWorkProcessor(ParkerenDbContext dbContext, IProviderExtendStore providerExtendStore)
     : IVisitSchedulerWorkProcessor
 {
     public async Task ProcessAsync(
@@ -45,8 +45,22 @@ internal sealed class VisitSchedulerWorkProcessor(ParkerenDbContext dbContext)
             return;
         }
 
-        // Provider continuation is deliberately introduced in the next slice.
-        // At this point the worker has established that JIT evaluation is due.
+        if (visit.DesiredEndAt is not DateTimeOffset desiredEndAt || desiredEndAt <= now)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        await providerExtendStore.PrepareAttemptAsync(
+            visit,
+            latestAction,
+            work.Id,
+            desiredEndAt,
+            cancellationToken);
+
+        // The durable provider operation now owns continuation recovery. The
+        // external mutation is deliberately executed by a later slice.
         work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
