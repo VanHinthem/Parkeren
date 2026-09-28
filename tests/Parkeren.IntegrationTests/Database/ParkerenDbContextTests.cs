@@ -6,6 +6,7 @@ using Parkeren.Infrastructure.ParkingProvider;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Users;
