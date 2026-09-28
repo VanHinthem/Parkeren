@@ -2406,6 +2406,69 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Provider_extend_store_replays_same_operation_without_duplicate()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var user = new User(Guid.NewGuid(), "extend-store", "EXTEND-STORE", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "EX-11-HD", "EX11HD", null);
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, now.AddHours(-1), now.AddHours(2), snapshot);
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive("provider-extend", now.AddHours(-1));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+        var providerEndAt = now.AddHours(1);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IProviderExtendStore>();
+            var first = await store.PrepareAttemptAsync(visit, action, operationId, providerEndAt, cancellationToken);
+            Assert.False(first.IsReplay);
+            Assert.True(first.AttemptStartedNow);
+        }
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IProviderExtendStore>();
+            var replay = await store.PrepareAttemptAsync(visit, action, operationId, providerEndAt, cancellationToken);
+            Assert.True(replay.IsReplay);
+            Assert.False(replay.AttemptStartedNow);
+            Assert.Equal(operationId, replay.Operation.OperationId);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var operations = await verifyContext.ProviderOperations
+            .Where(x => x.OperationId == operationId)
+            .ToListAsync(cancellationToken);
+        Assert.Single(operations);
+        Assert.Equal(ProviderOperationStatus.InProgress, operations[0].Status);
+        Assert.Equal(1, operations[0].AttemptCount);
+    }
+
+    [Fact]
     public async Task Scheduler_work_claim_cancels_due_item_when_visit_is_stopping()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
