@@ -3,7 +3,7 @@ import type { VehicleSummary } from "../api/client";
 import { Card } from "../design/primitives/Card";
 import "./StartVisitCard.css";
 
-type Props={vehicles:VehicleSummary[];onStart:(vehicleId:string,desiredEndAt:string|null)=>Promise<void>;starting?:boolean;error?:string|null};
+type Props={vehicles:VehicleSummary[];onStart:(vehicleId:string,desiredEndAt:string|null)=>Promise<void>;starting?:boolean;error?:string|null;disabled?:boolean};
 
 export function StartVisitCard({vehicles,onStart,starting=false,error,disabled=false}:Props){
   const[selectedVehicleId,setSelectedVehicleId]=useState(vehicles[0]?.id??"");
