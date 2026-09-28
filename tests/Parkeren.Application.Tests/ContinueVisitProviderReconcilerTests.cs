@@ -8,6 +8,26 @@ namespace Parkeren.Application.Tests;
 
 public sealed class ContinueVisitProviderReconcilerTests
 {
+
+    [Fact]
+    public async Task Succeeded_provider_extension_replay_does_not_call_provider_again()
+    {
+        var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
+        var preparation = CreateSucceededPreparation(requestedEnd);
+        var provider = new CountingProvider();
+        var store = new TrackingResultStore();
+
+        var result = await new ContinueVisitProviderExecutor(provider, store)
+            .ExecuteAsync(preparation, TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.False(result.DefinitiveFailure);
+        Assert.Null(result.ProviderAction);
+        Assert.Equal(0, provider.GetActionsCalls);
+        Assert.Equal(0, provider.ExtendCalls);
+        Assert.Equal(0, store.ConfirmedCalls);
+    }
+
     [Fact]
     public async Task Matching_provider_action_and_requested_end_is_confirmed()
     {
@@ -69,6 +89,23 @@ public sealed class ContinueVisitProviderReconcilerTests
         Assert.Equal(ProviderOperationStatus.Unknown, preparation.Operation.Status);
     }
 
+
+    private static ProviderExtendPreparation CreateSucceededPreparation(DateTimeOffset requestedEnd)
+    {
+        var start = requestedEnd.AddHours(-2);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), start, requestedEnd.AddHours(-1));
+        action.MarkStarting();
+        action.MarkActive("provider-1", start, "active");
+
+        var operation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Extend);
+        operation.SetRequestedEndAt(requestedEnd);
+        operation.BeginAttempt();
+        operation.Succeed();
+
+        return new ProviderExtendPreparation(operation, action, requestedEnd, true);
+    }
+
     private static ProviderExtendPreparation CreateUnknownPreparation(DateTimeOffset requestedEnd)
     {
         var start = requestedEnd.AddHours(-2);
@@ -97,6 +134,31 @@ public sealed class ContinueVisitProviderReconcilerTests
 
         public Task RecordUnknownAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RecordDefinitiveFailureAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+
+    private sealed class CountingProvider : IParkingProvider
+    {
+        public int GetActionsCalls { get; private set; }
+        public int ExtendCalls { get; private set; }
+
+        public Task<IReadOnlyList<ProviderAction>> GetActionsAsync(CancellationToken cancellationToken = default)
+        {
+            GetActionsCalls++;
+            return Task.FromResult<IReadOnlyList<ProviderAction>>([]);
+        }
+
+        public Task<ProviderAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default)
+        {
+            ExtendCalls++;
+            throw new InvalidOperationException("A succeeded replay must not call the provider.");
+        }
+
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class ActionsProvider(IReadOnlyList<ProviderAction> actions) : IParkingProvider
