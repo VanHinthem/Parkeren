@@ -42,6 +42,10 @@ export async function getActiveVisit():Promise<ActiveVisit|null>{
   return json<ActiveVisit>(response);
 }
 
+export type ParkingPolicy={maxPaidParkingDurationMinutes:number;maxVisitElapsedDurationMinutes:number|null;allowAutoExtension:boolean;allowManualStop:boolean};
+export async function getParkingPolicy():Promise<ParkingPolicy>{
+  return json<ParkingPolicy>(await apiFetch("/api/visits/policy"));
+}
 export type VisitCapacity={used:number;total:number};
 export async function getVisitCapacity():Promise<VisitCapacity>{
   return json<VisitCapacity>(await apiFetch("/api/visits/capacity"));
