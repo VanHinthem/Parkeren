@@ -50,6 +50,9 @@ export async function getVisitCapacity():Promise<VisitCapacity>{
 export async function getRecentVisits():Promise<ActiveVisit[]>{
   return json<ActiveVisit[]>(await apiFetch("/api/visits/recent"));
 }
+export async function getVisitHistory():Promise<ActiveVisit[]>{
+  return json<ActiveVisit[]>(await apiFetch("/api/visits/history"));
+}
 
 export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
 export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string=crypto.randomUUID()):Promise<StartVisitResult>{
