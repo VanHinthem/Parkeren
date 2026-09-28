@@ -53,7 +53,15 @@ public sealed class ContinueVisitProviderExecutor(
         if (preparation.IsReplay &&
             !preparation.AttemptStartedNow &&
             preparation.Operation.Status == ProviderOperationStatus.InProgress)
+        {
+            var attemptStartedAt = preparation.Operation.AttemptStartedAt;
+            if (!attemptStartedAt.HasValue ||
+                DateTimeOffset.UtcNow - attemptStartedAt.Value < TimeSpan.FromMinutes(5))
+                return new(preparation, null, true);
+
+            await resultStore.RecordUnknownAsync(preparation, "stale-in-progress", cancellationToken);
             return new(preparation, null, true);
+        }
 
         if (preparation.Operation.Status != ProviderOperationStatus.InProgress ||
             preparation.Action.State != ProviderActionState.Active ||
