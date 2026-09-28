@@ -45,3 +45,12 @@ export function getOrCreatePendingOperation(type: PendingOperationType, logicalK
 export function clearPendingOperation(type: PendingOperationType, logicalKey: string) {
   write(read().filter(item => item.type !== type || item.logicalKey !== logicalKey));
 }
+
+export function clearResolvedVisitOperations(activeVisitId: string | null) {
+  write(read().filter(item => {
+    if (item.type === "start") return activeVisitId !== null;
+    if (item.type === "stop" || item.type === "end-time")
+      return activeVisitId !== null && item.logicalKey.startsWith(`${activeVisitId}:`) || item.logicalKey === activeVisitId;
+    return false;
+  }));
+}
