@@ -45,7 +45,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             if (visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
                 desiredEndAt > providerAction.End)
             {
-                var nextDueAt = providerAction.End;
+                var nextDueAt = ProviderCoverageSchedule.PrecheckAt(providerAction.End);
                 var nextWorkExists = await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
                          x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&

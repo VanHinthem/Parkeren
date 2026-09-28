@@ -70,7 +70,7 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
             {
                 dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
                     Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
-                    preparation.Action.PlannedEndAt));
+                    ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt)));
             }
         }
         else if (visit.Status != VisitStatus.Stopping)

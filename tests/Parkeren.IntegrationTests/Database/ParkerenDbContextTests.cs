@@ -613,7 +613,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitStatus.Active, persistedVisit.Status);
         Assert.Equal(VisitSchedulerWorkType.ContinueProviderCoverage, work.Type);
         Assert.Equal(VisitSchedulerWorkStatus.Pending, work.Status);
-        Assert.InRange((work.DueAt - actionEndAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((work.DueAt - actionEndAt.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]

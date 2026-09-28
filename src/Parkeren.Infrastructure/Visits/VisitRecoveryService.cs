@@ -230,13 +230,12 @@ internal sealed class VisitRecoveryService(
         if (desiredEndAt <= confirmedAction.End)
             return;
 
-        var dueAt = confirmedAction.End;
+        var dueAt = ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);
         var exists = await dbContext.VisitSchedulerWork.AnyAsync(
             x => x.VisitId == item.Visit.Id &&
                  x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
                  (x.Status == VisitSchedulerWorkStatus.Pending ||
-                  x.Status == VisitSchedulerWorkStatus.Claimed) &&
-                 x.DueAt == dueAt,
+                  x.Status == VisitSchedulerWorkStatus.Claimed),
             cancellationToken);
 
         if (exists)
