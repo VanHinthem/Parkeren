@@ -7,6 +7,12 @@ public sealed record VisitRecoveryItem(
     IReadOnlyList<ProviderParkingAction> ProviderActions,
     IReadOnlyList<ProviderOperation> UnresolvedOperations);
 
+public interface IVisitRecoveryService
+{
+    Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
+        CancellationToken cancellationToken = default);
+}
+
 public enum VisitRecoveryKind
 {
     ReconcileStart,
