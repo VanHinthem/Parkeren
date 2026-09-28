@@ -43,10 +43,21 @@ internal sealed class AdministrationService(
         if (await dbContext.Users.AnyAsync(x => x.NormalizedUsername == normalized, cancellationToken))
             return null;
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
         var user = new User(Guid.NewGuid(), trimmed, normalized, string.Empty, role);
         user.ChangePinHash(passwordHasher.HashPassword(user, pin));
         dbContext.Users.Add(user);
+        if (role == UserRole.Admin)
+        {
+            var adminLimit = await dbContext.ParkingSystemSettings
+                .Select(x => x.MaxConcurrentVisits).SingleAsync(cancellationToken);
+            var adminPolicy = new UserPolicyOverride(user.Id);
+            adminPolicy.SetMaxConcurrentVisits(adminLimit);
+            dbContext.UserPolicyOverrides.Add(adminPolicy);
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new CreateUserResult(user.Id, user.Username, user.Role, user.IsActive);
     }
 

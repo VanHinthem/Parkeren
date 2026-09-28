@@ -16,6 +16,35 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ParkingCapacitySettingsTests(PostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task New_admin_gets_explicit_global_capacity_override()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var actorName = $"admin-{Guid.NewGuid():N}";
+        var actor = new User(Guid.NewGuid(), actorName, actorName.ToUpperInvariant(), "hash", UserRole.Admin);
+        await using (var context = fixture.CreateDbContext())
+        {
+            context.Users.Add(actor);
+            await context.SaveChangesAsync(ct);
+        }
+
+        var services = CreateServices();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+        var adminName = $"new-admin-{Guid.NewGuid():N}";
+        var visitorName = $"new-visitor-{Guid.NewGuid():N}";
+        var admin = await administration.CreateUserAsync(actor.Id, adminName, "123456", UserRole.Admin, ct);
+        var visitor = await administration.CreateUserAsync(actor.Id, visitorName, "123456", UserRole.Visitor, ct);
+
+        Assert.NotNull(admin);
+        Assert.NotNull(visitor);
+        await using var context = fixture.CreateDbContext();
+        Assert.Equal<int?>(5, await context.UserPolicyOverrides
+            .Where(x => x.UserId == admin.Id).Select(x => x.MaxConcurrentVisits).SingleAsync(ct));
+        Assert.False(await context.UserPolicyOverrides.AnyAsync(x => x.UserId == visitor.Id, ct));
+    }
+
+    [Fact]
     public async Task Lowering_global_limit_clamps_overrides_but_raising_it_does_not()
     {
         var ct = TestContext.Current.CancellationToken;

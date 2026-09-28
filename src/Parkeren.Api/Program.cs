@@ -68,6 +68,10 @@ await using (var scope = app.Services.CreateAsyncScope())
         var hasher = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<User>>();
         user.ChangePinHash(hasher.HashPassword(user, pin));
         db.Users.Add(user);
+        var adminLimit = await db.ParkingSystemSettings.Select(x => x.MaxConcurrentVisits).SingleAsync();
+        var adminPolicy = new UserPolicyOverride(user.Id);
+        adminPolicy.SetMaxConcurrentVisits(adminLimit);
+        db.UserPolicyOverrides.Add(adminPolicy);
         await db.SaveChangesAsync();
         app.Logger.LogInformation("Initial administrator account created.");
     }
