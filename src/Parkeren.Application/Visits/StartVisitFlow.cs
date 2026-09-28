@@ -38,7 +38,7 @@ public sealed class StartVisitFlow(
         EffectiveParkingPolicy policy,
         IEnumerable<ParkingRuleSet> ruleSets,
         DateTimeOffset coverageEvaluationEndAt,
-        int maxConcurrentVisits,
+        int maxGlobalConcurrentVisits,
         StartVisitProviderContext? providerContext = null,
         CancellationToken cancellationToken = default)
     {
@@ -51,7 +51,8 @@ public sealed class StartVisitFlow(
 
         var claim = await claimer.ClaimAsync(
             preparation,
-            maxConcurrentVisits,
+            maxGlobalConcurrentVisits,
+            policy.MaxConcurrentVisits,
             cancellationToken);
 
         if (claim is null)
