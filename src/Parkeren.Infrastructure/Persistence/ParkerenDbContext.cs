@@ -137,6 +137,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.LastErrorCode).HasMaxLength(100);
             entity.Property(x => x.AttemptStartedAt);
+            entity.Property(x => x.RequestedEndAt);
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasIndex(x => x.OperationId).IsUnique();
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
