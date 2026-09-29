@@ -35,7 +35,7 @@ internal sealed class ProviderContinuationStartMutationGuard(ParkerenDbContext d
             allowed = await dbContext.ProviderParkingActions.AsNoTracking().AnyAsync(
                 x => x.Id == actionId && x.VisitId == visitId &&
                      x.State == ProviderActionState.Starting &&
-                     x.PlannedStartAt <= now,
+                     x.PlannedStartAt <= now.AddMinutes(5).AddSeconds(1),
                 cancellationToken);
         }
 
