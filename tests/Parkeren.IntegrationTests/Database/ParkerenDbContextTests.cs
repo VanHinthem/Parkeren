@@ -3663,6 +3663,76 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Open_ended_visit_without_paid_segment_rolls_scheduler_horizon_forward()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"rolling-horizon-{suffix}", $"ROLLING-HORIZON-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"RH-{suffix[..2]}-{suffix[2..4]}", $"RH{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            now.AddHours(-1),
+            null,
+            new EffectiveParkingPolicySnapshot(null, null, true));
+        visit.Activate();
+
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(),
+            visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            now.AddMinutes(-1));
+        work.Claim("rolling-horizon-test", now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(work);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(),
+                now.AddDays(-1),
+                now.AddDays(30),
+                TimeSpan.FromHours(4),
+                Array.Empty<PaidWindow>()));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimed = await context.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                .ProcessAsync(claimed, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persisted = await verifyContext.VisitSchedulerWork
+            .SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
+        Assert.InRange(
+            (persisted.DueAt - now.AddDays(14)).Duration(),
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public async Task Scheduled_successor_releases_work_until_its_start()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
