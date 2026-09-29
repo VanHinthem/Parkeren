@@ -102,6 +102,46 @@ if (app.Environment.IsDevelopment())
             actions
         });
     });
+
+    app.MapPost("/api/dev/parking-provider/actions/start", async (
+        DevStartProviderActionRequest request,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.LicensePlate))
+            return Results.BadRequest(new { error = "LicensePlate is verplicht." });
+        if (request.DurationMinutes is < 1 or > 15)
+            return Results.BadRequest(new { error = "DurationMinutes moet voor de diagnostische test tussen 1 en 15 liggen." });
+
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var start = DateTimeOffset.UtcNow;
+        var created = await provider.StartActionAsync(
+            new ProviderParkingActionRequest(
+                request.LicensePlate,
+                start,
+                start.AddMinutes(request.DurationMinutes),
+                product.Location),
+            cancellationToken);
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        return Results.Ok(new { created, actions });
+    });
+
+    app.MapPost("/api/dev/parking-provider/actions/{providerActionId}/stop", async (
+        string providerActionId,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(providerActionId))
+            return Results.BadRequest(new { error = "ProviderActionId is verplicht." });
+
+        await provider.StopActionAsync(providerActionId, cancellationToken);
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        return Results.Ok(new { stoppedProviderActionId = providerActionId, actions });
+    });
 }
 
 app.UseDefaultFiles();
@@ -674,7 +714,7 @@ void DeleteSessionCookie(HttpContext context, bool secure)
     });
 }
 
-public sealed record LoginRequest(string Username, string Pin);
+public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes);\npublic sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
 public sealed record CreateUserRequest(string Username, string Pin, UserRole Role);
