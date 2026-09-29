@@ -1,0 +1,12 @@
+services:
+  app:
+    environment:
+      ParkingProvider__Type: TwoPark
+      ParkingProvider__BaseUrl: https://mijn.2park.nl/gsmpark-app-www/json/
+      ParkingProvider__Email: ${PARKEREN_TWOPARK_EMAIL:?PARKEREN_TWOPARK_EMAIL is required}
+      ParkingProvider__Password: ${PARKEREN_TWOPARK_PASSWORD:?PARKEREN_TWOPARK_PASSWORD is required}
+    depends_on:
+      db:
+        condition: service_healthy
+      two-park-mock:
+        required: false
