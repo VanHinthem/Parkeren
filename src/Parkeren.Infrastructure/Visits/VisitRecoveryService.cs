@@ -219,9 +219,9 @@ internal sealed class VisitRecoveryService(
                                     x.Result == VisitEndTimeChangeResult.Pending)
                         .OrderByDescending(x => x.CreatedAt)
                         .FirstOrDefaultAsync(cancellationToken);
-                    if (pendingChange?.RequestedDesiredEndAt is DateTimeOffset requestedEndAt)
+                    if (pendingChange?.RequestedDesiredEndAt is DateTimeOffset pendingRequestedEndAt)
                         await CompletePendingEndTimeChangeAsync(
-                            item.Visit.Id, requestedEndAt, cancellationToken);
+                            item.Visit.Id, pendingRequestedEndAt, cancellationToken);
                 }
             }
 
