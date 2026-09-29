@@ -74,7 +74,7 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
         }
 
         var attemptStartedNow = false;
-        if (operation.Status == ProviderOperationStatus.Pending && action.State == ProviderActionState.Active)
+        if (operation.Status == ProviderOperationStatus.Pending && action.State is ProviderActionState.Active or ProviderActionState.Scheduled)
         {
             action.BeginStopping();
             operation.BeginAttempt();
