@@ -29,7 +29,13 @@ public sealed class ProviderOperation
             throw new ArgumentException("Provider parking action id is required.", nameof(providerParkingActionId));
         ProviderParkingActionId = providerParkingActionId;
     }
-    public void SetRequestedEndAt(DateTimeOffset requestedEndAt) { if (Type != ProviderOperationType.Extend || Status != ProviderOperationStatus.Pending) throw new InvalidOperationException("Requested end can only be set on a pending Extend operation."); RequestedEndAt = requestedEndAt; }
+    public void SetRequestedEndAt(DateTimeOffset requestedEndAt)
+    {
+        if (Type is not (ProviderOperationType.Extend or ProviderOperationType.ContinueStart) ||
+            Status != ProviderOperationStatus.Pending)
+            throw new InvalidOperationException("Requested end can only be set on a pending Extend or ContinueStart operation.");
+        RequestedEndAt = requestedEndAt;
+    }
     public void BeginAttempt() { if (Status is not ProviderOperationStatus.Pending) throw new InvalidOperationException("Only a pending operation can begin a provider attempt; unknown outcomes must reconcile first."); Status = ProviderOperationStatus.InProgress; AttemptCount++; AttemptStartedAt = DateTimeOffset.UtcNow; }
     public void MarkUnknown(string? errorCode = null) { if (Status != ProviderOperationStatus.InProgress) throw new InvalidOperationException(); LastErrorCode = errorCode; Status = ProviderOperationStatus.Unknown; }
     public void BeginReconciliation() { if (Status != ProviderOperationStatus.Unknown) throw new InvalidOperationException(); Status = ProviderOperationStatus.Reconciling; }
