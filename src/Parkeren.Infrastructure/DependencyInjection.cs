@@ -69,12 +69,33 @@ public static class DependencyInjection
         services.AddScoped<StartVisitProviderReconciler>();
         services.AddScoped<StartVisitFlow>();
 
-        if (configuration["ParkingProvider:Type"] == "TwoParkMock")
+        var providerType = configuration["ParkingProvider:Type"];
+        if (providerType == "TwoParkMock")
         {
             var baseUrl = configuration["ParkingProvider:BaseUrl"]
                 ?? throw new InvalidOperationException("ParkingProvider:BaseUrl is not configured.");
             services.AddHttpClient<IParkingProvider, TwoParkMockProvider>(client => client.BaseAddress = new Uri(baseUrl));
         }
+        else if (providerType == "TwoPark")
+        {
+            var baseUrl = configuration["ParkingProvider:BaseUrl"] ?? "https://mijn.2park.nl/gsmpark-app-www/json/";
+            services.AddHttpClient<IParkingProvider, TwoParkProvider>(client =>
+            {
+                client.BaseAddress = new Uri(baseUrl);
+                client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Parkeren/1.0");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                CookieContainer = new CookieContainer(),
+                UseCookies = true
+            });
+        }
+        else
+        {
+            throw new InvalidOperationException("ParkingProvider:Type must be configured as TwoParkMock or TwoPark.");
+        }
+
         return services;
     }
 }
