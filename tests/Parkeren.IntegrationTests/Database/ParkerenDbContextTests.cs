@@ -3070,7 +3070,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var action = Assert.Single(await verifyContext.ProviderParkingActions.Where(x => x.VisitId == visit.Id)
             .ToListAsync(cancellationToken));
         Assert.Equal(ProviderActionState.Active, action.State);
-        Assert.InRange((action.PlannedStartAt - boundary).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((action.PlannedStartAt - boundary.AddSeconds(1)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitHealth.Healthy,
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
@@ -3344,7 +3344,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using var verifyContext = fixture.CreateDbContext();
         var persisted = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
         Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
-        Assert.InRange((persisted.DueAt - coverageEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((persisted.DueAt - ProviderCoverageSchedule.PrecheckAt(coverageEnd)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Null(persisted.ClaimedAt);
         Assert.Null(persisted.ClaimedBy);
     }
@@ -3460,7 +3460,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             await results.RecordConfirmedAsync(replay,
                 new Parkeren.Application.ParkingProvider.ProviderParkingAction(
                     $"provider-next-{suffix}", vehicle.NormalizedLicensePlate,
-                    boundary, requestedEnd, "Oss", "active"), cancellationToken);
+                    boundary.AddSeconds(1), requestedEnd, "Oss", "active"), cancellationToken);
         }
 
         await using var verifyContext = fixture.CreateDbContext();
