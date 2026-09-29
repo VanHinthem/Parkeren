@@ -17,9 +17,9 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         var match = !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId)
             ? actions.SingleOrDefault(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId &&
-                string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase))
+                PlatesMatch(x.LicensePlate, licensePlate))
             : actions.SingleOrDefault(x =>
-                string.Equals(x.LicensePlate, licensePlate, StringComparison.OrdinalIgnoreCase) &&
+                PlatesMatch(x.LicensePlate, licensePlate) &&
                 TimestampsMatch(x.Start, preparation.Action.PlannedStartAt) &&
                 TimestampsMatch(x.End, preparation.Action.PlannedEndAt));
 
@@ -38,4 +38,10 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
 
     private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
         (left - right).Duration() < TimestampTolerance;
+
+    private static bool PlatesMatch(string providerPlate, string requestedPlate) =>
+        string.Equals(Normalize(providerPlate), Normalize(requestedPlate), StringComparison.Ordinal);
+
+    private static string Normalize(string plate) =>
+        string.Concat(plate.Where(char.IsLetterOrDigit)).ToUpperInvariant();
 }
