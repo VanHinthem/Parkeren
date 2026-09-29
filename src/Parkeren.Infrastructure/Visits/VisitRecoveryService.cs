@@ -352,40 +352,22 @@ internal sealed class VisitRecoveryService(
         Guid parentOperationId,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var lockKey = VisitAdvisoryLock.For(visitId);
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-
-        var change = await dbContext.VisitEndTimeChanges
+        var change = await dbContext.VisitEndTimeChanges.AsNoTracking()
             .SingleOrDefaultAsync(
                 x => x.VisitId == visitId &&
                      x.OperationId == parentOperationId &&
                      x.Result == VisitEndTimeChangeResult.Pending,
                 cancellationToken);
         if (change is null)
-        {
-            await transaction.CommitAsync(cancellationToken);
             return;
-        }
 
-        if (change.RequestedDesiredEndAt is not DateTimeOffset requestedEndAt)
-            throw new InvalidOperationException("Recovered end-time change does not contain a finite requested end time.");
-
-        var visit = await dbContext.Visits.SingleAsync(x => x.Id == visitId, cancellationToken);
-        visit.ChangeDesiredEndAt(requestedEndAt);
-        change.MarkApplied();
-
-        var obsoleteWork = await dbContext.VisitSchedulerWork
-            .Where(x => x.VisitId == visitId &&
-                        x.Status == VisitSchedulerWorkStatus.Pending &&
-                        x.DueAt >= requestedEndAt)
-            .ToListAsync(cancellationToken);
-        foreach (var work in obsoleteWork)
-            work.Cancel();
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        await endTimeChanger.ApplyAsync(
+            new ChangeVisitEndTimeCommand(
+                change.OperationId,
+                change.VisitId,
+                change.ActorUserId,
+                change.RequestedDesiredEndAt),
+            cancellationToken);
     }
 
     private async Task ReevaluateAfterReconciliationAsync(
