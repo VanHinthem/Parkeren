@@ -8,7 +8,8 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitEndTimeProviderAdjuster(
     ParkerenDbContext dbContext,
-    IParkingProvider provider) : IVisitEndTimeProviderAdjuster
+    IParkingProvider provider,
+    TimeProvider timeProvider) : IVisitEndTimeProviderAdjuster
 {
     public async Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(
         ChangeVisitEndTimeCommand command,
@@ -221,7 +222,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
         action.MarkScheduled(confirmed.ProviderActionId, confirmed.Status);
-        operation.Succeed(DateTimeOffset.UtcNow);
+        operation.Succeed(timeProvider.GetUtcNow());
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -275,8 +276,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
 
         var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
-        action.MarkStopped(DateTimeOffset.UtcNow, "stopped");
-        operation.Succeed(DateTimeOffset.UtcNow);
+        action.MarkStopped(timeProvider.GetUtcNow(), "stopped");
+        operation.Succeed(timeProvider.GetUtcNow());
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
