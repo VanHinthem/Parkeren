@@ -60,17 +60,29 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
 
             if (visit.PolicySnapshot.AllowAutoExtension &&
                 visit.DesiredEndAt is { } desiredEndAt &&
-                desiredEndAt > preparation.Action.PlannedEndAt &&
-                !await dbContext.VisitSchedulerWork.AnyAsync(
+                desiredEndAt > preparation.Action.PlannedEndAt)
+            {
+                var ruleSets = await dbContext.ParkingRuleSets
+                    .Include(x => x.PaidWindows)
+                    .Include(x => x.CalendarExceptions)
+                    .Where(x => x.ValidFrom < desiredEndAt &&
+                                (!x.ValidUntil.HasValue || x.ValidUntil.Value > preparation.Action.PlannedEndAt))
+                    .ToListAsync(cancellationToken);
+                var nextPaid = ProviderCoverageSchedule.NextPaidSegment(
+                    preparation.Action.PlannedEndAt, desiredEndAt, ruleSets);
+                if (nextPaid is not null && !await dbContext.VisitSchedulerWork.AnyAsync(
                     work => work.VisitId == visit.Id &&
                             work.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
                             (work.Status == VisitSchedulerWorkStatus.Pending ||
                              work.Status == VisitSchedulerWorkStatus.Claimed),
                     cancellationToken))
-            {
-                dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                    Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
-                    ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt)));
+                {
+                    var dueAt = nextPaid.Start > preparation.Action.PlannedEndAt
+                        ? nextPaid.Start
+                        : ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt);
+                    dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                        Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, dueAt));
+                }
             }
         }
         else if (visit.Status != VisitStatus.Stopping)

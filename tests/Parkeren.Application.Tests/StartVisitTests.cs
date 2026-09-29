@@ -35,6 +35,36 @@ public sealed class StartVisitTests
     }
 
     [Fact]
+    public void Initial_action_stops_at_paid_window_end_even_when_visit_continues_overnight()
+    {
+        // 19:00 local on Monday until 10:00 local on Tuesday.
+        var start = new DateTimeOffset(2026, 9, 28, 17, 0, 0, TimeSpan.Zero);
+        var desiredEnd = new DateTimeOffset(2026, 9, 29, 8, 0, 0, TimeSpan.Zero);
+        var rules = new[]
+        {
+            new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+                [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                 new PaidWindow(DayOfWeek.Tuesday, new TimeOnly(9, 0), new TimeOnly(20, 0))])
+        };
+        var userId = Guid.NewGuid();
+        var command = new StartVisitCommand(Guid.NewGuid(), userId, userId, Guid.NewGuid(), start, desiredEnd);
+        var context = new StartVisitContext(new(userId, UserRole.Visitor, true),
+            new(userId, true), new(command.VehicleId, true, true));
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(16), true);
+
+        Assert.Equal(start.AddHours(1), ProviderActionStartPlanner.PlanEnd(start, desiredEnd, rules));
+        Assert.True(new StartVisitPreparer().Prepare(command, context, policy, rules, start.AddMinutes(1))
+            .RequiresProviderCoverageNow);
+        Assert.Throws<InvalidOperationException>(() => new StartVisitPreparer().Prepare(
+            command, context, policy with { AllowAutoExtension = false }, rules, start.AddMinutes(1)));
+
+        var freeOnlyEnd = start.AddHours(2);
+        var withoutFurtherPaidTime = command with { DesiredEndAt = freeOnlyEnd };
+        new StartVisitPreparer().Prepare(
+            withoutFurtherPaidTime, context, policy with { AllowAutoExtension = false }, rules, start.AddMinutes(1));
+    }
+
+    [Fact]
     public void Prepare_captures_policy_and_keeps_visit_starting_until_capacity_and_provider_work_are_committed()
     {
         var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(12), true);

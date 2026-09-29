@@ -654,6 +654,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), now.AddDays(-1), null, TimeSpan.FromHours(4),
+                Enumerable.Range(0, 7)
+                    .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                    .ToArray()));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -684,6 +689,59 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitSchedulerWorkType.ContinueProviderCoverage, work.Type);
         Assert.Equal(VisitSchedulerWorkStatus.Pending, work.Status);
         Assert.InRange((work.DueAt - actionEndAt.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task Confirmed_evening_start_schedules_followup_at_next_paid_window()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"overnight-{suffix}", $"OVERNIGHT-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"OV-{suffix}", $"OV{suffix}".ToUpperInvariant(), null);
+        var start = new DateTimeOffset(2026, 9, 28, 17, 0, 0, TimeSpan.Zero);
+        var paidEnd = start.AddHours(1);
+        var nextPaidStart = new DateTimeOffset(2026, 9, 29, 7, 0, 0, TimeSpan.Zero);
+        var desiredEnd = nextPaidStart.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            start, desiredEnd,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(16), true));
+        var rules = new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+            [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+             new PaidWindow(DayOfWeek.Tuesday, new TimeOnly(9, 0), new TimeOnly(20, 0))]);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(rules);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IProviderStartStore>();
+            var results = scope.ServiceProvider.GetRequiredService<IProviderStartResultStore>();
+            var preparation = await store.PrepareAttemptAsync(
+                new StartVisitClaimResult(visit, false, true), paidEnd, cancellationToken);
+            await results.RecordConfirmedAsync(preparation,
+                new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                    $"provider-{suffix}", vehicle.LicensePlate, start, paidEnd, "Oss", "active"),
+                cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var work = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]

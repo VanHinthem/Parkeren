@@ -44,7 +44,11 @@ public sealed class StartVisitPreparer
             var providerEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
             var initialActionEndAt = ProviderActionStartPlanner.PlanEnd(
                 command.StartAt, providerEndAt, rules);
-            if (initialActionEndAt < providerEndAt && !policy.AllowAutoExtension)
+            var laterPaidCoverage = initialActionEndAt < providerEndAt &&
+                ParkingRuleSetPeriodSegmenter.Segment(initialActionEndAt, providerEndAt, rules)
+                    .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                    .Any(x => x.IsPaid);
+            if (laterPaidCoverage && !policy.AllowAutoExtension)
                 throw new InvalidOperationException(
                     "Visit requires provider continuation, but auto extension is disabled.");
         }
@@ -69,7 +73,12 @@ public static class ProviderActionStartPlanner
             ?? throw new InvalidOperationException("No parking rules cover the provider action start.");
 
         var maxEndAt = startAt + activeRules.MaxProviderActionDuration;
-        return desiredEndAt < maxEndAt ? desiredEndAt : maxEndAt;
+        var firstPaid = ParkingRuleSetPeriodSegmenter.Segment(startAt, desiredEndAt, ruleSets)
+            .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+            .FirstOrDefault();
+        if (firstPaid is null || firstPaid.Start != startAt || !firstPaid.IsPaid)
+            throw new InvalidOperationException("Provider coverage must begin inside a paid parking segment.");
+        return new[] { desiredEndAt, maxEndAt, firstPaid.End }.Min();
     }
 }
 
