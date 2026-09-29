@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure.Persistence;
 using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
 
@@ -124,6 +125,11 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         action.MarkFailed();
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
+        dbContext.NotificationEvents.Add(new NotificationEvent(
+            Guid.NewGuid(),
+            NotificationEventType.ProviderContinuationAttentionRequired,
+            visit.Id,
+            DateTimeOffset.UtcNow));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -139,6 +145,11 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         operation.MarkUnknown(errorCode);
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
+        dbContext.NotificationEvents.Add(new NotificationEvent(
+            Guid.NewGuid(),
+            NotificationEventType.ProviderContinuationAttentionRequired,
+            visit.Id,
+            DateTimeOffset.UtcNow));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
