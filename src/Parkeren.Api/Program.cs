@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Application.Visits;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
@@ -78,7 +79,27 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 if (app.Environment.IsDevelopment())
+{
     app.MapOpenApi();
+
+    app.MapGet("/api/dev/parking-provider", async (
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        var categories = await provider.GetCategoriesAsync(cancellationToken);
+        var product = await provider.GetProductAsync(cancellationToken);
+        var balance = await provider.GetBalanceAsync(cancellationToken);
+        var actions = await provider.GetActionsAsync(cancellationToken);
+
+        return Results.Ok(new
+        {
+            product,
+            categories,
+            balance,
+            actions
+        });
+    });
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
