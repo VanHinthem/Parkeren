@@ -5,6 +5,7 @@ public sealed record ProviderProduct(string Id, string Name, string Location);
 
 public enum ProviderBalanceUnit
 {
+    Unknown,
     Euro,
     Minute,
     Times
