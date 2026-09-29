@@ -1,6 +1,6 @@
 namespace Parkeren.Domain.Policies;
 
-public sealed record ParkingPolicyValidationResult(bool IsAllowed, TimeSpan RemainingPaidDuration);
+public sealed record ParkingPolicyValidationResult(bool IsAllowed, TimeSpan? RemainingPaidDuration);
 
 public static class ParkingPolicyValidator
 {
@@ -13,7 +13,10 @@ public static class ParkingPolicyValidator
         if (alreadyUsedPaidDuration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(alreadyUsedPaidDuration));
         if (requestedPaidDuration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(requestedPaidDuration));
 
-        var remaining = policy.MaxPaidParkingDuration - alreadyUsedPaidDuration;
+        if (policy.MaxPaidParkingDuration is not TimeSpan maxPaidParkingDuration)
+            return new ParkingPolicyValidationResult(true, null);
+
+        var remaining = maxPaidParkingDuration - alreadyUsedPaidDuration;
         if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
 
         return new ParkingPolicyValidationResult(requestedPaidDuration <= remaining, remaining);

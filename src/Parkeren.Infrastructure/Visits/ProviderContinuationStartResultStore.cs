@@ -70,7 +70,7 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         if (visit.Status == VisitStatus.Active)
         {
             visit.SetHealth(VisitHealth.Healthy);
-            if (visit.PolicySnapshot.AllowAutoExtension &&
+            if (visit.PolicySnapshot.AllowVisitExtension &&
                 visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
                 desiredEndAt > action.PlannedEndAt)
             {

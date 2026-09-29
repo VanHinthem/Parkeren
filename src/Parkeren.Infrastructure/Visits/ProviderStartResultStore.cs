@@ -58,7 +58,7 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
             visit.Activate();
             visit.SetHealth(VisitHealth.Healthy);
 
-            if (visit.PolicySnapshot.AllowAutoExtension &&
+            if (visit.PolicySnapshot.AllowVisitExtension &&
                 visit.DesiredEndAt is { } desiredEndAt &&
                 desiredEndAt > preparation.Action.PlannedEndAt)
             {

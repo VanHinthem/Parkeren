@@ -77,7 +77,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             return;
         }
 
-        if (!visit.PolicySnapshot.AllowAutoExtension ||
+        if (!visit.PolicySnapshot.AllowVisitExtension ||
             (visit.PolicySnapshot.MaxVisitElapsedDuration is TimeSpan maxElapsed &&
              visit.StartAt + maxElapsed <= now))
         {
@@ -112,7 +112,8 @@ internal sealed class VisitSchedulerWorkProcessor(
             now,
             ruleSets);
 
-        if (paidThroughNow >= visit.PolicySnapshot.MaxPaidParkingDuration)
+        if (visit.PolicySnapshot.MaxPaidParkingDuration is TimeSpan maxPaidParkingDuration &&
+            paidThroughNow >= maxPaidParkingDuration)
         {
             work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -124,12 +125,13 @@ internal sealed class VisitSchedulerWorkProcessor(
             desiredEndAt,
             ruleSets);
 
-        if (paidThroughDesiredEnd > visit.PolicySnapshot.MaxPaidParkingDuration)
+        if (visit.PolicySnapshot.MaxPaidParkingDuration is TimeSpan maxPaidParkingDurationForDesiredEnd &&
+            paidThroughDesiredEnd > maxPaidParkingDurationForDesiredEnd)
         {
             desiredEndAt = FindPaidDurationBoundary(
                 visit.StartAt,
                 desiredEndAt,
-                visit.PolicySnapshot.MaxPaidParkingDuration,
+                maxPaidParkingDurationForDesiredEnd,
                 ruleSets);
 
             if (desiredEndAt <= now)
@@ -348,11 +350,11 @@ internal sealed class VisitSchedulerWorkProcessor(
             .Where(x => x.ValidFrom < desiredEndAt &&
                         (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
             .ToListAsync(cancellationToken);
-        if (ParkingRuleSetPaidTimeCalculator.Calculate(visit.StartAt, desiredEndAt, rules) >
-            visit.PolicySnapshot.MaxPaidParkingDuration)
+        if (visit.PolicySnapshot.MaxPaidParkingDuration is TimeSpan maxPaidParkingDurationForInitialCoverage &&
+            ParkingRuleSetPaidTimeCalculator.Calculate(visit.StartAt, desiredEndAt, rules) > maxPaidParkingDurationForInitialCoverage)
         {
             desiredEndAt = FindPaidDurationBoundary(
-                visit.StartAt, desiredEndAt, visit.PolicySnapshot.MaxPaidParkingDuration, rules);
+                visit.StartAt, desiredEndAt, maxPaidParkingDurationForInitialCoverage, rules);
             if (desiredEndAt <= now)
             {
                 work.Complete(now);

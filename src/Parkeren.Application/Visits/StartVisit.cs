@@ -34,7 +34,7 @@ public sealed class StartVisitPreparer
                 .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                 .Where(x => x.IsPaid)
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
-            if (paidDuration > policy.MaxPaidParkingDuration)
+            if (policy.MaxPaidParkingDuration is TimeSpan maxPaidParkingDuration && paidDuration > maxPaidParkingDuration)
                 throw new InvalidOperationException("Requested Visit paid duration exceeds the effective parking policy.");
         }
         var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
@@ -48,7 +48,7 @@ public sealed class StartVisitPreparer
                 ParkingRuleSetPeriodSegmenter.Segment(initialActionEndAt, providerEndAt, rules)
                     .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                     .Any(x => x.IsPaid);
-            if (laterPaidCoverage && !policy.AllowAutoExtension)
+            if (laterPaidCoverage && !policy.AllowVisitExtension)
                 throw new InvalidOperationException(
                     "Visit requires provider continuation, but auto extension is disabled.");
         }
