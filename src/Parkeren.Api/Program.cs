@@ -194,7 +194,7 @@ if (app.Environment.IsDevelopment())
         if (string.IsNullOrWhiteSpace(product.Location))
             return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
-        ProviderParkingAction? created = null;
+        Parkeren.Application.ParkingProvider.ProviderParkingAction? created = null;
         try
         {
             var start = DateTimeOffset.UtcNow;
@@ -286,7 +286,7 @@ if (app.Environment.IsDevelopment())
         if (string.IsNullOrWhiteSpace(product.Location))
             return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
-        ProviderParkingAction? created = null;
+        Parkeren.Application.ParkingProvider.ProviderParkingAction? created = null;
         try
         {
             var start = DateTimeOffset.UtcNow;
