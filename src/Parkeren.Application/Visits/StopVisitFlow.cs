@@ -34,23 +34,18 @@ public sealed class StopVisitFlow(
         if (claim.IsAlreadyCompleted)
             return new(claim.Visit, claim.IsReplay, StopVisitFlowOutcome.Completed);
 
-        if (!await finalizer.RequiresProviderActionAsync(claim, cancellationToken))
+        while (await finalizer.RequiresProviderActionAsync(claim, cancellationToken))
         {
-            var completed = await finalizer.CompleteWithoutProviderActionAsync(
-                claim,
-                clock.GetUtcNow(),
-                cancellationToken);
-            return new(completed, claim.IsReplay, StopVisitFlowOutcome.Completed);
+            var preparation = await providerStopStore.PrepareAttemptAsync(claim, cancellationToken);
+            var execution = await providerExecutor.ExecuteAsync(preparation, cancellationToken);
+            if (execution.RequiresReconciliation)
+                return new(claim.Visit, claim.IsReplay, StopVisitFlowOutcome.ReconciliationRequired);
         }
 
-        var preparation = await providerStopStore.PrepareAttemptAsync(claim, cancellationToken);
-        var execution = await providerExecutor.ExecuteAsync(preparation, cancellationToken);
-
-        return new(
-            claim.Visit,
-            claim.IsReplay,
-            execution.RequiresReconciliation
-                ? StopVisitFlowOutcome.ReconciliationRequired
-                : StopVisitFlowOutcome.Completed);
+        var completed = await finalizer.CompleteWithoutProviderActionAsync(
+            claim,
+            clock.GetUtcNow(),
+            cancellationToken);
+        return new(completed, claim.IsReplay, StopVisitFlowOutcome.Completed);
     }
 }
