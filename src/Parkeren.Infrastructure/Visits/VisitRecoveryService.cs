@@ -231,6 +231,28 @@ internal sealed class VisitRecoveryService(
             return;
         }
 
+        if (string.Equals(confirmedAction.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+        {
+            var persistedAction = await dbContext.ProviderParkingActions
+                .SingleAsync(x => x.Id == activeAction.Id, cancellationToken);
+            persistedAction.MarkExternallyStopped(confirmedAction.Status);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogWarning(
+                "Provider action {ProviderActionId} for Visit {VisitId} was stopped outside Parkeren; continuation is blocked pending review.",
+                activeAction.ProviderActionId, item.Visit.Id);
+            await MarkAmbiguousAsync(item, cancellationToken);
+            return;
+        }
+
+        if (!string.Equals(confirmedAction.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogWarning(
+                "Provider action {ProviderActionId} for Visit {VisitId} has unexpected status {ProviderStatus}; continuation is blocked.",
+                activeAction.ProviderActionId, item.Visit.Id, confirmedAction.Status);
+            await MarkAmbiguousAsync(item, cancellationToken);
+            return;
+        }
+
         if (desiredEndAt <= confirmedAction.End)
             return;
 

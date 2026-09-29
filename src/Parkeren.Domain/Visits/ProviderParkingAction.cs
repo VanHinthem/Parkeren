@@ -54,6 +54,17 @@ public sealed class ProviderParkingAction
         Health = ProviderActionHealth.Healthy;
     }
 
+    public void MarkExternallyStopped(string providerStatus)
+    {
+        Ensure(ProviderActionState.Active);
+        if (string.IsNullOrWhiteSpace(providerStatus))
+            throw new ArgumentException("Provider status is required.", nameof(providerStatus));
+        ProviderStatus = providerStatus;
+        State = ProviderActionState.Stopped;
+        Health = ProviderActionHealth.Healthy;
+        // The provider did not supply an actual stop instant; observation time is not that instant.
+    }
+
     public void MarkStopped(DateTimeOffset actualEndAt, string? providerStatus = null)
     {
         Ensure(ProviderActionState.Stopping);
