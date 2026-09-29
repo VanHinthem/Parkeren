@@ -13,6 +13,7 @@ public sealed class VisitRecoveryClassifierTests
     [InlineData(VisitStatus.Active, ProviderOperationType.Extend, VisitRecoveryKind.ReconcileExtend)]
     [InlineData(VisitStatus.Active, ProviderOperationType.ContinueStart, VisitRecoveryKind.ReconcileContinuationStart)]
     [InlineData(VisitStatus.Stopping, ProviderOperationType.Stop, VisitRecoveryKind.ReconcileStop)]
+    [InlineData(VisitStatus.Active, ProviderOperationType.Stop, VisitRecoveryKind.ReconcileScheduledCancel)]
     public void Matching_unresolved_operation_is_classified_for_reconciliation(
         VisitStatus visitStatus,
         ProviderOperationType operationType,
@@ -68,7 +69,7 @@ public sealed class VisitRecoveryClassifierTests
     [Fact]
     public void Mismatched_operation_and_visit_state_is_ambiguous()
     {
-        var visit = CreateVisit(VisitStatus.Active);
+        var visit = CreateVisit(VisitStatus.Starting);
         var operation = new ProviderOperation(
             Guid.NewGuid(), Guid.NewGuid(), visit.Id, null, ProviderOperationType.Stop);
 
