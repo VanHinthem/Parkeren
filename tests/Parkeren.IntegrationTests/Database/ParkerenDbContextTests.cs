@@ -578,7 +578,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"eight-hour-{suffix}", $"EIGHT-HOUR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"EH-{suffix[..2]}-{suffix[2..4]}", $"EH{suffix[..4]}", null);
-        var startAt = DateTimeOffset.UtcNow;
+        var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
+        var localStart = new DateTime(2026, 9, 29, 10, 0, 0, DateTimeKind.Unspecified);
+        var startAt = new DateTimeOffset(localStart, businessZone.GetUtcOffset(localStart)).ToUniversalTime();
         var desiredEndAt = startAt.AddHours(8);
         var rules = new ParkingRuleSet(Guid.NewGuid(), startAt.AddDays(-1), null,
             TimeSpan.FromHours(4), Enumerable.Range(0, 7)
