@@ -186,12 +186,14 @@ app.MapGet("/api/visits/policy", async (
 
     return Results.Ok(new
     {
-        maxPaidParkingDurationMinutes = (int)operationalContext.Policy.MaxPaidParkingDuration.TotalMinutes,
+        maxPaidParkingDurationMinutes = operationalContext.Policy.MaxPaidParkingDuration is null
+            ? (int?)null
+            : (int)operationalContext.Policy.MaxPaidParkingDuration.Value.TotalMinutes,
         maxVisitElapsedDurationMinutes = operationalContext.Policy.MaxVisitElapsedDuration is null
             ? (int?)null
             : (int)operationalContext.Policy.MaxVisitElapsedDuration.Value.TotalMinutes,
-        operationalContext.Policy.AllowAutoExtension,
-        operationalContext.Policy.AllowManualStop
+        operationalContext.Policy.AllowVisitExtension,
+        operationalContext.Policy.AllowOpenEndedVisits
     });
 });
 
