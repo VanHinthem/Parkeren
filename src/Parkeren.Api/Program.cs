@@ -176,6 +176,99 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { first = firstReadBack, second = secondCreated, actions });
     });
 
+    app.MapPost("/api/dev/parking-provider/actions/test-active-extension", async (
+        DevActiveExtensionRequest request,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.LicensePlate))
+            return Results.BadRequest(new { error = "LicensePlate is verplicht." });
+        if (request.InitialDurationMinutes is < 1 or > 15)
+            return Results.BadRequest(new { error = "InitialDurationMinutes moet tussen 1 en 15 liggen." });
+        if (request.ExtendedDurationMinutes <= request.InitialDurationMinutes)
+            return Results.BadRequest(new { error = "ExtendedDurationMinutes moet groter zijn dan InitialDurationMinutes." });
+        if (request.ExtendedDurationMinutes is > 241)
+            return Results.BadRequest(new { error = "ExtendedDurationMinutes mag voor deze diagnostische test maximaal 241 zijn." });
+
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        ProviderParkingAction? created = null;
+        try
+        {
+            var start = DateTimeOffset.UtcNow;
+            var originalEnd = start.AddMinutes(request.InitialDurationMinutes);
+            var requestedEnd = start.AddMinutes(request.ExtendedDurationMinutes);
+
+            created = await provider.StartActionAsync(
+                new ProviderParkingActionRequest(
+                    request.LicensePlate,
+                    start,
+                    originalEnd,
+                    product.Location),
+                cancellationToken);
+
+            var before = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+            try
+            {
+                var changed = await provider.ExtendActionAsync(
+                    created.ProviderActionId,
+                    requestedEnd,
+                    cancellationToken);
+
+                var after = (await provider.GetActionsAsync(cancellationToken))
+                    .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+                return Results.Ok(new
+                {
+                    requested = new { start, originalEnd, requestedEnd },
+                    created,
+                    before,
+                    changed,
+                    after,
+                    extensionApplied = after is not null &&
+                        (after.End - requestedEnd).Duration() < TimeSpan.FromMilliseconds(1)
+                });
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
+            {
+                var afterFailure = (await provider.GetActionsAsync(CancellationToken.None))
+                    .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+                return Results.Ok(new
+                {
+                    requested = new { start, originalEnd, requestedEnd },
+                    created,
+                    before,
+                    extensionApplied = false,
+                    rejected = true,
+                    error = exception.Message,
+                    after = afterFailure
+                });
+            }
+        }
+        finally
+        {
+            if (created is not null)
+            {
+                try
+                {
+                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
+                }
+                catch (Exception cleanupException)
+                {
+                    app.Logger.LogWarning(
+                        cleanupException,
+                        "Failed to clean up active-extension diagnostic action {ProviderActionId}.",
+                        created.ProviderActionId);
+                }
+            }
+        }
+    });
+
     app.MapPost("/api/dev/parking-provider/actions/test-active-shortening", async (
         DevActiveShorteningRequest request,
         IParkingProvider provider,
@@ -836,6 +929,7 @@ void DeleteSessionCookie(HttpContext context, bool secure)
 public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes, int StartInMinutes = 0);
 public sealed record DevAdjacentProviderActionsRequest(string LicensePlate, int FirstDurationMinutes = 5, int SecondDurationMinutes = 5);
 public sealed record DevActiveShorteningRequest(string LicensePlate, int InitialDurationMinutes = 5, int ShortenedDurationMinutes = 2);
+public sealed record DevActiveExtensionRequest(string LicensePlate, int InitialDurationMinutes = 2, int ExtendedDurationMinutes = 5);
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
