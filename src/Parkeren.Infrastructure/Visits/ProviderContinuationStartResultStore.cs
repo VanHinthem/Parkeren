@@ -56,8 +56,11 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             preparation.Action.Health == ProviderActionHealth.Reconciling)
             action.BeginReconciliation();
 
-        action.MarkActive(
-            providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
+        if (string.Equals(providerAction.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
+            action.MarkScheduled(providerAction.ProviderActionId, providerAction.Status);
+        else
+            action.MarkActive(
+                providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         operation.Succeed(DateTimeOffset.UtcNow);
 
         if (visit.Status == VisitStatus.Active)
