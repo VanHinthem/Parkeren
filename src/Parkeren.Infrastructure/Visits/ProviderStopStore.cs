@@ -21,13 +21,28 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == claim.Visit.Id, cancellationToken);
-        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.Id == claim.Operation.Id, cancellationToken);
         if (visit.Status != VisitStatus.Stopping)
             throw new InvalidOperationException($"Visit must be Stopping before provider Stop preparation, but was {visit.Status}.");
+
+        var operation = await dbContext.ProviderOperations
+            .Where(x => x.VisitId == visit.Id &&
+                        x.Type == ProviderOperationType.Stop &&
+                        x.Status != ProviderOperationStatus.Succeeded &&
+                        x.Status != ProviderOperationStatus.Failed)
+            .OrderBy(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (operation is null)
+        {
+            operation = new ProviderOperation(
+                Guid.NewGuid(), Guid.NewGuid(), visit.Id, null, ProviderOperationType.Stop);
+            dbContext.ProviderOperations.Add(operation);
+        }
 
         var conflictingMutationExists = await dbContext.ProviderOperations.AnyAsync(
             x => x.VisitId == visit.Id &&
                  x.Id != operation.Id &&
+                 x.Type != ProviderOperationType.Stop &&
                  (x.Status == ProviderOperationStatus.InProgress ||
                   x.Status == ProviderOperationStatus.Unknown ||
                   x.Status == ProviderOperationStatus.Reconciling),
@@ -47,10 +62,12 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
                             x.State != ProviderActionState.Stopped &&
                             x.State != ProviderActionState.Completed &&
                             x.State != ProviderActionState.Failed)
+                .OrderByDescending(x => x.ProviderStatus == "scheduled")
+                .ThenByDescending(x => x.PlannedStartAt)
                 .ToListAsync(cancellationToken);
 
-            if (openActions.Count != 1)
-                throw new InvalidOperationException($"Provider Stop requires exactly one unresolved provider action, but found {openActions.Count}.");
+            if (openActions.Count == 0)
+                throw new InvalidOperationException("Provider Stop requires an unresolved provider action.");
 
             action = openActions[0];
             operation.AttachProviderParkingAction(action.Id);
@@ -62,9 +79,9 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
             action.BeginStopping();
             operation.BeginAttempt();
             attemptStartedNow = true;
-            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
+        await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new ProviderStopPreparation(operation, action, !attemptStartedNow, attemptStartedNow);
     }
