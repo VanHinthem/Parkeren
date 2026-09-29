@@ -56,7 +56,10 @@ internal sealed class VisitSchedulerWorkProcessor(
 
             if (string.Equals(remote.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
             {
-                work.Release(ProviderCoverageSchedule.PrecheckAt(latestAction.PlannedEndAt));
+                var wakeAt = latestAction.PlannedStartAt > DateTimeOffset.UtcNow
+                    ? latestAction.PlannedStartAt
+                    : DateTimeOffset.UtcNow.AddMinutes(1);
+                work.Release(wakeAt);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
