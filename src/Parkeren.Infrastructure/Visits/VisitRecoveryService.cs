@@ -256,9 +256,13 @@ internal sealed class VisitRecoveryService(
             if (successfulCancel is null)
                 continue;
 
+            var providerParkingActionId = successfulCancel.ProviderParkingActionId;
+            if (providerParkingActionId is not Guid originalActionId)
+                continue;
+
             var originalAction = await dbContext.ProviderParkingActions.AsNoTracking()
                 .SingleOrDefaultAsync(
-                    x => x.Id == successfulCancel.ProviderParkingActionId.Value,
+                    x => x.Id == originalActionId,
                     cancellationToken);
             if (originalAction is null ||
                 change.RequestedDesiredEndAt is not DateTimeOffset requestedEndAt)
