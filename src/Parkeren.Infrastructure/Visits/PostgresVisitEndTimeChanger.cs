@@ -11,6 +11,42 @@ internal sealed class PostgresVisitEndTimeChanger(
     TimeProvider timeProvider,
     IChangeVisitEndTimeOperationalContextResolver operationalContextResolver) : IVisitEndTimeChanger
 {
+    public async Task<ChangeVisitEndTimeResult> PrepareAsync(
+        ChangeVisitEndTimeCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (command.OperationId == Guid.Empty) throw new ArgumentException("Operation id is required.", nameof(command));
+        if (command.VisitId == Guid.Empty) throw new ArgumentException("Visit id is required.", nameof(command));
+        if (command.ActorUserId == Guid.Empty) throw new ArgumentException("Actor user id is required.", nameof(command));
+
+        var desiredEndAt = NormalizeTimestamp(command.DesiredEndAt);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(command.VisitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == command.VisitId, cancellationToken);
+        var existing = await dbContext.VisitEndTimeChanges
+            .SingleOrDefaultAsync(x => x.OperationId == command.OperationId, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.VisitId != visit.Id ||
+                existing.ActorUserId != command.ActorUserId ||
+                existing.RequestedDesiredEndAt != desiredEndAt)
+                throw new InvalidOperationException("Operation id is already used by another end-time change.");
+            await transaction.CommitAsync(cancellationToken);
+            return new ChangeVisitEndTimeResult(visit, existing, true);
+        }
+
+        visit.EnsureDesiredEndCanChange(desiredEndAt);
+        var change = new VisitEndTimeChange(
+            Guid.NewGuid(), command.OperationId, visit.Id, command.ActorUserId,
+            visit.DesiredEndAt, desiredEndAt, timeProvider.GetUtcNow());
+        dbContext.VisitEndTimeChanges.Add(change);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ChangeVisitEndTimeResult(visit, change, false);
+    }
+
     public async Task<ChangeVisitEndTimeResult> ApplyAsync(
         ChangeVisitEndTimeCommand command,
         CancellationToken cancellationToken = default)
@@ -38,14 +74,19 @@ internal sealed class PostgresVisitEndTimeChanger(
                 existing.RequestedDesiredEndAt != desiredEndAt)
                 throw new InvalidOperationException("Operation id is already used by another end-time change.");
 
-            await transaction.CommitAsync(cancellationToken);
             if (existing.Result == VisitEndTimeChangeResult.Rejected)
+            {
+                await transaction.CommitAsync(cancellationToken);
                 throw new InvalidOperationException("End-time change was previously rejected.");
-
-            return new ChangeVisitEndTimeResult(visit, existing, true);
+            }
+            if (existing.Result == VisitEndTimeChangeResult.Applied)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new ChangeVisitEndTimeResult(visit, existing, true);
+            }
         }
 
-        var change = new VisitEndTimeChange(
+        var change = existing ?? new VisitEndTimeChange(
             Guid.NewGuid(),
             command.OperationId,
             visit.Id,
@@ -117,12 +158,14 @@ internal sealed class PostgresVisitEndTimeChanger(
                     work.Cancel();
             }
             change.MarkApplied();
-            dbContext.VisitEndTimeChanges.Add(change);
+            if (existing is null)
+                dbContext.VisitEndTimeChanges.Add(change);
         }
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
             change.MarkRejected();
-            dbContext.VisitEndTimeChanges.Add(change);
+            if (existing is null)
+                dbContext.VisitEndTimeChanges.Add(change);
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             throw;
