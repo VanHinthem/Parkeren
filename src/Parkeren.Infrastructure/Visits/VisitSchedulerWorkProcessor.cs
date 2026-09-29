@@ -63,9 +63,10 @@ internal sealed class VisitSchedulerWorkProcessor(
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
-        if (latestAction.PlannedEndAt > now)
+        var continuationPrecheckAt = ProviderCoverageSchedule.PrecheckAt(latestAction.PlannedEndAt);
+        if (continuationPrecheckAt > now)
         {
-            work.Release(latestAction.PlannedEndAt);
+            work.Release(continuationPrecheckAt);
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
