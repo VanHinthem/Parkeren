@@ -92,6 +92,7 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             var actions = await provider.GetActionsAsync(cancellationToken);
             var confirmed = actions.SingleOrDefault(x =>
                 x.ProviderActionId == action.ProviderActionId &&
+                string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(x.LicensePlate, request.LicensePlate, StringComparison.OrdinalIgnoreCase) &&
                 x.Start == preparation.Action.PlannedStartAt &&
                 x.End == preparation.Action.PlannedEndAt);

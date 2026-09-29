@@ -30,6 +30,11 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
             return null;
         }
 
+        // A known stopped action proves the start was executed, so it must not
+        // be confirmed as active or treated as absent and retried.
+        if (!string.Equals(match.Status, "active", StringComparison.OrdinalIgnoreCase))
+            return null;
+
         preparation.Operation.BeginReconciliation();
         preparation.Action.BeginReconciliation();
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
