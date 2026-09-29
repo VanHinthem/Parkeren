@@ -109,7 +109,7 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
                 : throw new InvalidOperationException("Continuation start has no provider action.");
             if (existing.Type != ProviderOperationType.ContinueStart ||
                 existing.VisitId != persistedVisit.Id || action.VisitId != persistedVisit.Id ||
-                action.PlannedStartAt != previous.PlannedEndAt || action.PlannedEndAt != newEndAt)
+                action.PlannedStartAt != previous.PlannedEndAt.AddSeconds(1) || action.PlannedEndAt != newEndAt)
                 throw new InvalidOperationException("Existing continuation start does not match this request.");
 
             var attemptStartedNow = false;
@@ -141,7 +141,7 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
             throw new InvalidOperationException("A later provider action already exists for this Visit.");
 
         var nextAction = new ProviderParkingAction(
-            Guid.NewGuid(), persistedVisit.Id, previous.PlannedEndAt, newEndAt);
+            Guid.NewGuid(), persistedVisit.Id, previous.PlannedEndAt.AddSeconds(1), newEndAt);
         var operation = new ProviderOperation(
             Guid.NewGuid(), operationId, persistedVisit.Id, nextAction.Id,
             ProviderOperationType.ContinueStart);
