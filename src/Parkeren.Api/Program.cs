@@ -42,7 +42,10 @@ var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
-    await db.Database.MigrateAsync();
+    if (app.Environment.IsDevelopment())
+        await db.Database.EnsureCreatedAsync();
+    else
+        await db.Database.MigrateAsync();
 
     await using (var settingsTransaction = await db.Database.BeginTransactionAsync())
     {
