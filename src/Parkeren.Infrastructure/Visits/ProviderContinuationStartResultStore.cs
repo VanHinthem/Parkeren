@@ -7,7 +7,9 @@ using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingActio
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbContext)
+internal sealed class ProviderContinuationStartResultStore(
+    ParkerenDbContext dbContext,
+    TimeProvider timeProvider)
     : IProviderContinuationStartResultStore
 {
     public async Task RecordResponseAsync(
@@ -61,7 +63,7 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         else
             action.MarkActive(
                 providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
-        operation.Succeed(DateTimeOffset.UtcNow);
+        operation.Succeed(timeProvider.GetUtcNow());
 
         if (visit.Status == VisitStatus.Active)
         {
@@ -116,7 +118,7 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         Validate(preparation);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
         var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
-        operation.Fail(errorCode, DateTimeOffset.UtcNow);
+        operation.Fail(errorCode, timeProvider.GetUtcNow());
         action.MarkFailed();
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
@@ -124,7 +126,7 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            DateTimeOffset.UtcNow));
+            timeProvider.GetUtcNow()));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -144,7 +146,7 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            DateTimeOffset.UtcNow));
+            timeProvider.GetUtcNow()));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
