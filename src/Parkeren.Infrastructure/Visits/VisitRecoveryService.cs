@@ -253,6 +253,15 @@ internal sealed class VisitRecoveryService(
             return;
         }
 
+        if ((confirmedAction.End - activeAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+        {
+            logger.LogWarning(
+                "Provider action {ProviderActionId} for Visit {VisitId} has end {ProviderEndAt}, while the locally confirmed end is {LocalEndAt}; continuation is blocked pending review.",
+                activeAction.ProviderActionId, item.Visit.Id, confirmedAction.End, activeAction.PlannedEndAt);
+            await MarkAmbiguousAsync(item, cancellationToken);
+            return;
+        }
+
         if (desiredEndAt <= confirmedAction.End)
             return;
 
