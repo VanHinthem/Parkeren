@@ -3333,6 +3333,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var providerOperation = new ProviderOperation(
             Guid.NewGuid(), Guid.NewGuid(), visit.Id, replacementAction.Id,
             ProviderOperationType.ContinueStart);
+        providerOperation.SetParentOperationId(changeOperationId);
         providerOperation.SetRequestedEndAt(requestedEnd);
         providerOperation.BeginAttempt();
         providerOperation.MarkUnknown("timeout");
@@ -3420,8 +3421,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             vehicle.NormalizedLicensePlate, scheduledStart, scheduledEnd, "Oss"), cancellationToken);
         Assert.Equal("scheduled", remote.Status, ignoreCase: true);
 
+        var changeOperationId = Guid.NewGuid();
         var change = new VisitEndTimeChange(
-            Guid.NewGuid(), Guid.NewGuid(), visit.Id, user.Id,
+            Guid.NewGuid(), changeOperationId, visit.Id, user.Id,
             originalEnd, requestedEnd, now);
 
         var scheduledAction = new Parkeren.Domain.Visits.ProviderParkingAction(
@@ -3434,6 +3436,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var stopOperation = new ProviderOperation(
             Guid.NewGuid(), Guid.NewGuid(), visit.Id, scheduledAction.Id,
             ProviderOperationType.Stop);
+        stopOperation.SetParentOperationId(changeOperationId);
         stopOperation.BeginAttempt();
         stopOperation.MarkUnknown("timeout");
 
