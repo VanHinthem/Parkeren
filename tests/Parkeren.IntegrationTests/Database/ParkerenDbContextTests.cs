@@ -3663,6 +3663,88 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Scheduled_successor_releases_work_until_its_start()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"scheduled-wake-{suffix}", $"SCHEDULED-WAKE-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"SW-{suffix[..2]}-{suffix[2..4]}", $"SW{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var startAt = now.AddMinutes(10);
+        var endAt = now.AddHours(2);
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            now.AddHours(-1),
+            now.AddHours(3),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+
+        var remote = await parkingProvider.StartActionAsync(
+            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, endAt, "Oss"),
+            cancellationToken);
+        Assert.Equal("scheduled", remote.Status, ignoreCase: true);
+
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, startAt, endAt);
+        action.MarkStarting();
+        action.MarkScheduled(remote.ProviderActionId, remote.Status);
+
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(),
+            visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            now.AddMinutes(-1));
+        work.Claim("scheduled-wake-test", now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimed = await context.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                .ProcessAsync(claimed, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var persisted = await verifyContext.VisitSchedulerWork
+            .SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
+        Assert.InRange((persisted.DueAt - startAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.Null(persisted.ClaimedAt);
+        Assert.Null(persisted.ClaimedBy);
+    }
+
+    [Fact]
     public async Task Claimed_scheduler_work_is_cancelled_when_visit_requires_attention()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
