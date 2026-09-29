@@ -163,7 +163,7 @@ if (app.Environment.IsDevelopment())
         if (firstReadBack is null)
             return Results.Problem("De eerste 2Park-actie kon niet worden teruggelezen.", statusCode: StatusCodes.Status502BadGateway);
 
-        var secondStart = firstReadBack.End;
+        var secondStart = firstReadBack.End.AddSeconds(1);
         var secondCreated = await provider.StartActionAsync(
             new ProviderParkingActionRequest(
                 request.LicensePlate,
