@@ -98,6 +98,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var action = new Parkeren.Domain.Visits.ProviderParkingAction(actionId, visitId, startAt, endAt);
         action.MarkStarting();
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.ContinueStart);
+        operation.SetRequestedEndAt(endAt);
         operation.BeginAttempt();
         dbContext.ProviderParkingActions.Add(action);
         dbContext.ProviderOperations.Add(operation);
