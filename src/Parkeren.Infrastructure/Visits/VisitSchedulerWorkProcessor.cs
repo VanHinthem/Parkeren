@@ -26,7 +26,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             throw new InvalidOperationException("Only claimed scheduler work can be processed.");
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
-        if (visit.Status != VisitStatus.Active)
+        if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
             work.Cancel();
             await dbContext.SaveChangesAsync(cancellationToken);

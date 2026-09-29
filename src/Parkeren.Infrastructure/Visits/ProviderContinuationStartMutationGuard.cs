@@ -16,7 +16,7 @@ internal sealed class ProviderContinuationStartMutationGuard(ParkerenDbContext d
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
         var active = await dbContext.Visits.AsNoTracking().AnyAsync(
-            x => x.Id == visitId && x.Status == VisitStatus.Active,
+            x => x.Id == visitId && x.Status == VisitStatus.Active && x.Health == VisitHealth.Healthy,
             cancellationToken);
         var unresolved = await dbContext.ProviderOperations.AsNoTracking()
             .Where(x => x.VisitId == visitId &&

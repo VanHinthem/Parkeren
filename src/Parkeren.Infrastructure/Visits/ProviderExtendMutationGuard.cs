@@ -24,7 +24,7 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
             x => x.Id == visitId,
             cancellationToken);
 
-        if (visit is null || visit.Status != VisitStatus.Active)
+        if (visit is null || visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
             await transaction.CommitAsync(cancellationToken);
             return false;

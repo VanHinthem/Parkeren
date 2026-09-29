@@ -47,7 +47,7 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
         // continuation: once a Visit has left Active state, pending continuation
         // work is cancelled instead of being handed to a worker.
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
-        if (visit.Status != VisitStatus.Active)
+        if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
             work.Cancel();
             await dbContext.SaveChangesAsync(cancellationToken);
