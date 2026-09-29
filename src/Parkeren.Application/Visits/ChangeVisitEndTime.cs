@@ -13,6 +13,10 @@ public sealed record ChangeVisitEndTimeResult(
 
 public interface IVisitEndTimeChanger
 {
+    Task<ChangeVisitEndTimeResult> PrepareAsync(
+        ChangeVisitEndTimeCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<ChangeVisitEndTimeResult> ApplyAsync(
         ChangeVisitEndTimeCommand command,
         CancellationToken cancellationToken = default);
