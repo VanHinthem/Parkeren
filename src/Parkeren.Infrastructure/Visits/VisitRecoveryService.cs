@@ -182,9 +182,9 @@ internal sealed class VisitRecoveryService(
                 var reconciled = await reconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
                 if (reconciled is not null &&
                     decision.Kind == VisitRecoveryKind.ReconcileContinuationStart &&
-                    decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
+                    decision.Operation.ParentOperationId is Guid parentOperationId)
                     await CompletePendingEndTimeChangeAsync(
-                        item.Visit.Id, requestedEndAt, cancellationToken);
+                        item.Visit.Id, parentOperationId, cancellationToken);
             }
             else if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
                 decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
@@ -212,17 +212,9 @@ internal sealed class VisitRecoveryService(
             {
                 var reconciled = await ReconcileScheduledCancelAsync(
                     decision.Operation, action, cancellationToken);
-                if (reconciled)
-                {
-                    var pendingChange = await dbContext.VisitEndTimeChanges.AsNoTracking()
-                        .Where(x => x.VisitId == item.Visit.Id &&
-                                    x.Result == VisitEndTimeChangeResult.Pending)
-                        .OrderByDescending(x => x.CreatedAt)
-                        .FirstOrDefaultAsync(cancellationToken);
-                    if (pendingChange?.RequestedDesiredEndAt is DateTimeOffset pendingRequestedEndAt)
-                        await CompletePendingEndTimeChangeAsync(
-                            item.Visit.Id, pendingRequestedEndAt, cancellationToken);
-                }
+                if (reconciled && decision.Operation.ParentOperationId is Guid parentOperationId)
+                    await CompletePendingEndTimeChangeAsync(
+                        item.Visit.Id, parentOperationId, cancellationToken);
             }
 
             await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
@@ -270,7 +262,7 @@ internal sealed class VisitRecoveryService(
 
     private async Task CompletePendingEndTimeChangeAsync(
         Guid visitId,
-        DateTimeOffset requestedEndAt,
+        Guid parentOperationId,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -279,16 +271,19 @@ internal sealed class VisitRecoveryService(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
         var change = await dbContext.VisitEndTimeChanges
-            .Where(x => x.VisitId == visitId &&
-                        x.Result == VisitEndTimeChangeResult.Pending &&
-                        x.RequestedDesiredEndAt == requestedEndAt)
-            .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(
+                x => x.VisitId == visitId &&
+                     x.OperationId == parentOperationId &&
+                     x.Result == VisitEndTimeChangeResult.Pending,
+                cancellationToken);
         if (change is null)
         {
             await transaction.CommitAsync(cancellationToken);
             return;
         }
+
+        if (change.RequestedDesiredEndAt is not DateTimeOffset requestedEndAt)
+            throw new InvalidOperationException("Recovered end-time change does not contain a finite requested end time.");
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == visitId, cancellationToken);
         visit.ChangeDesiredEndAt(requestedEndAt);
