@@ -38,45 +38,79 @@ internal sealed class VisitEndTimeProviderAdjuster(
                         (x.State == ProviderActionState.Active || x.State == ProviderActionState.Scheduled))
             .ToListAsync(cancellationToken);
 
-        var impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, actions);
-        if (impact == VisitEndTimeProviderImpact.None) return new(false);
-        if (impact == VisitEndTimeProviderImpact.ShortenActive)
-            throw new InvalidOperationException("Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
+        var successfulCancel = existingChildren.SingleOrDefault(
+            x => x.Type == ProviderOperationType.Stop &&
+                 x.Status == ProviderOperationStatus.Succeeded &&
+                 x.ProviderParkingActionId.HasValue);
 
-        var scheduled = actions.Where(x => x.State == ProviderActionState.Scheduled && x.PlannedEndAt > requestedEndAt)
-            .OrderBy(x => x.PlannedStartAt).First();
-        if (string.IsNullOrWhiteSpace(scheduled.ProviderActionId))
-            throw new InvalidOperationException("Scheduled provider action has no provider action id.");
+        Parkeren.Domain.Visits.ProviderParkingAction? scheduled = null;
+        VisitEndTimeProviderImpact impact;
+
+        if (successfulCancel?.ProviderParkingActionId is Guid cancelledActionId)
+        {
+            var cancelledAction = await dbContext.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == cancelledActionId, cancellationToken);
+
+            if (cancelledAction.PlannedStartAt >= requestedEndAt)
+                return new(false);
+
+            if (cancelledAction.PlannedEndAt > requestedEndAt)
+            {
+                impact = VisitEndTimeProviderImpact.ReplaceScheduled;
+                scheduled = cancelledAction;
+            }
+            else
+            {
+                impact = VisitEndTimeProviderImpact.None;
+            }
+        }
+        else
+        {
+            impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, actions);
+            if (impact == VisitEndTimeProviderImpact.ShortenActive)
+                throw new InvalidOperationException("Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
+
+            if (impact != VisitEndTimeProviderImpact.None)
+            {
+                scheduled = actions.Where(x => x.State == ProviderActionState.Scheduled && x.PlannedEndAt > requestedEndAt)
+                    .OrderBy(x => x.PlannedStartAt).First();
+                if (string.IsNullOrWhiteSpace(scheduled!.ProviderActionId))
+                    throw new InvalidOperationException("Scheduled provider action has no provider action id.");
+            }
+        }
+
+        if (impact == VisitEndTimeProviderImpact.None)
+            return new(false);
 
         var existingCancel = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.Stop &&
-                 x.ProviderParkingActionId == scheduled.Id);
+                 x.ProviderParkingActionId == scheduled!.Id);
 
         if (existingCancel is null)
         {
             var cancelOperationId = Guid.NewGuid();
             await PersistScheduledCancelAttemptAsync(
-                visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
+                visit.Id, scheduled!.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
 
             try
             {
-                await provider.StopActionAsync(scheduled.ProviderActionId, cancellationToken);
+                await provider.StopActionAsync(scheduled!.ProviderActionId, cancellationToken);
             var afterCancel = await provider.GetActionsAsync(cancellationToken);
-            if (afterCancel.Any(x => x.ProviderActionId == scheduled.ProviderActionId &&
+            if (afterCancel.Any(x => x.ProviderActionId == scheduled!.ProviderActionId &&
                                      !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
             {
                 await MarkScheduledCancelUnknownAsync(
-                    visit.Id, scheduled.Id, cancelOperationId, "read-back-unconfirmed", CancellationToken.None);
+                    visit.Id, scheduled!.Id, cancelOperationId, "read-back-unconfirmed", CancellationToken.None);
                 return new(true);
             }
 
                 await ConfirmScheduledCancelAsync(
-                    visit.Id, scheduled.Id, cancelOperationId, CancellationToken.None);
+                    visit.Id, scheduled!.Id, cancelOperationId, CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
                 await MarkScheduledCancelUnknownAsync(
-                    visit.Id, scheduled.Id, cancelOperationId, "timeout", CancellationToken.None);
+                    visit.Id, scheduled!.Id, cancelOperationId, "timeout", CancellationToken.None);
                 if (cancellationToken.IsCancellationRequested)
                     throw;
                 return new(true);
@@ -84,7 +118,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
             catch (HttpRequestException)
             {
                 await MarkScheduledCancelUnknownAsync(
-                    visit.Id, scheduled.Id, cancelOperationId, "network", CancellationToken.None);
+                    visit.Id, scheduled!.Id, cancelOperationId, "network", CancellationToken.None);
                 return new(true);
             }
         }
@@ -112,14 +146,14 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var newActionId = Guid.NewGuid();
         await PersistReplacementAttemptAsync(
             visit.Id, newActionId, operationId, rootChange.OperationId,
-            scheduled.PlannedStartAt, requestedEndAt, cancellationToken);
+            scheduled!.PlannedStartAt, requestedEndAt, cancellationToken);
 
         try
         {
             var replacement = await provider.StartActionAsync(
                 new ProviderParkingActionRequest(
                     vehicle.LicensePlate,
-                    scheduled.PlannedStartAt,
+                    scheduled!.PlannedStartAt,
                     requestedEndAt,
                     location),
                 cancellationToken);
