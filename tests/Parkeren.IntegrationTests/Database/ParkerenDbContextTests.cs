@@ -3489,6 +3489,114 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Recovery_creates_missing_replacement_once_after_successful_scheduled_cancel()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"recover-gap-{suffix}", $"RECOVER-GAP-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"RG-{suffix[..2]}-{suffix[2..4]}", $"RG{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var visitStart = now.AddHours(-1);
+        var originalEnd = now.AddHours(5);
+        var scheduledStart = now.AddMinutes(30);
+        var requestedEnd = now.AddHours(2);
+        var scheduledEnd = now.AddHours(4);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            visitStart, originalEnd,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+
+        var remote = await parkingProvider.StartActionAsync(new ProviderParkingActionRequest(
+            vehicle.NormalizedLicensePlate, scheduledStart, scheduledEnd, "Oss"), cancellationToken);
+        await parkingProvider.StopActionAsync(remote.ProviderActionId, cancellationToken);
+
+        var changeOperationId = Guid.NewGuid();
+        var change = new VisitEndTimeChange(
+            Guid.NewGuid(), changeOperationId, visit.Id, user.Id,
+            originalEnd, requestedEnd, now);
+
+        var originalAction = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, scheduledStart, scheduledEnd);
+        originalAction.MarkStarting();
+        originalAction.MarkScheduled(remote.ProviderActionId, remote.Status);
+        originalAction.BeginStopping();
+        originalAction.MarkStopped(now, "stopped");
+
+        var cancelOperation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), visit.Id, originalAction.Id,
+            ProviderOperationType.Stop);
+        cancelOperation.SetParentOperationId(changeOperationId);
+        cancelOperation.BeginAttempt();
+        cancelOperation.Succeed(now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitEndTimeChanges.Add(change);
+            seedContext.ProviderParkingActions.Add(originalAction);
+            seedContext.ProviderOperations.Add(cancelOperation);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString,
+            ["ParkingProvider:Location"] = "Oss"
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var recoveryScope = provider.CreateAsyncScope())
+            await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                .ReconcileUnknownOperationsAsync(cancellationToken);
+
+        await using (var replayScope = provider.CreateAsyncScope())
+            await replayScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                .ReconcileUnknownOperationsAsync(cancellationToken);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var recoveredVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var recoveredChange = await verifyContext.VisitEndTimeChanges.SingleAsync(x => x.Id == change.Id, cancellationToken);
+        var children = await verifyContext.ProviderOperations
+            .Where(x => x.ParentOperationId == changeOperationId)
+            .OrderBy(x => x.Type)
+            .ToListAsync(cancellationToken);
+
+        Assert.InRange((recoveredVisit.DesiredEndAt!.Value - requestedEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.Equal(VisitEndTimeChangeResult.Applied, recoveredChange.Result);
+        Assert.Equal(2, children.Count);
+        Assert.Single(children, x => x.Type == ProviderOperationType.Stop);
+        var replacementOperation = Assert.Single(children, x => x.Type == ProviderOperationType.ContinueStart);
+        Assert.Equal(ProviderOperationStatus.Succeeded, replacementOperation.Status);
+
+        var replacementActions = await verifyContext.ProviderParkingActions
+            .Where(x => x.VisitId == visit.Id && x.Id != originalAction.Id)
+            .ToListAsync(cancellationToken);
+        var replacementAction = Assert.Single(replacementActions);
+        Assert.Equal(ProviderActionState.Scheduled, replacementAction.State);
+        Assert.InRange((replacementAction.PlannedEndAt - requestedEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+
+        var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+        Assert.Equal(2, remoteActions.Count);
+        Assert.Single(remoteActions, x => x.ProviderActionId == remote.ProviderActionId &&
+                                          string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(remoteActions, x => string.Equals(x.Status, "scheduled", StringComparison.OrdinalIgnoreCase) &&
+                                          x.ProviderActionId != remote.ProviderActionId);
+    }
+
+    [Fact]
     public async Task Scheduler_processor_reschedules_when_provider_coverage_is_still_active()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
