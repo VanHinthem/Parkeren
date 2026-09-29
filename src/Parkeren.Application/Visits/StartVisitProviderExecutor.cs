@@ -56,7 +56,7 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             return new(preparation, reconciledAction, reconciledAction is null);
         }
         if (preparation.Operation.Status == ProviderOperationStatus.Succeeded &&
-            preparation.Action.State == ProviderActionState.Active &&
+            preparation.Action.State is ProviderActionState.Active or ProviderActionState.Scheduled &&
             !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
         {
             return new(
