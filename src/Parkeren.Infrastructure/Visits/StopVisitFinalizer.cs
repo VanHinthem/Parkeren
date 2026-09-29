@@ -47,12 +47,27 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext) : IStopVis
             throw new InvalidOperationException("Visit cannot complete locally while a provider action may still require handling.");
         if (visit.Status != VisitStatus.Stopping)
             throw new InvalidOperationException($"Visit must be Stopping before completion, but was {visit.Status}.");
-        if (operation.Status != ProviderOperationStatus.Pending)
-            throw new InvalidOperationException($"Stop operation must be Pending before provider-free completion, but was {operation.Status}.");
+
+        var unresolvedStopExists = await dbContext.ProviderOperations.AnyAsync(
+            x => x.VisitId == visit.Id &&
+                 x.Type == ProviderOperationType.Stop &&
+                 x.Status != ProviderOperationStatus.Succeeded &&
+                 x.Status != ProviderOperationStatus.Failed,
+            cancellationToken);
+        if (unresolvedStopExists)
+            throw new InvalidOperationException("Visit cannot complete while a provider Stop operation is unresolved.");
+
+        if (operation.Status == ProviderOperationStatus.Pending)
+        {
+            operation.BeginAttempt();
+            operation.Succeed(actualEndAt);
+        }
+        else if (operation.Status != ProviderOperationStatus.Succeeded)
+        {
+            throw new InvalidOperationException($"Root Stop operation must be Pending or Succeeded before completion, but was {operation.Status}.");
+        }
 
         visit.Complete(actualEndAt);
-        operation.BeginAttempt();
-        operation.Succeed(actualEndAt);
         dbContext.NotificationEvents.Add(
             new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt));
 
