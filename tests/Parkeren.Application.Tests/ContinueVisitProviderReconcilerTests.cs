@@ -89,6 +89,42 @@ public sealed class ContinueVisitProviderReconcilerTests
         Assert.Equal(ProviderOperationStatus.Unknown, preparation.Operation.Status);
     }
 
+    [Fact]
+    public async Task Stopped_provider_action_is_never_extended()
+    {
+        var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
+        var preparation = CreateInProgressPreparation(requestedEnd);
+        var providerAction = new ProviderAction(
+            preparation.Action.ProviderActionId!, "TK01HF", preparation.Action.PlannedStartAt,
+            preparation.Action.PlannedEndAt, "Oss", "stopped");
+        var store = new TrackingResultStore();
+
+        var result = await new ContinueVisitProviderExecutor(new ActionsProvider([providerAction]), store)
+            .ExecuteAsync(preparation, TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal("provider-action-not-active", store.UnknownErrorCode);
+        Assert.Equal(0, store.ConfirmedCalls);
+    }
+
+    [Fact]
+    public async Task Stopped_provider_action_cannot_confirm_unknown_extension()
+    {
+        var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
+        var preparation = CreateUnknownPreparation(requestedEnd);
+        var providerAction = new ProviderAction(
+            preparation.Action.ProviderActionId!, "TK01HF", preparation.Action.PlannedStartAt,
+            requestedEnd, "Oss", "stopped");
+        var store = new TrackingResultStore();
+
+        var result = await new ContinueVisitProviderReconciler(new ActionsProvider([providerAction]), store)
+            .ReconcileAsync(preparation, TestContext.Current.CancellationToken);
+
+        Assert.Null(result);
+        Assert.Equal(0, store.ConfirmedCalls);
+        Assert.Equal(ProviderOperationStatus.Unknown, preparation.Operation.Status);
+    }
+
 
     private static ProviderExtendPreparation CreateSucceededPreparation(DateTimeOffset requestedEnd)
     {
@@ -122,9 +158,23 @@ public sealed class ContinueVisitProviderReconcilerTests
         return new ProviderExtendPreparation(operation, action, requestedEnd, true);
     }
 
+    private static ProviderExtendPreparation CreateInProgressPreparation(DateTimeOffset requestedEnd)
+    {
+        var start = requestedEnd.AddHours(-2);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), start, requestedEnd.AddHours(-1));
+        action.MarkStarting();
+        action.MarkActive("provider-1", start, "active");
+        var operation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Extend);
+        operation.SetRequestedEndAt(requestedEnd);
+        operation.BeginAttempt();
+        return new ProviderExtendPreparation(operation, action, requestedEnd, false);
+    }
+
     private sealed class TrackingResultStore : IProviderExtendResultStore
     {
         public int ConfirmedCalls { get; private set; }
+        public string? UnknownErrorCode { get; private set; }
 
         public Task RecordConfirmedAsync(ProviderExtendPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
         {
@@ -132,7 +182,11 @@ public sealed class ContinueVisitProviderReconcilerTests
             return Task.CompletedTask;
         }
 
-        public Task RecordUnknownAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RecordUnknownAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default)
+        {
+            UnknownErrorCode = errorCode;
+            return Task.CompletedTask;
+        }
         public Task RecordDefinitiveFailureAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 

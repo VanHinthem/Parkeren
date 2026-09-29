@@ -98,6 +98,15 @@ public sealed class ContinueVisitProviderExecutor(
                 return new(preparation, null, true);
             }
 
+            if (!string.Equals(currentAction.Status, "active", StringComparison.OrdinalIgnoreCase))
+            {
+                await resultStore.RecordUnknownAsync(
+                    preparation,
+                    "provider-action-not-active",
+                    cancellationToken);
+                return new(preparation, currentAction, true);
+            }
+
             if (TimestampsMatch(currentAction.End, preparation.ProviderEndAt))
             {
                 await resultStore.RecordConfirmedAsync(preparation, currentAction, cancellationToken);
@@ -121,6 +130,7 @@ public sealed class ContinueVisitProviderExecutor(
             var actions = await provider.GetActionsAsync(cancellationToken);
             var confirmed = actions.SingleOrDefault(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId &&
+                string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
                 x.End == preparation.ProviderEndAt);
 
             if (confirmed is null)
@@ -182,6 +192,7 @@ public sealed class ContinueVisitProviderReconciler(
         var actions = await provider.GetActionsAsync(cancellationToken);
         var match = actions.SingleOrDefault(x =>
             x.ProviderActionId == preparation.Action.ProviderActionId &&
+            string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
             TimestampsMatch(x.End, requestedEndAt));
 
         if (match is null)
