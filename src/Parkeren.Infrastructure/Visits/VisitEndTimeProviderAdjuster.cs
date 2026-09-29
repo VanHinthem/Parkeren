@@ -35,13 +35,37 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (string.IsNullOrWhiteSpace(scheduled.ProviderActionId))
             throw new InvalidOperationException("Scheduled provider action has no provider action id.");
 
-        await provider.StopActionAsync(scheduled.ProviderActionId, cancellationToken);
-        var afterCancel = await provider.GetActionsAsync(cancellationToken);
-        if (afterCancel.Any(x => x.ProviderActionId == scheduled.ProviderActionId &&
-                                 !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
-            return new(true);
+        var cancelOperationId = Guid.NewGuid();
+        await PersistScheduledCancelAttemptAsync(
+            visit.Id, scheduled.Id, cancelOperationId, cancellationToken);
 
-        await MarkScheduledStoppedAsync(visit.Id, scheduled.Id, cancellationToken);
+        try
+        {
+            await provider.StopActionAsync(scheduled.ProviderActionId, cancellationToken);
+            var afterCancel = await provider.GetActionsAsync(cancellationToken);
+            if (afterCancel.Any(x => x.ProviderActionId == scheduled.ProviderActionId &&
+                                     !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
+            {
+                await MarkScheduledCancelUnknownAsync(
+                    visit.Id, scheduled.Id, cancelOperationId, "read-back-unconfirmed", CancellationToken.None);
+                return new(true);
+            }
+
+            await ConfirmScheduledCancelAsync(
+                visit.Id, scheduled.Id, cancelOperationId, CancellationToken.None);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            await MarkScheduledCancelUnknownAsync(
+                visit.Id, scheduled.Id, cancelOperationId, "timeout", CancellationToken.None);
+            return new(true);
+        }
+        catch (HttpRequestException)
+        {
+            await MarkScheduledCancelUnknownAsync(
+                visit.Id, scheduled.Id, cancelOperationId, "network", CancellationToken.None);
+            return new(true);
+        }
 
         if (impact == VisitEndTimeProviderImpact.CancelScheduled)
             return new(false);
@@ -127,18 +151,60 @@ internal sealed class VisitEndTimeProviderAdjuster(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task MarkScheduledStoppedAsync(Guid visitId, Guid actionId, CancellationToken cancellationToken)
+    private async Task PersistScheduledCancelAttemptAsync(
+        Guid visitId, Guid actionId, Guid operationId, CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var lockKey = VisitAdvisoryLock.For(visitId);
-        await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
-        if (action.State == ProviderActionState.Scheduled)
-        {
-            action.BeginStopping();
-            action.MarkStopped(DateTimeOffset.UtcNow, "stopped");
-        }
+        if (action.State != ProviderActionState.Scheduled)
+            throw new InvalidOperationException("Only a scheduled provider action can be cancelled for an end-time change.");
+
+        var operation = new ProviderOperation(
+            Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.Stop);
+        action.BeginStopping();
+        operation.BeginAttempt();
+        dbContext.ProviderOperations.Add(operation);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
+
+    private async Task MarkScheduledCancelUnknownAsync(
+        Guid visitId, Guid actionId, Guid operationId, string errorCode, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(visitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
+        action.MarkUnknown();
+        operation.MarkUnknown(errorCode);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task ConfirmScheduledCancelAsync(
+        Guid visitId, Guid actionId, Guid operationId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(visitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
+        action.MarkStopped(DateTimeOffset.UtcNow, "stopped");
+        operation.Succeed(DateTimeOffset.UtcNow);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
 }
