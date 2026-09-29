@@ -70,14 +70,8 @@ internal sealed class VisitSchedulerWorkProcessor(
             return;
         }
 
-        if (visit.DesiredEndAt is not DateTimeOffset desiredEndAt || desiredEndAt <= now)
-        {
-            work.Complete(now);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return;
-        }
-
-        if (!visit.PolicySnapshot.AllowVisitExtension ||
+        var desiredEndAt = ProviderCoverageSchedule.PlanningEndAt(visit, now);
+        if (desiredEndAt <= now ||
             (visit.PolicySnapshot.MaxVisitElapsedDuration is TimeSpan maxElapsed &&
              visit.StartAt + maxElapsed <= now))
         {
@@ -324,7 +318,8 @@ internal sealed class VisitSchedulerWorkProcessor(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        if (visit.DesiredEndAt is not DateTimeOffset desiredEndAt || desiredEndAt <= now)
+        var desiredEndAt = ProviderCoverageSchedule.PlanningEndAt(visit, now);
+        if (desiredEndAt <= now)
         {
             work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
