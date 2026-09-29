@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Rules;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
@@ -213,6 +214,10 @@ internal sealed class VisitRecoveryService(
 
         if (activeAction is null || string.IsNullOrWhiteSpace(activeAction.ProviderActionId))
         {
+            if (activeAction is null && item.ProviderActions.Count == 0 &&
+                await IsEntireVisitFreeAsync(item.Visit.StartAt, desiredEndAt, cancellationToken))
+                return;
+
             await MarkAmbiguousAsync(item, cancellationToken);
             return;
         }
@@ -283,6 +288,32 @@ internal sealed class VisitRecoveryService(
             dueAt));
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<bool> IsEntireVisitFreeAsync(
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        CancellationToken cancellationToken)
+    {
+        if (endAt <= startAt)
+            return false;
+
+        var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ValidFrom < endAt && (!x.ValidUntil.HasValue || x.ValidUntil.Value > startAt))
+            .ToListAsync(cancellationToken);
+
+        try
+        {
+            return ParkingRuleSetPeriodSegmenter.Segment(startAt, endAt, ruleSets)
+                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                .All(x => !x.IsPaid);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     public async Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(
