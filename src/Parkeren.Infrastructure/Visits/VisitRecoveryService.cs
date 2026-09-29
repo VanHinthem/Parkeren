@@ -179,7 +179,12 @@ internal sealed class VisitRecoveryService(
                 var reconciler = decision.Kind == VisitRecoveryKind.ReconcileContinuationStart
                     ? new StartVisitProviderReconciler(provider, continuationStartResults)
                     : startReconciler;
-                await reconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
+                var reconciled = await reconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
+                if (reconciled is not null &&
+                    decision.Kind == VisitRecoveryKind.ReconcileContinuationStart &&
+                    decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
+                    await CompletePendingEndTimeChangeAsync(
+                        item.Visit.Id, requestedEndAt, cancellationToken);
             }
             else if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
                 decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
@@ -209,6 +214,44 @@ internal sealed class VisitRecoveryService(
     }
 
 
+
+    private async Task CompletePendingEndTimeChangeAsync(
+        Guid visitId,
+        DateTimeOffset requestedEndAt,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(visitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var change = await dbContext.VisitEndTimeChanges
+            .Where(x => x.VisitId == visitId &&
+                        x.Result == VisitEndTimeChangeResult.Pending &&
+                        x.RequestedDesiredEndAt == requestedEndAt)
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (change is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == visitId, cancellationToken);
+        visit.ChangeDesiredEndAt(requestedEndAt);
+        change.MarkApplied();
+
+        var obsoleteWork = await dbContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visitId &&
+                        x.Status == VisitSchedulerWorkStatus.Pending &&
+                        x.DueAt >= requestedEndAt)
+            .ToListAsync(cancellationToken);
+        foreach (var work in obsoleteWork)
+            work.Cancel();
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
 
     private async Task ReevaluateAfterReconciliationAsync(
         Guid visitId,
