@@ -3474,7 +3474,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             var preparation = await scope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
                 .PrepareAttemptAsync(visit, action, Guid.NewGuid(), extendedEnd, cancellationToken);
             await scope.ServiceProvider.GetRequiredService<IProviderExtendResultStore>()
-                .RecordConfirmedAsync(preparation, new ProviderParkingAction(
+                .RecordConfirmedAsync(preparation, new Parkeren.Application.ParkingProvider.ProviderParkingAction(
                     $"provider-{suffix}", vehicle.NormalizedLicensePlate, start, extendedEnd, "Oss", "active"),
                     cancellationToken);
         }
