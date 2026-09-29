@@ -51,11 +51,12 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext) : IStopVis
         var unresolvedStopExists = await dbContext.ProviderOperations.AnyAsync(
             x => x.VisitId == visit.Id &&
                  x.Type == ProviderOperationType.Stop &&
+                 x.Id != operation.Id &&
                  x.Status != ProviderOperationStatus.Succeeded &&
                  x.Status != ProviderOperationStatus.Failed,
             cancellationToken);
         if (unresolvedStopExists)
-            throw new InvalidOperationException("Visit cannot complete while a provider Stop operation is unresolved.");
+            throw new InvalidOperationException("Visit cannot complete while another provider Stop operation is unresolved.");
 
         if (operation.Status == ProviderOperationStatus.Pending)
         {
