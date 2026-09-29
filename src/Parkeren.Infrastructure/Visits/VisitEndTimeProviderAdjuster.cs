@@ -52,7 +52,11 @@ internal sealed class VisitEndTimeProviderAdjuster(
 
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(x => x.Id == visit.VehicleId, cancellationToken);
         var replacement = await provider.StartActionAsync(
-            new ProviderStartRequest(vehicle.LicensePlate, location, requestedEndAt, scheduled.PlannedStartAt),
+            new ProviderParkingActionRequest(
+                vehicle.LicensePlate,
+                scheduled.PlannedStartAt,
+                requestedEndAt,
+                location),
             cancellationToken);
         var readBack = await provider.GetActionsAsync(cancellationToken);
         var confirmed = readBack.SingleOrDefault(x => x.ProviderActionId == replacement.ProviderActionId);
