@@ -85,10 +85,21 @@ internal sealed class VisitRecoveryService(
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
         await ReleaseClaimedSchedulerWorkAsync(cancellationToken);
+        await ReconcileAsync(startup: true, cancellationToken: cancellationToken);
+    }
+
+    public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) =>
+        ReconcileAsync(startup: false, cancellationToken: cancellationToken);
+
+    private async Task ReconcileAsync(bool startup, CancellationToken cancellationToken)
+    {
         var items = await LoadAsync(cancellationToken);
 
         foreach (var item in items)
         {
+            if (!startup && !item.UnresolvedOperations.Any(x => x.Status == ProviderOperationStatus.Unknown))
+                continue;
+
             var decision = VisitRecoveryClassifier.Classify(item);
 
             logger.LogInformation(
@@ -102,7 +113,8 @@ internal sealed class VisitRecoveryService(
 
             if (decision.Kind == VisitRecoveryKind.RebuildScheduler)
             {
-                await RebuildSchedulerAsync(item, cancellationToken);
+                if (startup)
+                    await RebuildSchedulerAsync(item, cancellationToken);
                 continue;
             }
 

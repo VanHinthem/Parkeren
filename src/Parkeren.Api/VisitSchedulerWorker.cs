@@ -48,8 +48,9 @@ internal sealed class VisitSchedulerWorker(
                     nextProviderCheckAt = timeProvider.GetUtcNow() + ProviderCheckInterval;
                     try
                     {
-                        await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
-                            .ReconcileActiveProviderActionsAsync(stoppingToken);
+                        var recovery = scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
+                        await recovery.ReconcileUnknownOperationsAsync(stoppingToken);
+                        await recovery.ReconcileActiveProviderActionsAsync(stoppingToken);
                     }
                     catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
                     {

@@ -3222,7 +3222,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Restart_reconciles_unknown_continuation_start_without_second_provider_action()
+    public async Task Periodic_check_reconciles_unknown_continuation_start_without_second_provider_action()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -3281,7 +3281,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         await using (var recoveryScope = provider.CreateAsyncScope())
             await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
-                .RecoverAsync(cancellationToken);
+                .ReconcileUnknownOperationsAsync(cancellationToken);
 
         await using var verifyContext = fixture.CreateDbContext();
         var operation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == work.Id, cancellationToken);
