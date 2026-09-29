@@ -35,9 +35,12 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (string.IsNullOrWhiteSpace(scheduled.ProviderActionId))
             throw new InvalidOperationException("Scheduled provider action has no provider action id.");
 
+        var rootChange = await dbContext.VisitEndTimeChanges.AsNoTracking()
+            .SingleAsync(x => x.OperationId == command.OperationId, cancellationToken);
+
         var cancelOperationId = Guid.NewGuid();
         await PersistScheduledCancelAttemptAsync(
-            visit.Id, scheduled.Id, cancelOperationId, cancellationToken);
+            visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
 
         try
         {
@@ -78,7 +81,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var operationId = Guid.NewGuid();
         var newActionId = Guid.NewGuid();
         await PersistReplacementAttemptAsync(
-            visit.Id, newActionId, operationId, scheduled.PlannedStartAt, requestedEndAt, cancellationToken);
+            visit.Id, newActionId, operationId, rootChange.OperationId,
+            scheduled.PlannedStartAt, requestedEndAt, cancellationToken);
 
         try
         {
@@ -113,7 +117,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
     }
 
     private async Task PersistReplacementAttemptAsync(
-        Guid visitId, Guid actionId, Guid operationId, DateTimeOffset startAt, DateTimeOffset endAt,
+        Guid visitId, Guid actionId, Guid operationId, Guid parentOperationId,
+        DateTimeOffset startAt, DateTimeOffset endAt,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -122,6 +127,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var action = new Parkeren.Domain.Visits.ProviderParkingAction(actionId, visitId, startAt, endAt);
         action.MarkStarting();
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.ContinueStart);
+        operation.SetParentOperationId(parentOperationId);
         operation.SetRequestedEndAt(endAt);
         operation.BeginAttempt();
         dbContext.ProviderParkingActions.Add(action);
@@ -152,7 +158,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
     }
 
     private async Task PersistScheduledCancelAttemptAsync(
-        Guid visitId, Guid actionId, Guid operationId, CancellationToken cancellationToken)
+        Guid visitId, Guid actionId, Guid operationId, Guid parentOperationId, CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var lockKey = VisitAdvisoryLock.For(visitId);
@@ -165,6 +171,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
 
         var operation = new ProviderOperation(
             Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.Stop);
+        operation.SetParentOperationId(parentOperationId);
         action.BeginStopping();
         operation.BeginAttempt();
         dbContext.ProviderOperations.Add(operation);
