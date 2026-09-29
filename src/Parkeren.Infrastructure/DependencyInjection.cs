@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IVisitRecoveryService, VisitRecoveryService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IVisitEndTimeChanger, PostgresVisitEndTimeChanger>();
+        services.AddScoped<IVisitEndTimeProviderAdjuster, VisitEndTimeProviderAdjuster>();
         services.AddScoped<ChangeVisitEndTimeFlow>();
         services.AddScoped<IChangeVisitEndTimeOperationalContextResolver, ChangeVisitEndTimeOperationalContextResolver>();
         services.AddScoped<IStopVisitRequestResolver, StopVisitRequestResolver>();
