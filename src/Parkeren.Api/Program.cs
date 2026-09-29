@@ -714,7 +714,8 @@ void DeleteSessionCookie(HttpContext context, bool secure)
     });
 }
 
-public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes);\npublic sealed record LoginRequest(string Username, string Pin);
+public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes);
+public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
 public sealed record CreateUserRequest(string Username, string Pin, UserRole Role);
