@@ -39,10 +39,67 @@ public sealed class ChangeVisitEndTimeFlowTests
         Assert.Equal(VisitStatus.Completed, result.Visit.Status);
     }
 
+
+    [Fact]
+    public async Task Provider_reconciliation_prevents_local_end_time_change()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), userId, Guid.NewGuid(), userId,
+            now.AddHours(-1), now.AddHours(2),
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        visit.Activate();
+
+        var changer = new RecordingChanger(visit);
+        var flow = new ChangeVisitEndTimeFlow(
+            changer,
+            new StopVisitFlow(
+                new ThrowingClaimer(),
+                new ProviderFreeFinalizer(),
+                new ThrowingStopStore(),
+                new StopVisitProviderExecutor(new ThrowingProvider(), new ThrowingResultStore()),
+                new FixedTimeProvider(now)),
+            new ReconciliationAdjuster(),
+            new FixedTimeProvider(now));
+
+        var result = await flow.ChangeAsync(
+            new ChangeVisitEndTimeCommand(Guid.NewGuid(), visit.Id, userId, now.AddHours(1)),
+            new StopVisitContext(new StopVisitActor(userId, UserRole.Visitor, true), visit),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ChangeVisitEndTimeFlowOutcome.ReconciliationRequired, result.Outcome);
+        Assert.False(changer.WasCalled);
+        Assert.Equal(now.AddHours(2), visit.DesiredEndAt);
+    }
+
     private sealed class ThrowingChanger : IVisitEndTimeChanger
     {
         public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("End-time changer must not run when the requested end has elapsed.");
+    }
+
+
+    private sealed class RecordingChanger(Visit visit) : IVisitEndTimeChanger
+    {
+        public bool WasCalled { get; private set; }
+        public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            return Task.FromResult(new ChangeVisitEndTimeResult(visit, false));
+        }
+    }
+
+    private sealed class ReconciliationAdjuster : IVisitEndTimeProviderAdjuster
+    {
+        public Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new VisitEndTimeProviderAdjustmentResult(true));
+    }
+
+    private sealed class ThrowingClaimer : IStopVisitClaimer
+    {
+        public Task<StopVisitClaim> ClaimAsync(StopVisitCommand command, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException();
     }
 
     private sealed class CompletingClaimer(Visit visit, Guid operationId) : IStopVisitClaimer
