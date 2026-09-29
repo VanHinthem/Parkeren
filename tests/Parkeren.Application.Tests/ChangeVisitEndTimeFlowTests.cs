@@ -86,7 +86,16 @@ public sealed class ChangeVisitEndTimeFlowTests
         public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
-            return Task.FromResult(new ChangeVisitEndTimeResult(visit, false));
+            var change = new VisitEndTimeChange(
+                Guid.NewGuid(),
+                command.OperationId,
+                command.VisitId,
+                command.ActorUserId,
+                visit.DesiredEndAt,
+                command.DesiredEndAt,
+                DateTimeOffset.UtcNow);
+            change.MarkApplied();
+            return Task.FromResult(new ChangeVisitEndTimeResult(visit, change, false));
         }
     }
 
