@@ -19,6 +19,7 @@ public interface IVisitRecoveryService
 public enum VisitRecoveryKind
 {
     ReconcileStart,
+    ReconcileContinuationStart,
     ReconcileExtend,
     ReconcileStop,
     RebuildScheduler,
@@ -57,6 +58,9 @@ public static class VisitRecoveryClassifier
 
             (VisitStatus.Active, ProviderOperationType.Extend) =>
                 new(item, VisitRecoveryKind.ReconcileExtend, operation),
+
+            (VisitStatus.Active, ProviderOperationType.ContinueStart) =>
+                new(item, VisitRecoveryKind.ReconcileContinuationStart, operation),
 
             (VisitStatus.Stopping, ProviderOperationType.Stop) =>
                 new(item, VisitRecoveryKind.ReconcileStop, operation),

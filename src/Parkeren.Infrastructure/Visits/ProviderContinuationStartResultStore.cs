@@ -16,7 +16,8 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         Validate(preparation);
         ArgumentNullException.ThrowIfNull(providerAction);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
-        preparation.Action.CaptureStartResponse(
+        var (_, action) = await LoadOperationAsync(preparation, cancellationToken);
+        action.CaptureStartResponse(
             providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -27,8 +28,9 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
     {
         Validate(preparation);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
-        preparation.Action.ResetForRetry();
-        preparation.Operation.ResetForRetry();
+        var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
+        action.ResetForRetry();
+        operation.ResetForRetry();
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -40,23 +42,31 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         Validate(preparation);
         ArgumentNullException.ThrowIfNull(providerAction);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
+        var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
 
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         if (visit.Status is not (VisitStatus.Active or VisitStatus.Stopping))
             throw new InvalidOperationException("Continuation start requires an Active or Stopping Visit.");
 
-        preparation.Action.MarkActive(
+        if (operation.Status == ProviderOperationStatus.Unknown &&
+            preparation.Operation.Status == ProviderOperationStatus.Reconciling)
+            operation.BeginReconciliation();
+        if (action.Health == ProviderActionHealth.Unknown &&
+            preparation.Action.Health == ProviderActionHealth.Reconciling)
+            action.BeginReconciliation();
+
+        action.MarkActive(
             providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
-        preparation.Operation.Succeed(DateTimeOffset.UtcNow);
+        operation.Succeed(DateTimeOffset.UtcNow);
 
         if (visit.Status == VisitStatus.Active)
         {
             visit.SetHealth(VisitHealth.Healthy);
             if (visit.PolicySnapshot.AllowAutoExtension &&
                 visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
-                desiredEndAt > preparation.Action.PlannedEndAt)
+                desiredEndAt > action.PlannedEndAt)
             {
-                var nextDueAt = ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt);
+                var nextDueAt = ProviderCoverageSchedule.PrecheckAt(action.PlannedEndAt);
                 var exists = await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
                          x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
@@ -86,8 +96,9 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
     {
         Validate(preparation);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
-        preparation.Operation.Fail(errorCode, DateTimeOffset.UtcNow);
-        preparation.Action.MarkFailed();
+        var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
+        operation.Fail(errorCode, DateTimeOffset.UtcNow);
+        action.MarkFailed();
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -100,8 +111,9 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
     {
         Validate(preparation);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
-        preparation.Action.MarkUnknown();
-        preparation.Operation.MarkUnknown(errorCode);
+        var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
+        action.MarkUnknown();
+        operation.MarkUnknown(errorCode);
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -115,6 +127,20 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             x => x.Id == preparation.Operation.VisitId!.Value, cancellationToken);
         await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         return visit;
+    }
+
+    private async Task<(ProviderOperation Operation, Parkeren.Domain.Visits.ProviderParkingAction Action)> LoadOperationAsync(
+        ProviderStartPreparation preparation, CancellationToken cancellationToken)
+    {
+        var operation = await dbContext.ProviderOperations.SingleAsync(
+            x => x.Id == preparation.Operation.Id, cancellationToken);
+        var action = await dbContext.ProviderParkingActions.SingleAsync(
+            x => x.Id == preparation.Action.Id, cancellationToken);
+        if (operation.ProviderParkingActionId != action.Id ||
+            operation.VisitId != action.VisitId ||
+            operation.Type != ProviderOperationType.ContinueStart)
+            throw new InvalidOperationException("Continuation operation and action do not match.");
+        return (operation, action);
     }
 
     private async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> LockVisitAsync(

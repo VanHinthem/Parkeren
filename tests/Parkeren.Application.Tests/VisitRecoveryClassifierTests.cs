@@ -11,6 +11,7 @@ public sealed class VisitRecoveryClassifierTests
     [Theory]
     [InlineData(VisitStatus.Starting, ProviderOperationType.Start, VisitRecoveryKind.ReconcileStart)]
     [InlineData(VisitStatus.Active, ProviderOperationType.Extend, VisitRecoveryKind.ReconcileExtend)]
+    [InlineData(VisitStatus.Active, ProviderOperationType.ContinueStart, VisitRecoveryKind.ReconcileContinuationStart)]
     [InlineData(VisitStatus.Stopping, ProviderOperationType.Stop, VisitRecoveryKind.ReconcileStop)]
     public void Matching_unresolved_operation_is_classified_for_reconciliation(
         VisitStatus visitStatus,

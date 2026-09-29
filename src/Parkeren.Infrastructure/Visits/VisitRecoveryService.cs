@@ -12,6 +12,7 @@ internal sealed class VisitRecoveryService(
     ContinueVisitProviderReconciler extendReconciler,
     StopVisitProviderReconciler stopReconciler,
     StartVisitProviderReconciler startReconciler,
+    IProviderContinuationStartResultStore continuationStartResults,
     IParkingProvider provider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
@@ -73,7 +74,7 @@ internal sealed class VisitRecoveryService(
                 continue;
             }
 
-            if (decision.Kind == VisitRecoveryKind.ReconcileStart)
+            if (decision.Kind is VisitRecoveryKind.ReconcileStart or VisitRecoveryKind.ReconcileContinuationStart)
             {
                 var licensePlate = await dbContext.Vehicles
                     .AsNoTracking()
@@ -97,7 +98,10 @@ internal sealed class VisitRecoveryService(
                     true,
                     false);
 
-                await startReconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
+                var reconciler = decision.Kind == VisitRecoveryKind.ReconcileContinuationStart
+                    ? new StartVisitProviderReconciler(provider, continuationStartResults)
+                    : startReconciler;
+                await reconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
             }
             else if (decision.Kind == VisitRecoveryKind.ReconcileExtend &&
                 decision.Operation.RequestedEndAt is DateTimeOffset requestedEndAt)
