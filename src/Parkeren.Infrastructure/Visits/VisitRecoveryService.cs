@@ -14,6 +14,8 @@ internal sealed class VisitRecoveryService(
     StopVisitProviderReconciler stopReconciler,
     StartVisitProviderReconciler startReconciler,
     IProviderContinuationStartResultStore continuationStartResults,
+    IVisitEndTimeProviderAdjuster endTimeProviderAdjuster,
+    IVisitEndTimeChanger endTimeChanger,
     IParkingProvider provider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
@@ -93,6 +95,7 @@ internal sealed class VisitRecoveryService(
 
     private async Task ReconcileAsync(bool startup, CancellationToken cancellationToken)
     {
+        await RecoverPendingEndTimeChangesAsync(cancellationToken);
         var items = await LoadAsync(cancellationToken);
 
         foreach (var item in items)
@@ -221,6 +224,86 @@ internal sealed class VisitRecoveryService(
         }
     }
 
+
+
+    private async Task RecoverPendingEndTimeChangesAsync(CancellationToken cancellationToken)
+    {
+        var pendingChanges = await dbContext.VisitEndTimeChanges.AsNoTracking()
+            .Where(x => x.Result == VisitEndTimeChangeResult.Pending &&
+                        x.RequestedDesiredEndAt.HasValue)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        foreach (var change in pendingChanges)
+        {
+            var children = await dbContext.ProviderOperations.AsNoTracking()
+                .Where(x => x.ParentOperationId == change.OperationId)
+                .ToListAsync(cancellationToken);
+
+            if (children.Any(x => x.Status is ProviderOperationStatus.Pending
+                                 or ProviderOperationStatus.InProgress
+                                 or ProviderOperationStatus.Unknown
+                                 or ProviderOperationStatus.Reconciling))
+                continue;
+
+            var successfulCancel = children
+                .Where(x => x.Type == ProviderOperationType.Stop &&
+                            x.Status == ProviderOperationStatus.Succeeded &&
+                            x.ProviderParkingActionId.HasValue)
+                .OrderByDescending(x => x.CompletedAt)
+                .FirstOrDefault();
+
+            if (successfulCancel is null)
+                continue;
+
+            var originalAction = await dbContext.ProviderParkingActions.AsNoTracking()
+                .SingleOrDefaultAsync(
+                    x => x.Id == successfulCancel.ProviderParkingActionId.Value,
+                    cancellationToken);
+            if (originalAction is null ||
+                change.RequestedDesiredEndAt is not DateTimeOffset requestedEndAt)
+                continue;
+
+            var needsReplacement =
+                originalAction.PlannedStartAt < requestedEndAt &&
+                originalAction.PlannedEndAt > requestedEndAt;
+
+            if (!needsReplacement)
+            {
+                await CompletePendingEndTimeChangeAsync(
+                    change.VisitId, change.OperationId, cancellationToken);
+                continue;
+            }
+
+            var hasReplacement = children.Any(x =>
+                x.Type == ProviderOperationType.ContinueStart &&
+                x.RequestedEndAt == requestedEndAt);
+
+            if (!hasReplacement)
+            {
+                var visit = await dbContext.Visits.AsNoTracking()
+                    .SingleAsync(x => x.Id == change.VisitId, cancellationToken);
+                var command = new ChangeVisitEndTimeCommand(
+                    change.OperationId,
+                    change.VisitId,
+                    change.ActorUserId,
+                    requestedEndAt);
+
+                var adjustment = await endTimeProviderAdjuster.AdjustAsync(
+                    command, cancellationToken);
+                if (adjustment.RequiresReconciliation)
+                    continue;
+            }
+
+            await endTimeChanger.ApplyAsync(
+                new ChangeVisitEndTimeCommand(
+                    change.OperationId,
+                    change.VisitId,
+                    change.ActorUserId,
+                    requestedEndAt),
+                cancellationToken);
+        }
+    }
 
 
     private async Task<bool> ReconcileScheduledCancelAsync(
