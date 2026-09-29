@@ -187,7 +187,12 @@ internal sealed class VisitSchedulerWorkProcessor(
             latestAction.PlannedEndAt, desiredEndAt, ruleSets);
         if (nextPaid is null)
         {
-            work.Complete(now);
+            if (visit.DesiredEndAt is null &&
+                visit.PolicySnapshot.MaxVisitElapsedDuration is null &&
+                visit.PolicySnapshot.MaxPaidParkingDuration is null)
+                work.Release(desiredEndAt);
+            else
+                work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -407,7 +412,12 @@ internal sealed class VisitSchedulerWorkProcessor(
         var paid = ProviderCoverageSchedule.NextPaidSegment(fromAt ?? visit.StartAt, desiredEndAt, rules);
         if (paid is null)
         {
-            work.Complete(now);
+            if (visit.DesiredEndAt is null &&
+                visit.PolicySnapshot.MaxVisitElapsedDuration is null &&
+                visit.PolicySnapshot.MaxPaidParkingDuration is null)
+                work.Release(desiredEndAt);
+            else
+                work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
