@@ -60,4 +60,36 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
         await transaction.CommitAsync(cancellationToken);
         return work;
     }
+
+    public async Task ReleaseFailedAsync(
+        Guid workId,
+        string workerId,
+        DateTimeOffset retryAt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var work = await dbContext.VisitSchedulerWork
+            .FromSqlInterpolated($"SELECT w.*, w.xmin FROM visit_scheduler_work AS w WHERE w.\"Id\" = {workId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (work is not null && work.Status == VisitSchedulerWorkStatus.Claimed && work.ClaimedBy == workerId)
+        {
+            var lockKey = VisitAdvisoryLock.For(work.VisitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+            var visit = await dbContext.Visits.AsNoTracking().SingleAsync(x => x.Id == work.VisitId, cancellationToken);
+            if (visit.Status == VisitStatus.Active && visit.Health == VisitHealth.Healthy)
+            {
+                var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
+                work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
+            }
+            else
+                work.Cancel();
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
 }

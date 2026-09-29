@@ -8,6 +8,12 @@ public interface IVisitSchedulerWorkClaimer
         string workerId,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
+
+    Task ReleaseFailedAsync(
+        Guid workId,
+        string workerId,
+        DateTimeOffset retryAt,
+        CancellationToken cancellationToken = default);
 }
 
 

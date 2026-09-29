@@ -16,6 +16,7 @@ internal sealed class VisitSchedulerWorker(
         // An outage during startup must not terminate the background worker permanently.
         while (!stoppingToken.IsCancellationRequested)
         {
+            Guid? claimedWorkId = null;
             try
             {
                 await using var recoveryScope = scopeFactory.CreateAsyncScope();
@@ -50,6 +51,7 @@ internal sealed class VisitSchedulerWorker(
                     continue;
                 }
 
+                claimedWorkId = work.Id;
                 await processor.ProcessAsync(work, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -59,6 +61,20 @@ internal sealed class VisitSchedulerWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Visit scheduler worker iteration failed.");
+                if (claimedWorkId is Guid workId)
+                {
+                    try
+                    {
+                        await using var releaseScope = scopeFactory.CreateAsyncScope();
+                        var claimer = releaseScope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
+                        await claimer.ReleaseFailedAsync(
+                            workId, workerId, timeProvider.GetUtcNow().AddMinutes(1), stoppingToken);
+                    }
+                    catch (Exception releaseException) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        logger.LogError(releaseException, "Failed to release scheduler work {WorkId} after processing error.", workId);
+                    }
+                }
                 await Task.Delay(IdleDelay, timeProvider, stoppingToken);
             }
         }
