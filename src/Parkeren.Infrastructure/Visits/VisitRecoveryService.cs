@@ -208,11 +208,64 @@ internal sealed class VisitRecoveryService(
 
                 await stopReconciler.ReconcileAsync(preparation, cancellationToken);
             }
+            else if (decision.Kind == VisitRecoveryKind.ReconcileScheduledCancel)
+            {
+                var reconciled = await ReconcileScheduledCancelAsync(
+                    decision.Operation, action, cancellationToken);
+                if (reconciled)
+                {
+                    var pendingChange = await dbContext.VisitEndTimeChanges.AsNoTracking()
+                        .Where(x => x.VisitId == item.Visit.Id &&
+                                    x.Result == VisitEndTimeChangeResult.Pending)
+                        .OrderByDescending(x => x.CreatedAt)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (pendingChange?.RequestedDesiredEndAt is DateTimeOffset requestedEndAt)
+                        await CompletePendingEndTimeChangeAsync(
+                            item.Visit.Id, requestedEndAt, cancellationToken);
+                }
+            }
 
             await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
         }
     }
 
+
+
+    private async Task<bool> ReconcileScheduledCancelAsync(
+        ProviderOperation operation,
+        ProviderParkingAction action,
+        CancellationToken cancellationToken)
+    {
+        if (operation.Status != ProviderOperationStatus.Unknown ||
+            action.State != ProviderActionState.Stopping ||
+            action.Health != ProviderActionHealth.Unknown ||
+            string.IsNullOrWhiteSpace(action.ProviderActionId))
+            throw new InvalidOperationException("Only an unknown scheduled-action cancellation can be reconciled.");
+
+        var remoteActions = await provider.GetActionsAsync(cancellationToken);
+        var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
+        if (remote is null || !string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var persistedOperation = await dbContext.ProviderOperations
+            .SingleAsync(x => x.Id == operation.Id, cancellationToken);
+        var persistedAction = await dbContext.ProviderParkingActions
+            .SingleAsync(x => x.Id == action.Id, cancellationToken);
+
+        persistedOperation.BeginReconciliation();
+        persistedAction.BeginReconciliation();
+        persistedAction.MarkStopped(DateTimeOffset.UtcNow, remote.Status);
+        persistedOperation.Succeed(DateTimeOffset.UtcNow);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
 
 
     private async Task CompletePendingEndTimeChangeAsync(
