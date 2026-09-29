@@ -29,7 +29,9 @@ internal sealed class StartVisitOperationalContextResolver(
         var evaluationEndAt = desiredEndAt
             ?? (policy.MaxVisitElapsedDuration is { } maxElapsed
                 ? startAt + maxElapsed
-                : startAt + policy.MaxPaidParkingDuration);
+                : policy.MaxPaidParkingDuration is { } maxPaid
+                    ? startAt + maxPaid
+                    : startAt.AddDays(1));
 
         var ruleSets = await dbContext.ParkingRuleSets
             .AsNoTracking()

@@ -29,7 +29,7 @@ public sealed class StartVisitTests
         Assert.True(prepared.RequiresProviderCoverageNow);
         Assert.Equal(start.AddHours(4), ProviderActionStartPlanner.PlanEnd(start, command.DesiredEndAt!.Value, rules));
 
-        var noContinuation = policy with { AllowAutoExtension = false };
+        var noContinuation = policy with { AllowVisitExtension = false };
         Assert.Throws<InvalidOperationException>(() => new StartVisitPreparer().Prepare(
             command, context, noContinuation, rules, start.AddMinutes(1)));
     }
@@ -56,12 +56,12 @@ public sealed class StartVisitTests
         Assert.True(new StartVisitPreparer().Prepare(command, context, policy, rules, start.AddMinutes(1))
             .RequiresProviderCoverageNow);
         Assert.Throws<InvalidOperationException>(() => new StartVisitPreparer().Prepare(
-            command, context, policy with { AllowAutoExtension = false }, rules, start.AddMinutes(1)));
+            command, context, policy with { AllowVisitExtension = false }, rules, start.AddMinutes(1)));
 
         var freeOnlyEnd = start.AddHours(2);
         var withoutFurtherPaidTime = command with { DesiredEndAt = freeOnlyEnd };
         new StartVisitPreparer().Prepare(
-            withoutFurtherPaidTime, context, policy with { AllowAutoExtension = false }, rules, start.AddMinutes(1));
+            withoutFurtherPaidTime, context, policy with { AllowVisitExtension = false }, rules, start.AddMinutes(1));
     }
 
     [Fact]

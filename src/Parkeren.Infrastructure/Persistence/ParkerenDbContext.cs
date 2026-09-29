@@ -78,7 +78,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("default_parking_policy");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.MaxPaidParkingDuration).IsRequired();
+            entity.Property(x => x.MaxPaidParkingDuration);
         });
         modelBuilder.Entity<ParkingRuleSet>(entity =>
         {
@@ -201,8 +201,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             {
                 owned.Property(x => x.MaxPaidParkingDuration).HasColumnName("PolicyMaxPaidParkingDuration");
                 owned.Property(x => x.MaxVisitElapsedDuration).HasColumnName("PolicyMaxVisitElapsedDuration");
-                owned.Property(x => x.AllowAutoExtension).HasColumnName("PolicyAllowAutoExtension");
-                owned.Property(x => x.AllowManualStop).HasColumnName("PolicyAllowManualStop");
+                owned.Property(x => x.AllowVisitExtension).HasColumnName("PolicyAllowVisitExtension");
+                owned.Property(x => x.AllowOpenEndedVisits).HasColumnName("PolicyAllowOpenEndedVisits");
             });
             entity.HasIndex(x => x.StartOperationId).IsUnique();
             entity.HasIndex(x => new { x.Status, x.StartAt });

@@ -15,8 +15,8 @@ public sealed class EffectiveParkingPolicySnapshotTests
 
         Assert.Equal(TimeSpan.FromHours(8), snapshot.MaxPaidParkingDuration);
         Assert.Equal(TimeSpan.FromHours(12), snapshot.MaxVisitElapsedDuration);
-        Assert.True(snapshot.AllowAutoExtension);
-        Assert.True(snapshot.AllowManualStop);
+        Assert.True(snapshot.AllowVisitExtension);
+        Assert.True(snapshot.AllowOpenEndedVisits);
         Assert.Equal(effective, snapshot.ToEffectivePolicy());
     }
 }
