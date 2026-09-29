@@ -20,6 +20,19 @@ internal sealed class VisitEndTimeProviderAdjuster(
             return new(false);
 
         var visit = await dbContext.Visits.AsNoTracking().SingleAsync(x => x.Id == command.VisitId, cancellationToken);
+        var rootChange = await dbContext.VisitEndTimeChanges.AsNoTracking()
+            .SingleAsync(x => x.OperationId == command.OperationId, cancellationToken);
+
+        var existingChildren = await dbContext.ProviderOperations.AsNoTracking()
+            .Where(x => x.ParentOperationId == rootChange.OperationId)
+            .ToListAsync(cancellationToken);
+
+        if (existingChildren.Any(x => x.Status is ProviderOperationStatus.Pending
+                                     or ProviderOperationStatus.InProgress
+                                     or ProviderOperationStatus.Unknown
+                                     or ProviderOperationStatus.Reconciling))
+            return new(true);
+
         var actions = await dbContext.ProviderParkingActions.AsNoTracking()
             .Where(x => x.VisitId == visit.Id &&
                         (x.State == ProviderActionState.Active || x.State == ProviderActionState.Scheduled))
@@ -35,16 +48,19 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (string.IsNullOrWhiteSpace(scheduled.ProviderActionId))
             throw new InvalidOperationException("Scheduled provider action has no provider action id.");
 
-        var rootChange = await dbContext.VisitEndTimeChanges.AsNoTracking()
-            .SingleAsync(x => x.OperationId == command.OperationId, cancellationToken);
+        var existingCancel = existingChildren.SingleOrDefault(
+            x => x.Type == ProviderOperationType.Stop &&
+                 x.ProviderParkingActionId == scheduled.Id);
 
-        var cancelOperationId = Guid.NewGuid();
-        await PersistScheduledCancelAttemptAsync(
-            visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
-
-        try
+        if (existingCancel is null)
         {
-            await provider.StopActionAsync(scheduled.ProviderActionId, cancellationToken);
+            var cancelOperationId = Guid.NewGuid();
+            await PersistScheduledCancelAttemptAsync(
+                visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
+
+            try
+            {
+                await provider.StopActionAsync(scheduled.ProviderActionId, cancellationToken);
             var afterCancel = await provider.GetActionsAsync(cancellationToken);
             if (afterCancel.Any(x => x.ProviderActionId == scheduled.ProviderActionId &&
                                      !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
@@ -54,19 +70,26 @@ internal sealed class VisitEndTimeProviderAdjuster(
                 return new(true);
             }
 
-            await ConfirmScheduledCancelAsync(
-                visit.Id, scheduled.Id, cancelOperationId, CancellationToken.None);
+                await ConfirmScheduledCancelAsync(
+                    visit.Id, scheduled.Id, cancelOperationId, CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                await MarkScheduledCancelUnknownAsync(
+                    visit.Id, scheduled.Id, cancelOperationId, "timeout", CancellationToken.None);
+                if (cancellationToken.IsCancellationRequested)
+                    throw;
+                return new(true);
+            }
+            catch (HttpRequestException)
+            {
+                await MarkScheduledCancelUnknownAsync(
+                    visit.Id, scheduled.Id, cancelOperationId, "network", CancellationToken.None);
+                return new(true);
+            }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        else if (existingCancel.Status != ProviderOperationStatus.Succeeded)
         {
-            await MarkScheduledCancelUnknownAsync(
-                visit.Id, scheduled.Id, cancelOperationId, "timeout", CancellationToken.None);
-            return new(true);
-        }
-        catch (HttpRequestException)
-        {
-            await MarkScheduledCancelUnknownAsync(
-                visit.Id, scheduled.Id, cancelOperationId, "network", CancellationToken.None);
             return new(true);
         }
 
@@ -76,6 +99,13 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var location = configuration["ParkingProvider:Location"];
         if (string.IsNullOrWhiteSpace(location))
             throw new InvalidOperationException("ParkingProvider:Location is required to replace scheduled coverage.");
+
+        var existingReplacement = existingChildren.SingleOrDefault(
+            x => x.Type == ProviderOperationType.ContinueStart &&
+                 x.RequestedEndAt == requestedEndAt);
+
+        if (existingReplacement is not null)
+            return new(existingReplacement.Status != ProviderOperationStatus.Succeeded);
 
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(x => x.Id == visit.VehicleId, cancellationToken);
         var operationId = Guid.NewGuid();
@@ -104,9 +134,11 @@ internal sealed class VisitEndTimeProviderAdjuster(
             await ConfirmReplacementAsync(operationId, newActionId, confirmed, cancellationToken);
             return new(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            await MarkReplacementUnknownAsync(operationId, newActionId, "timeout", cancellationToken);
+            await MarkReplacementUnknownAsync(operationId, newActionId, "timeout", CancellationToken.None);
+            if (cancellationToken.IsCancellationRequested)
+                throw;
             return new(true);
         }
         catch (HttpRequestException)
