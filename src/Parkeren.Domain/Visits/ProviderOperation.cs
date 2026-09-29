@@ -12,6 +12,7 @@ public sealed class ProviderOperation
     public Guid OperationId { get; private set; }
     public Guid? VisitId { get; private set; }
     public Guid? ProviderParkingActionId { get; private set; }
+    public Guid? ParentOperationId { get; private set; }
     public ProviderOperationType Type { get; private set; }
     public ProviderOperationStatus Status { get; private set; }
     public int AttemptCount { get; private set; }
@@ -21,6 +22,15 @@ public sealed class ProviderOperation
     public DateTimeOffset? RequestedEndAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public uint Version { get; private set; }
+    public void SetParentOperationId(Guid parentOperationId)
+    {
+        if (parentOperationId == Guid.Empty)
+            throw new ArgumentException("Parent operation id is required.", nameof(parentOperationId));
+        if (ParentOperationId is not null && ParentOperationId != parentOperationId)
+            throw new InvalidOperationException("Parent operation id cannot be changed once assigned.");
+        ParentOperationId = parentOperationId;
+    }
+
     public void AttachProviderParkingAction(Guid providerParkingActionId)
     {
         if (Type != ProviderOperationType.Stop || Status != ProviderOperationStatus.Pending || ProviderParkingActionId is not null)
