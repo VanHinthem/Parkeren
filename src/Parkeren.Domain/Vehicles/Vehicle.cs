@@ -6,9 +6,13 @@ public sealed class Vehicle
 
     public Vehicle(Guid id, string licensePlate, string normalizedLicensePlate, string? displayName)
     {
+        var canonicalPlate = NormalizeLicensePlate(licensePlate);
+        if (canonicalPlate != NormalizeLicensePlate(normalizedLicensePlate))
+            throw new ArgumentException("License plate values must match.", nameof(normalizedLicensePlate));
+
         Id = id;
-        LicensePlate = licensePlate;
-        NormalizedLicensePlate = normalizedLicensePlate;
+        LicensePlate = canonicalPlate;
+        NormalizedLicensePlate = canonicalPlate;
         DisplayName = displayName;
         IsActive = true;
         CreatedAt = DateTimeOffset.UtcNow;
@@ -23,4 +27,7 @@ public sealed class Vehicle
 
     public void Activate() => IsActive = true;
     public void Deactivate() => IsActive = false;
+
+    public static string NormalizeLicensePlate(string plate) =>
+        new(plate.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

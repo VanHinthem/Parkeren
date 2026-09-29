@@ -163,13 +163,12 @@ internal sealed class AdministrationService(
         if (string.IsNullOrWhiteSpace(licensePlate))
             return null;
 
-        var plate = licensePlate.Trim().ToUpperInvariant();
-        var normalized = NormalizeLicensePlate(plate);
+        var normalized = Vehicle.NormalizeLicensePlate(licensePlate);
         if (normalized.Length is < 2 or > 16 ||
             await dbContext.Vehicles.AnyAsync(x => x.NormalizedLicensePlate == normalized, cancellationToken))
             return null;
 
-        var vehicle = new Vehicle(Guid.NewGuid(), plate, normalized, string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim());
+        var vehicle = new Vehicle(Guid.NewGuid(), normalized, normalized, string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim());
         dbContext.Vehicles.Add(vehicle);
         await dbContext.SaveChangesAsync(cancellationToken);
         return new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive);
@@ -257,6 +256,4 @@ internal sealed class AdministrationService(
 
     private static bool IsValidPin(string pin) => pin.Length == 6 && pin.All(char.IsAsciiDigit);
     private static string NormalizeUsername(string username) => username.Trim().ToUpperInvariant();
-    private static string NormalizeLicensePlate(string plate) =>
-        new(plate.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }
