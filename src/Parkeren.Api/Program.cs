@@ -135,6 +135,47 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { created, actions });
     });
 
+    app.MapPost("/api/dev/parking-provider/actions/test-adjacent", async (
+        DevAdjacentProviderActionsRequest request,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.LicensePlate))
+            return Results.BadRequest(new { error = "LicensePlate is verplicht." });
+        if (request.FirstDurationMinutes is < 1 or > 15 || request.SecondDurationMinutes is < 1 or > 15)
+            return Results.BadRequest(new { error = "Beide durations moeten voor de diagnostische test tussen 1 en 15 minuten liggen." });
+
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var firstStart = DateTimeOffset.UtcNow;
+        var firstCreated = await provider.StartActionAsync(
+            new ProviderParkingActionRequest(
+                request.LicensePlate,
+                firstStart,
+                firstStart.AddMinutes(request.FirstDurationMinutes),
+                product.Location),
+            cancellationToken);
+
+        var actionsAfterFirst = await provider.GetActionsAsync(cancellationToken);
+        var firstReadBack = actionsAfterFirst.FirstOrDefault(x => x.ProviderActionId == firstCreated.ProviderActionId);
+        if (firstReadBack is null)
+            return Results.Problem("De eerste 2Park-actie kon niet worden teruggelezen.", statusCode: StatusCodes.Status502BadGateway);
+
+        var secondStart = firstReadBack.End;
+        var secondCreated = await provider.StartActionAsync(
+            new ProviderParkingActionRequest(
+                request.LicensePlate,
+                secondStart,
+                secondStart.AddMinutes(request.SecondDurationMinutes),
+                product.Location),
+            cancellationToken);
+
+        var actions = await provider.GetActionsAsync(cancellationToken);
+        return Results.Ok(new { first = firstReadBack, second = secondCreated, actions });
+    });
+
     app.MapPost("/api/dev/parking-provider/actions/{providerActionId}/stop", async (
         string providerActionId,
         IParkingProvider provider,
@@ -720,6 +761,7 @@ void DeleteSessionCookie(HttpContext context, bool secure)
 }
 
 public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes, int StartInMinutes = 0);
+public sealed record DevAdjacentProviderActionsRequest(string LicensePlate, int FirstDurationMinutes = 5, int SecondDurationMinutes = 5);
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
