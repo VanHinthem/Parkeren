@@ -3148,7 +3148,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         }
 
         await using var verifyContext = fixture.CreateDbContext();
-        Assert.Equal(ProviderActionState.Active,
+        Assert.Equal(ProviderActionState.Completed,
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == previous.Id, cancellationToken)).State);
         var next = Assert.Single(await verifyContext.ProviderParkingActions
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
