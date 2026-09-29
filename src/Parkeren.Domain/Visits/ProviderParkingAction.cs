@@ -1,6 +1,6 @@
 namespace Parkeren.Domain.Visits;
 
-public enum ProviderActionState { Planned, Starting, Active, Stopping, Stopped, Completed, Failed }
+public enum ProviderActionState { Planned, Starting, Scheduled, Active, Stopping, Stopped, Completed, Failed }
 public enum ProviderActionHealth { Healthy, Unknown, Reconciling }
 
 public sealed class ProviderParkingAction
@@ -27,6 +27,24 @@ public sealed class ProviderParkingAction
     public void MarkStarting() { Ensure(ProviderActionState.Planned); State = ProviderActionState.Starting; }
     public void CaptureStartResponse(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); if (string.IsNullOrWhiteSpace(providerActionId)) throw new ArgumentException("Provider action id is required.", nameof(providerActionId)); ProviderActionId = providerActionId; ActualStartAt = actualStartAt; ProviderStatus = providerStatus; }
     public void MarkActive(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); CaptureStartResponse(providerActionId, actualStartAt, providerStatus); State = ProviderActionState.Active; Health = ProviderActionHealth.Healthy; }
+    public void MarkScheduled(string providerActionId, string? providerStatus = null)
+    {
+        Ensure(ProviderActionState.Starting);
+        if (string.IsNullOrWhiteSpace(providerActionId)) throw new ArgumentException("Provider action id is required.", nameof(providerActionId));
+        ProviderActionId = providerActionId;
+        ProviderStatus = providerStatus;
+        ActualStartAt = null;
+        State = ProviderActionState.Scheduled;
+        Health = ProviderActionHealth.Healthy;
+    }
+    public void ActivateScheduled(DateTimeOffset actualStartAt, string? providerStatus = null)
+    {
+        Ensure(ProviderActionState.Scheduled);
+        ActualStartAt = actualStartAt;
+        ProviderStatus = providerStatus;
+        State = ProviderActionState.Active;
+        Health = ProviderActionHealth.Healthy;
+    }
     public void ExtendPlannedEnd(DateTimeOffset newEndAt)
     {
         Ensure(ProviderActionState.Active);
@@ -38,9 +56,10 @@ public sealed class ProviderParkingAction
 
     public void BeginStopping()
     {
-        Ensure(ProviderActionState.Active);
+        if (State is not (ProviderActionState.Active or ProviderActionState.Scheduled))
+            throw new InvalidOperationException($"Only an active or scheduled provider action can be stopped, but was {State}.");
         if (string.IsNullOrWhiteSpace(ProviderActionId))
-            throw new InvalidOperationException("An active provider action must have a provider action id before it can be stopped.");
+            throw new InvalidOperationException("A provider action must have a provider action id before it can be stopped.");
         State = ProviderActionState.Stopping;
     }
 
