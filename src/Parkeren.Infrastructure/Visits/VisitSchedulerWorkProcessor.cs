@@ -41,6 +41,7 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (latestAction?.State == ProviderActionState.Scheduled)
         {
+            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
             var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
             var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == latestAction.ProviderActionId);
             if (remote is null)
@@ -446,7 +447,6 @@ internal sealed class VisitSchedulerWorkProcessor(
             .SingleAsync(cancellationToken);
         if (!await dbContext.ProviderOperations.AnyAsync(x => x.OperationId == work.Id, cancellationToken))
         {
-            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
             var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
             if (remoteActions.Any(x =>
                     Vehicle.NormalizeLicensePlate(x.LicensePlate) == Vehicle.NormalizeLicensePlate(licensePlate) &&
