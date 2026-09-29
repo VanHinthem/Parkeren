@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
-using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
@@ -61,9 +60,6 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
 
         action.MarkStopped(actualEndAt, providerAction.Status);
         operation.Succeed(actualEndAt);
-        visit.Complete(actualEndAt);
-        dbContext.NotificationEvents.Add(
-            new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt));
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
