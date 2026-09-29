@@ -131,17 +131,23 @@ public sealed class StopVisitProviderExecutor(
             await provider.StopActionAsync(preparation.Action.ProviderActionId, cancellationToken);
 
             var actions = await provider.GetActionsAsync(cancellationToken);
-            var confirmed = actions.SingleOrDefault(x =>
-                x.ProviderActionId == preparation.Action.ProviderActionId &&
-                string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase));
-
-            if (confirmed is null)
+            var remaining = actions.SingleOrDefault(x =>
+                x.ProviderActionId == preparation.Action.ProviderActionId);
+            if (remaining is not null &&
+                !string.Equals(remaining.Status, "stopped", StringComparison.OrdinalIgnoreCase))
             {
                 await resultStore.RecordUnknownAsync(preparation, "read-back-unconfirmed", cancellationToken);
                 return new(preparation, null, true);
             }
 
             var actualEndAt = clock.GetUtcNow();
+            var confirmed = remaining ?? new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                preparation.Action.ProviderActionId!,
+                string.Empty,
+                preparation.Action.PlannedStartAt,
+                actualEndAt,
+                string.Empty,
+                "stopped");
             await resultStore.RecordConfirmedAsync(preparation, confirmed, actualEndAt, cancellationToken);
             return new(preparation, confirmed, false);
         }
