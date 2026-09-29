@@ -24,6 +24,9 @@ public sealed class StartVisitPreparer
         if (command.OperationId == Guid.Empty) throw new ArgumentException("OperationId is required.", nameof(command));
         if (command.OwnerUserId == Guid.Empty || command.ActorUserId == Guid.Empty || command.VehicleId == Guid.Empty) throw new ArgumentException("Owner, actor and vehicle are required.", nameof(command));
 
+        if (command.DesiredEndAt is null && !policy.AllowOpenEndedVisits)
+            throw new InvalidOperationException("Visit policy does not allow open-ended Visits.");
+
         if (command.DesiredEndAt is not null)
         {
             var durationValidation = VisitDurationPolicyValidator.Validate(policy, command.StartAt, command.DesiredEndAt.Value);
@@ -39,19 +42,6 @@ public sealed class StartVisitPreparer
         }
         var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
             command.StartAt, coverageEvaluationEndAt, rules);
-        if (requiresProviderCoverageNow)
-        {
-            var providerEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
-            var initialActionEndAt = ProviderActionStartPlanner.PlanEnd(
-                command.StartAt, providerEndAt, rules);
-            var laterPaidCoverage = initialActionEndAt < providerEndAt &&
-                ParkingRuleSetPeriodSegmenter.Segment(initialActionEndAt, providerEndAt, rules)
-                    .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
-                    .Any(x => x.IsPaid);
-            if (laterPaidCoverage && !policy.AllowVisitExtension)
-                throw new InvalidOperationException(
-                    "Visit requires provider continuation, but auto extension is disabled.");
-        }
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
