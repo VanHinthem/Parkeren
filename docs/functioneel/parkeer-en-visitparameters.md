@@ -17,7 +17,7 @@ Een providerlimiet hoort niet in gebruikersbeleid. Andersom hoort een gebruikers
 
 | Parameter | Type | Betekenis |
 | --- | --- | --- |
-| `MaxPaidParkingDuration` | `TimeSpan` | Maximale totale **betaalde parkeertijd** binnen één Visit. Gratis perioden tellen niet mee. |
+| `MaxPaidParkingDuration` | `TimeSpan?` | Maximale totale **betaalde parkeertijd** binnen één Visit. Gratis perioden tellen niet mee. `null` betekent **geen maximale betaalde parkeertijd**. |
 | `MaxVisitElapsedDuration` | `TimeSpan?` | Maximale verstreken tijd vanaf de oorspronkelijke `Visit.StartAt`. `null` betekent **geen maximale totale Visitduur**. Verlengen reset deze teller niet. |
 | `AllowOpenEndedVisits` | `bool` | Bepaalt of een gebruiker een Visit zonder vooraf gekozen eindtijd mag starten. Bij `false` is `DesiredEndAt` verplicht. Bij `true` mag `DesiredEndAt = null` zijn. |
 | `AllowVisitExtension` | `bool` | Bepaalt of een gebruiker de `DesiredEndAt` van een reeds actieve Visit naar een later tijdstip mag wijzigen. |
@@ -62,7 +62,7 @@ Een verlenging blijft onder alle geldende limieten vallen. Indien `MaxVisitElaps
 new DesiredEndAt <= Visit.StartAt + MaxVisitElapsedDuration
 ```
 
-Ook `MaxPaidParkingDuration` en de toepasselijke parkeerregels moeten opnieuw worden gevalideerd.
+Ook `MaxPaidParkingDuration` (wanneer niet `null`) en de toepasselijke parkeerregels moeten opnieuw worden gevalideerd.
 
 Daarom wordt de huidige naam `AllowAutoExtension` vervangen door `AllowVisitExtension`. Het automatisch verzorgen van providerdekking is geen gebruikersrecht en staat los van het handmatig verlengen van een Visit.
 
@@ -109,7 +109,7 @@ Visit.StartAt              = 12:00
 Visit.DesiredEndAt         = 18:00
 
 MaxVisitElapsedDuration    = 8 uur
-MaxPaidParkingDuration     = 8 uur
+MaxPaidParkingDuration     = 8 uur  # null = onbeperkt
 AllowOpenEndedVisits       = true
 AllowVisitExtension        = true
 
