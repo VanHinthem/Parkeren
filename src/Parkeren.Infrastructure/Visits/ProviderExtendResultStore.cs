@@ -7,7 +7,9 @@ using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingActio
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : IProviderExtendResultStore
+internal sealed class ProviderExtendResultStore(
+    ParkerenDbContext dbContext,
+    TimeProvider timeProvider) : IProviderExtendResultStore
 {
     public async Task RecordConfirmedAsync(
         ProviderExtendPreparation preparation,
@@ -37,7 +39,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             throw new InvalidOperationException("Provider continuation operation is not in progress or reconciliation.");
 
         action.ExtendPlannedEnd(providerAction.End);
-        operation.Succeed(DateTimeOffset.UtcNow);
+        operation.Succeed(timeProvider.GetUtcNow());
 
         if (visit.Status == VisitStatus.Active)
         {
@@ -113,7 +115,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            DateTimeOffset.UtcNow));
+            timeProvider.GetUtcNow()));
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -136,7 +138,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             x => x.Id == preparation.Operation.Id,
             cancellationToken);
         if (operation.Status == ProviderOperationStatus.InProgress)
-            operation.Fail(errorCode, DateTimeOffset.UtcNow);
+            operation.Fail(errorCode, timeProvider.GetUtcNow());
 
         var visit = await dbContext.Visits.SingleAsync(
             x => x.Id == preparation.Operation.VisitId!.Value,
@@ -148,7 +150,7 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            DateTimeOffset.UtcNow));
+            timeProvider.GetUtcNow()));
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
