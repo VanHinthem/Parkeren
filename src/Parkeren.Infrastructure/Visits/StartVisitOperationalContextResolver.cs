@@ -31,7 +31,7 @@ internal sealed class StartVisitOperationalContextResolver(
                 ? startAt + maxElapsed
                 : policy.MaxPaidParkingDuration is { } maxPaid
                     ? startAt + maxPaid
-                    : startAt.AddDays(1));
+                    : startAt + ProviderCoverageSchedule.OpenEndedPlanningHorizon);
 
         var ruleSets = await dbContext.ParkingRuleSets
             .AsNoTracking()
