@@ -28,7 +28,7 @@ public sealed class ChangeVisitEndTimeFlowTests
             new ThrowingStopStore(),
             new StopVisitProviderExecutor(new ThrowingProvider(), new ThrowingResultStore()),
             new FixedTimeProvider(now));
-        var flow = new ChangeVisitEndTimeFlow(new ThrowingChanger(), stopFlow, new FixedTimeProvider(now));
+        var flow = new ChangeVisitEndTimeFlow(new ThrowingChanger(), stopFlow, null, new FixedTimeProvider(now));
 
         var result = await flow.ChangeAsync(
             new ChangeVisitEndTimeCommand(operationId, visit.Id, userId, now),
