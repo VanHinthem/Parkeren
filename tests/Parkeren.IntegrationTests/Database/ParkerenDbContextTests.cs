@@ -344,7 +344,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
         Assert.NotNull(operation.CompletedAt);
         Assert.False(await verifyContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
-        Assert.Single(await verifyContext.NotificationEvents
+        Assert.Empty(await verifyContext.NotificationEvents
             .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
             .ToListAsync(cancellationToken));
     }
@@ -1273,9 +1273,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var action = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
         var stopOperation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == stopOperationId, cancellationToken);
 
-        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
         Assert.Equal(VisitHealth.Healthy, persistedVisit.Health);
-        Assert.False(persistedVisit.OccupiesCapacity);
+        Assert.True(persistedVisit.OccupiesCapacity);
         Assert.Equal(ProviderActionState.Stopped, action.State);
         Assert.Equal(ProviderActionHealth.Healthy, action.Health);
         Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
@@ -1462,8 +1462,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var persistedStopOperation = await verifyContext.ProviderOperations.SingleAsync(
             x => x.OperationId == stopOperationId, cancellationToken);
 
-        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
-        Assert.False(persistedVisit.OccupiesCapacity);
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.True(persistedVisit.OccupiesCapacity);
         Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedStopOperation.Status);
         Assert.Equal(1, persistedStopOperation.AttemptCount);
@@ -3148,7 +3148,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         }
 
         await using var verifyContext = fixture.CreateDbContext();
-        Assert.Equal(ProviderActionState.Completed,
+        Assert.Equal(ProviderActionState.Active,
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == previous.Id, cancellationToken)).State);
         var next = Assert.Single(await verifyContext.ProviderParkingActions
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
