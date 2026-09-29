@@ -20,12 +20,12 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 {
     [Fact]
-    public async Task Database_can_apply_migrations()
+    public async Task Database_can_be_created_from_current_model()
     {
         await using var context = fixture.CreateDbContext();
 
         Assert.True(await context.Database.CanConnectAsync(TestContext.Current.CancellationToken));
-        Assert.Empty(await context.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken));
+        Assert.True(await context.Users.AnyAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
