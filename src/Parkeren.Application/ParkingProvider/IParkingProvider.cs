@@ -3,7 +3,14 @@ namespace Parkeren.Application.ParkingProvider;
 public sealed record ProviderCategory(string Id, string Name);
 public sealed record ProviderProduct(string Id, string Name, string Location);
 
-public sealed record ProviderBalance(TimeSpan RemainingPaidDuration, DateTimeOffset RetrievedAt);
+public enum ProviderBalanceUnit
+{
+    Euro,
+    Minute,
+    Times
+}
+
+public sealed record ProviderBalance(decimal RemainingBalance, ProviderBalanceUnit Unit, DateTimeOffset RetrievedAt);
 
 public sealed record ProviderParkingActionRequest(
     string LicensePlate,

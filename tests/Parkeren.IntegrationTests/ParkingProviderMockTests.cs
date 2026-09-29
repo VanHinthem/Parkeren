@@ -21,7 +21,8 @@ public sealed class ParkingProviderMockTests
         Assert.Equal("Oss", product.Location);
 
         var balance = await provider.GetBalanceAsync(cancellationToken);
-        Assert.True(balance.RemainingPaidDuration > TimeSpan.Zero);
+        Assert.True(balance.RemainingBalance > 0);
+        Assert.Equal(ProviderBalanceUnit.Minute, balance.Unit);
 
         var start = DateTimeOffset.UtcNow.AddMinutes(5);
         var created = await provider.StartActionAsync(

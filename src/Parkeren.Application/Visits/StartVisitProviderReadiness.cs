@@ -24,7 +24,8 @@ public sealed class StartVisitProviderReadiness(IParkingProvider provider, TimeP
         if (balance.RetrievedAt < now - MaximumBalanceAge || balance.RetrievedAt > now + MaximumClockSkew)
             throw new InvalidOperationException("Parking provider balance is stale or has an invalid retrieval timestamp.");
 
-        if (balance.RemainingPaidDuration < requiredPaidDuration)
+        if (balance.Unit == ProviderBalanceUnit.Minute &&
+            balance.RemainingBalance < (decimal)requiredPaidDuration.TotalMinutes)
             throw new InvalidOperationException("Parking provider balance is insufficient for the requested paid duration.");
 
         return new ProviderStartReadiness(product, balance);

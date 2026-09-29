@@ -20,7 +20,7 @@ public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvide
     {
         var response = await httpClient.GetFromJsonAsync<MockBalance>("api/balance", cancellationToken)
             ?? throw new InvalidOperationException("Parking provider returned no balance.");
-        return new ProviderBalance(TimeSpan.FromMinutes(response.RemainingPaidMinutes), response.RetrievedAt);
+        return new ProviderBalance((decimal)response.RemainingPaidMinutes, ProviderBalanceUnit.Minute, response.RetrievedAt);
     }
 
     public async Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>

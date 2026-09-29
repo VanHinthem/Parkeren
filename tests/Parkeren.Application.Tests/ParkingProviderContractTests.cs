@@ -19,3 +19,18 @@ public sealed class ParkingProviderContractTests
         Assert.Equal("Oss", request.Location);
     }
 }
+
+
+public sealed class ProviderBalanceContractTests
+{
+    [Fact]
+    public void Balance_keeps_provider_native_amount_and_unit()
+    {
+        var retrievedAt = DateTimeOffset.Parse("2026-09-29T14:07:31+00:00");
+        var balance = new ProviderBalance(15.33m, ProviderBalanceUnit.Euro, retrievedAt);
+
+        Assert.Equal(15.33m, balance.RemainingBalance);
+        Assert.Equal(ProviderBalanceUnit.Euro, balance.Unit);
+        Assert.Equal(retrievedAt, balance.RetrievedAt);
+    }
+}

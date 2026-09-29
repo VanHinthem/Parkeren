@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Parkeren.Application.ParkingProvider;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
@@ -51,8 +52,8 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             ["locale"] = Locale
         }, cancellationToken);
 
-        var minutes = ParseBalanceMinutes(data.RootElement);
-        return new ProviderBalance(TimeSpan.FromMinutes(minutes), DateTimeOffset.UtcNow);
+        var (amount, unit) = ParseBalance(data.RootElement);
+        return new ProviderBalance(amount, unit, DateTimeOffset.UtcNow);
     }
 
     public async Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default)
@@ -281,38 +282,72 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
     private static string? ExtractLocation(JsonElement product)
     {
-        if (!product.TryGetProperty("pdt_action_parameter_groups", out var groups))
-            return null;
-        foreach (var group in groups.EnumerateArray())
+        if (product.TryGetProperty("pdt_parameter_groups", out var groups))
         {
-            if (!group.TryGetProperty("apg_parameters", out var parameters))
-                continue;
-            foreach (var parameter in parameters.EnumerateArray())
+            foreach (var group in groups.EnumerateArray())
             {
-                if (parameter.TryGetProperty("prr_label", out var labelElement) &&
-                    string.Equals(labelElement.GetString(), "LOCATION", StringComparison.OrdinalIgnoreCase) &&
-                    parameter.TryGetProperty("prr_value", out var valueElement))
-                    return valueElement.GetString();
+                if (group.TryGetProperty("pgp_label", out var groupLabel) &&
+                    !string.Equals(groupLabel.GetString(), "START", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!group.TryGetProperty("pgp_parameters", out var parameters))
+                    continue;
+
+                foreach (var parameter in parameters.EnumerateArray())
+                {
+                    if (!parameter.TryGetProperty("prr_label", out var labelElement) ||
+                        !string.Equals(labelElement.GetString(), "LOCATION", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (parameter.TryGetProperty("prr_value", out var valueElement) &&
+                        !string.IsNullOrWhiteSpace(valueElement.GetString()))
+                        return valueElement.GetString();
+                    if (parameter.TryGetProperty("prr_default_value", out var defaultElement) &&
+                        !string.IsNullOrWhiteSpace(defaultElement.GetString()))
+                        return defaultElement.GetString();
+                }
             }
         }
+
+        if (product.TryGetProperty("pdt_id", out var idElement))
+        {
+            var match = Regex.Match(idElement.GetString() ?? string.Empty, @"^([A-Z]{3})\w+_(\d+)\$");
+            if (match.Success)
+                return $"{match.Groups[1].Value}{match.Groups[2].Value}";
+        }
+
         return null;
     }
 
-    private static double ParseBalanceMinutes(JsonElement root)
+    private static (decimal Amount, ProviderBalanceUnit Unit) ParseBalance(JsonElement root)
     {
-        if (!root.GetProperty("data").TryGetProperty("balance", out var balance))
-            return 0;
-        if (!balance.TryGetProperty("ble_parameters", out var parameters))
-            return 0;
+        if (!root.GetProperty("data").TryGetProperty("balance", out var balance) ||
+            !balance.TryGetProperty("ble_parameters", out var parameters))
+            return (0m, ProviderBalanceUnit.Minute);
 
+        decimal amount = 0m;
+        string? rawUnit = null;
         foreach (var parameter in parameters.EnumerateArray())
         {
-            if (!parameter.TryGetProperty("prr_value", out var valueElement))
+            if (!parameter.TryGetProperty("prr_label", out var labelElement) ||
+                !parameter.TryGetProperty("prr_value", out var valueElement))
                 continue;
-            if (double.TryParse(valueElement.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
-                return value;
+
+            var label = labelElement.GetString();
+            var value = valueElement.GetString();
+            if (string.Equals(label, "AMOUNT", StringComparison.OrdinalIgnoreCase))
+                decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
+            else if (string.Equals(label, "CURRENCY", StringComparison.OrdinalIgnoreCase))
+                rawUnit = value;
         }
-        return 0;
+
+        var unit = rawUnit?.ToUpperInvariant() switch
+        {
+            "EURO" => ProviderBalanceUnit.Euro,
+            "TIMES" => ProviderBalanceUnit.Times,
+            "MINUTE" => ProviderBalanceUnit.Minute,
+            _ => ProviderBalanceUnit.Minute
+        };
+        return (amount, unit);
     }
 
     private static string NormalizePlate(string value) =>
