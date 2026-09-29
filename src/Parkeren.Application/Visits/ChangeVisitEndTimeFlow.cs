@@ -46,6 +46,7 @@ public sealed class ChangeVisitEndTimeFlow(
 
         if (command.DesiredEndAt is not null && command.DesiredEndAt < context.Visit.DesiredEndAt)
         {
+            await changer.PrepareAsync(command, cancellationToken);
             if (providerAdjuster is not null)
             {
                 var adjustment = await providerAdjuster.AdjustAsync(command, cancellationToken);
