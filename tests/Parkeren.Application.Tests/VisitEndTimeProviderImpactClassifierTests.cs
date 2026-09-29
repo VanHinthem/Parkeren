@@ -37,7 +37,7 @@ public sealed class VisitEndTimeProviderImpactClassifierTests
 
         var impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, new[] { action });
 
-        Assert.Equal(VisitEndTimeProviderImpact.RequiresProviderMutation, impact);
+        Assert.Equal(VisitEndTimeProviderImpact.ShortenActive, impact);
     }
 
     [Fact]
