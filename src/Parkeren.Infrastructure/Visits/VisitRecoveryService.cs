@@ -276,7 +276,19 @@ internal sealed class VisitRecoveryService(
         if (desiredEndAt <= confirmedAction.End)
             return;
 
-        var dueAt = ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);
+        var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ValidFrom < desiredEndAt &&
+                        (!x.ValidUntil.HasValue || x.ValidUntil.Value > confirmedAction.End))
+            .ToListAsync(cancellationToken);
+        var nextPaid = ProviderCoverageSchedule.NextPaidSegment(confirmedAction.End, desiredEndAt, ruleSets);
+        if (nextPaid is null)
+            return;
+
+        var dueAt = nextPaid.Start > confirmedAction.End
+            ? nextPaid.Start
+            : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);
         var exists = await dbContext.VisitSchedulerWork.AnyAsync(
             x => x.VisitId == item.Visit.Id &&
                  x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&

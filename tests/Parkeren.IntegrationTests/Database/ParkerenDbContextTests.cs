@@ -2763,6 +2763,70 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Restart_rebuilds_missing_work_at_next_paid_window()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = mockFactory.CreateClient();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        var parkingProvider = new TwoParkMockProvider(http);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"recover-gap-{suffix}", $"RECOVER-GAP-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"RG-{suffix}", $"RG{suffix}".ToUpperInvariant(), null);
+        var start = DateTimeOffset.UtcNow.AddHours(-1);
+        var actionEnd = start.AddHours(2);
+        var nextPaidStart = actionEnd.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            start, nextPaidStart.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var remote = await parkingProvider.StartActionAsync(
+            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, start, actionEnd, "Oss"), cancellationToken);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, actionEnd);
+        action.MarkStarting();
+        action.MarkActive(remote.ProviderActionId, start);
+        var paidWindows = Enumerable.Range(0, 7)
+            .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+            .ToArray();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), start.AddDays(-1), actionEnd, TimeSpan.FromHours(4), paidWindows));
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), actionEnd, nextPaidStart, TimeSpan.FromHours(4), Array.Empty<PaidWindow>()));
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), nextPaidStart, null, TimeSpan.FromHours(4), paidWindows));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>().RecoverAsync(cancellationToken);
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var work = Assert.Single(await verifyContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visit.Id).ToListAsync(cancellationToken));
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, work.Status);
+        Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
     public async Task Restart_blocks_continuation_after_provider_action_was_stopped_externally()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
