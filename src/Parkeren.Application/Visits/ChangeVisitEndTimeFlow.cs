@@ -15,6 +15,7 @@ public sealed record ChangeVisitEndTimeFlowResult(
 public sealed class ChangeVisitEndTimeFlow(
     IVisitEndTimeChanger changer,
     StopVisitFlow stopFlow,
+    IVisitEndTimeProviderAdjuster? providerAdjuster = null,
     TimeProvider? timeProvider = null)
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -41,6 +42,16 @@ public sealed class ChangeVisitEndTimeFlow(
                 stop.Outcome == StopVisitFlowOutcome.ReconciliationRequired
                     ? ChangeVisitEndTimeFlowOutcome.ReconciliationRequired
                     : ChangeVisitEndTimeFlowOutcome.Stopped);
+        }
+
+        if (command.DesiredEndAt is not null && command.DesiredEndAt < context.Visit.DesiredEndAt)
+        {
+            if (providerAdjuster is not null)
+            {
+                var adjustment = await providerAdjuster.AdjustAsync(command, cancellationToken);
+                if (adjustment.RequiresReconciliation)
+                    return new(context.Visit, false, ChangeVisitEndTimeFlowOutcome.ReconciliationRequired);
+            }
         }
 
         var change = await changer.ApplyAsync(command, cancellationToken);
