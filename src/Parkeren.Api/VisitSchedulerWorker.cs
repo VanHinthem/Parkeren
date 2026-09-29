@@ -16,7 +16,6 @@ internal sealed class VisitSchedulerWorker(
         // An outage during startup must not terminate the background worker permanently.
         while (!stoppingToken.IsCancellationRequested)
         {
-            Guid? claimedWorkId = null;
             try
             {
                 await using var recoveryScope = scopeFactory.CreateAsyncScope();
@@ -38,6 +37,7 @@ internal sealed class VisitSchedulerWorker(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            Guid? claimedWorkId = null;
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
