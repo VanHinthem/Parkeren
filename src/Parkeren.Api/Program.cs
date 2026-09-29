@@ -119,7 +119,11 @@ if (app.Environment.IsDevelopment())
         if (string.IsNullOrWhiteSpace(product.Location))
             return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
-        if (request.StartInMinutes is < 0 or > 15)\n            return Results.BadRequest(new { error = "StartInMinutes moet voor de diagnostische test tussen 0 en 15 liggen." });\n\n        var start = DateTimeOffset.UtcNow.AddMinutes(request.StartInMinutes);\n        var created = await provider.StartActionAsync(
+        if (request.StartInMinutes is < 0 or > 15)
+            return Results.BadRequest(new { error = "StartInMinutes moet voor de diagnostische test tussen 0 en 15 liggen." });
+
+        var start = DateTimeOffset.UtcNow.AddMinutes(request.StartInMinutes);
+        var created = await provider.StartActionAsync(
             new ProviderParkingActionRequest(
                 request.LicensePlate,
                 start,
