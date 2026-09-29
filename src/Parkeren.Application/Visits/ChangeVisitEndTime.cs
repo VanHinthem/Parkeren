@@ -17,3 +17,14 @@ public interface IVisitEndTimeChanger
         ChangeVisitEndTimeCommand command,
         CancellationToken cancellationToken = default);
 }
+
+
+public sealed record VisitEndTimeProviderAdjustmentResult(
+    bool RequiresReconciliation);
+
+public interface IVisitEndTimeProviderAdjuster
+{
+    Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(
+        ChangeVisitEndTimeCommand command,
+        CancellationToken cancellationToken = default);
+}
