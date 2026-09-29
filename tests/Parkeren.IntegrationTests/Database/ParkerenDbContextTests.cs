@@ -3070,7 +3070,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var action = Assert.Single(await verifyContext.ProviderParkingActions.Where(x => x.VisitId == visit.Id)
             .ToListAsync(cancellationToken));
         Assert.Equal(ProviderActionState.Active, action.State);
-        Assert.InRange((action.PlannedStartAt - boundary.AddSeconds(1)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((action.PlannedStartAt - boundary).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitHealth.Healthy,
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
@@ -3275,7 +3275,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             var results = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartResultStore>();
             var preparation = await store.PrepareAttemptAsync(visit, previous, work.Id, endAt, cancellationToken);
             await parkingProvider.StartActionAsync(new ProviderParkingActionRequest(
-                vehicle.NormalizedLicensePlate, boundary, endAt, "Oss"), cancellationToken);
+                vehicle.NormalizedLicensePlate, boundary.AddSeconds(1), endAt, "Oss"), cancellationToken);
             await results.RecordUnknownAsync(preparation, "timeout", cancellationToken);
         }
 
