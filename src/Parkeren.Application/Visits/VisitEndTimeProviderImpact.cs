@@ -5,7 +5,9 @@ namespace Parkeren.Application.Visits;
 public enum VisitEndTimeProviderImpact
 {
     None,
-    RequiresProviderMutation
+    CancelScheduled,
+    ReplaceScheduled,
+    ShortenActive
 }
 
 public static class VisitEndTimeProviderImpactClassifier
@@ -16,10 +18,23 @@ public static class VisitEndTimeProviderImpactClassifier
     {
         ArgumentNullException.ThrowIfNull(providerActions);
 
-        return providerActions.Any(action =>
-            action.State is ProviderActionState.Active or ProviderActionState.Scheduled &&
-            action.PlannedEndAt > requestedEndAt)
-            ? VisitEndTimeProviderImpact.RequiresProviderMutation
-            : VisitEndTimeProviderImpact.None;
+        var affected = providerActions
+            .Where(x => x.PlannedEndAt > requestedEndAt)
+            .ToList();
+
+        if (affected.Any(x => x.State == ProviderActionState.Active))
+            return VisitEndTimeProviderImpact.ShortenActive;
+
+        var scheduled = affected
+            .Where(x => x.State == ProviderActionState.Scheduled)
+            .OrderBy(x => x.PlannedStartAt)
+            .FirstOrDefault();
+
+        if (scheduled is null)
+            return VisitEndTimeProviderImpact.None;
+
+        return requestedEndAt <= scheduled.PlannedStartAt
+            ? VisitEndTimeProviderImpact.CancelScheduled
+            : VisitEndTimeProviderImpact.ReplaceScheduled;
     }
 }
