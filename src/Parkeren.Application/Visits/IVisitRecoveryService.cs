@@ -28,6 +28,7 @@ public enum VisitRecoveryKind
     ReconcileContinuationStart,
     ReconcileExtend,
     ReconcileStop,
+    ReconcileScheduledCancel,
     RebuildScheduler,
     Ambiguous
 }
@@ -70,6 +71,9 @@ public static class VisitRecoveryClassifier
 
             (VisitStatus.Stopping, ProviderOperationType.Stop) =>
                 new(item, VisitRecoveryKind.ReconcileStop, operation),
+
+            (VisitStatus.Active, ProviderOperationType.Stop) =>
+                new(item, VisitRecoveryKind.ReconcileScheduledCancel, operation),
 
             _ => new(item, VisitRecoveryKind.Ambiguous, operation)
         };
