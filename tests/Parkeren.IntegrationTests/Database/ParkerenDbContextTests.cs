@@ -2667,6 +2667,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var services = new ServiceCollection();
         services.AddInfrastructure(configuration);
         services.AddSingleton<IParkingProvider>(parkingProvider);
+        services.AddLogging();
         await using var provider = services.BuildServiceProvider();
 
         await using (var scope = provider.CreateAsyncScope())
