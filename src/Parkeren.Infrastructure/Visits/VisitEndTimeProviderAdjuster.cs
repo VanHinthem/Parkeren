@@ -51,29 +51,79 @@ internal sealed class VisitEndTimeProviderAdjuster(
             throw new InvalidOperationException("ParkingProvider:Location is required to replace scheduled coverage.");
 
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(x => x.Id == visit.VehicleId, cancellationToken);
-        var replacement = await provider.StartActionAsync(
-            new ProviderParkingActionRequest(
-                vehicle.LicensePlate,
-                scheduled.PlannedStartAt,
-                requestedEndAt,
-                location),
-            cancellationToken);
-        var readBack = await provider.GetActionsAsync(cancellationToken);
-        var confirmed = readBack.SingleOrDefault(x => x.ProviderActionId == replacement.ProviderActionId);
-        if (confirmed is null || !string.Equals(confirmed.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
-            return new(true);
+        var operationId = Guid.NewGuid();
+        var newActionId = Guid.NewGuid();
+        await PersistReplacementAttemptAsync(
+            visit.Id, newActionId, operationId, scheduled.PlannedStartAt, requestedEndAt, cancellationToken);
 
+        try
+        {
+            var replacement = await provider.StartActionAsync(
+                new ProviderParkingActionRequest(
+                    vehicle.LicensePlate,
+                    scheduled.PlannedStartAt,
+                    requestedEndAt,
+                    location),
+                cancellationToken);
+            var readBack = await provider.GetActionsAsync(cancellationToken);
+            var confirmed = readBack.SingleOrDefault(x => x.ProviderActionId == replacement.ProviderActionId);
+            if (confirmed is null || !string.Equals(confirmed.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
+            {
+                await MarkReplacementUnknownAsync(operationId, newActionId, "read-back-unconfirmed", cancellationToken);
+                return new(true);
+            }
+
+            await ConfirmReplacementAsync(operationId, newActionId, confirmed, cancellationToken);
+            return new(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            await MarkReplacementUnknownAsync(operationId, newActionId, "timeout", cancellationToken);
+            return new(true);
+        }
+        catch (HttpRequestException)
+        {
+            await MarkReplacementUnknownAsync(operationId, newActionId, "network", cancellationToken);
+            return new(true);
+        }
+    }
+
+    private async Task PersistReplacementAttemptAsync(
+        Guid visitId, Guid actionId, Guid operationId, DateTimeOffset startAt, DateTimeOffset endAt,
+        CancellationToken cancellationToken)
+    {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        var lockKey = VisitAdvisoryLock.For(visit.Id);
+        var lockKey = VisitAdvisoryLock.For(visitId);
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        var newAction = new Parkeren.Domain.Visits.ProviderParkingAction(
-            Guid.NewGuid(), visit.Id, scheduled.PlannedStartAt, requestedEndAt);
-        newAction.MarkStarting();
-        newAction.MarkScheduled(confirmed.ProviderActionId, confirmed.Status);
-        dbContext.ProviderParkingActions.Add(newAction);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(actionId, visitId, startAt, endAt);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.ContinueStart);
+        operation.BeginAttempt();
+        dbContext.ProviderParkingActions.Add(action);
+        dbContext.ProviderOperations.Add(operation);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(false);
+    }
+
+    private async Task MarkReplacementUnknownAsync(
+        Guid operationId, Guid actionId, string errorCode, CancellationToken cancellationToken)
+    {
+        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
+        action.MarkUnknown();
+        operation.MarkUnknown(errorCode);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task ConfirmReplacementAsync(
+        Guid operationId, Guid actionId, Parkeren.Application.ParkingProvider.ProviderParkingAction confirmed,
+        CancellationToken cancellationToken)
+    {
+        var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
+        action.MarkScheduled(confirmed.ProviderActionId, confirmed.Status);
+        operation.Succeed(DateTimeOffset.UtcNow);
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private async Task MarkScheduledStoppedAsync(Guid visitId, Guid actionId, CancellationToken cancellationToken)
