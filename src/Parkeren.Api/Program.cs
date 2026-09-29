@@ -176,6 +176,79 @@ if (app.Environment.IsDevelopment())
         return Results.Ok(new { first = firstReadBack, second = secondCreated, actions });
     });
 
+    app.MapPost("/api/dev/parking-provider/actions/test-active-shortening", async (
+        DevActiveShorteningRequest request,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.LicensePlate))
+            return Results.BadRequest(new { error = "LicensePlate is verplicht." });
+        if (request.InitialDurationMinutes is < 3 or > 15)
+            return Results.BadRequest(new { error = "InitialDurationMinutes moet tussen 3 en 15 liggen." });
+        if (request.ShortenedDurationMinutes is < 1 or > 14 ||
+            request.ShortenedDurationMinutes >= request.InitialDurationMinutes)
+            return Results.BadRequest(new { error = "ShortenedDurationMinutes moet minimaal 1 zijn en kleiner dan InitialDurationMinutes." });
+
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        ProviderParkingAction? created = null;
+        try
+        {
+            var start = DateTimeOffset.UtcNow;
+            var originalEnd = start.AddMinutes(request.InitialDurationMinutes);
+            var shortenedEnd = start.AddMinutes(request.ShortenedDurationMinutes);
+
+            created = await provider.StartActionAsync(
+                new ProviderParkingActionRequest(
+                    request.LicensePlate,
+                    start,
+                    originalEnd,
+                    product.Location),
+                cancellationToken);
+
+            var before = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+            var changed = await provider.ExtendActionAsync(
+                created.ProviderActionId,
+                shortenedEnd,
+                cancellationToken);
+
+            var after = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+            return Results.Ok(new
+            {
+                requested = new { start, originalEnd, shortenedEnd },
+                created,
+                before,
+                changed,
+                after,
+                shorteningApplied = after is not null &&
+                    (after.End - shortenedEnd).Duration() < TimeSpan.FromMilliseconds(1)
+            });
+        }
+        finally
+        {
+            if (created is not null)
+            {
+                try
+                {
+                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
+                }
+                catch (Exception cleanupException)
+                {
+                    app.Logger.LogWarning(
+                        cleanupException,
+                        "Failed to clean up active-shortening diagnostic action {ProviderActionId}.",
+                        created.ProviderActionId);
+                }
+            }
+        }
+    });
+
     app.MapPost("/api/dev/parking-provider/actions/{providerActionId}/stop", async (
         string providerActionId,
         IParkingProvider provider,
@@ -762,6 +835,7 @@ void DeleteSessionCookie(HttpContext context, bool secure)
 
 public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes, int StartInMinutes = 0);
 public sealed record DevAdjacentProviderActionsRequest(string LicensePlate, int FirstDurationMinutes = 5, int SecondDurationMinutes = 5);
+public sealed record DevActiveShorteningRequest(string LicensePlate, int InitialDurationMinutes = 5, int ShortenedDurationMinutes = 2);
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
