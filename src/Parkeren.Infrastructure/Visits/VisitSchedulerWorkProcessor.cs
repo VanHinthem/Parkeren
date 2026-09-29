@@ -165,8 +165,9 @@ internal sealed class VisitSchedulerWorkProcessor(
                 !string.Equals(previousAtProvider.Status, "active", StringComparison.OrdinalIgnoreCase) ||
                 (previousAtProvider.End - latestAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
             {
-                if (string.Equals(previousAtProvider?.Status, "stopped", StringComparison.OrdinalIgnoreCase))
-                    latestAction.MarkExternallyStopped(previousAtProvider.Status);
+                if (previousAtProvider?.Status is { } providerStatus &&
+                    string.Equals(providerStatus, "stopped", StringComparison.OrdinalIgnoreCase))
+                    latestAction.MarkExternallyStopped(providerStatus);
                 visit.SetHealth(VisitHealth.AttentionRequired);
                 work.Cancel();
                 await dbContext.SaveChangesAsync(cancellationToken);
