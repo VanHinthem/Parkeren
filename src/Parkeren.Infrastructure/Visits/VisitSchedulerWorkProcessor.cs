@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Rules;
 using Parkeren.Infrastructure.Persistence;
@@ -148,6 +149,30 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (actionRules.Continuation == ProviderCoverageContinuation.StartNewAction)
         {
+            var parkingProvider = serviceProvider.GetService<IParkingProvider>();
+            if (parkingProvider is null || string.IsNullOrWhiteSpace(latestAction.ProviderActionId))
+            {
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var providerActions = await parkingProvider.GetActionsAsync(cancellationToken);
+            var previousAtProvider = providerActions.SingleOrDefault(x =>
+                x.ProviderActionId == latestAction.ProviderActionId);
+            if (previousAtProvider is null ||
+                !string.Equals(previousAtProvider.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+                (previousAtProvider.End - latestAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+            {
+                if (string.Equals(previousAtProvider?.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+                    latestAction.MarkExternallyStopped(previousAtProvider.Status);
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
             var existing = await dbContext.ProviderOperations.AsNoTracking()
                 .SingleOrDefaultAsync(x => x.OperationId == work.Id, cancellationToken);
             var nextEndAt = existing?.ProviderParkingActionId is Guid existingActionId

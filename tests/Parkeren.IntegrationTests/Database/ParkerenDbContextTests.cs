@@ -2552,8 +2552,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Contains(persisted.ClaimedBy, new[] { "worker-1", "worker-2" });
     }
 
-    [Fact]
-    public async Task Scheduler_starts_a_new_action_for_oss_after_the_previous_action_ends()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Scheduler_checks_previous_provider_action_before_starting_a_new_one(bool externallyStopped)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -2567,13 +2569,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var vehicle = new Vehicle(Guid.NewGuid(), $"ON-{suffix[..2]}-{suffix[2..4]}", $"ON{suffix[..4]}", null);
         var boundary = DateTimeOffset.UtcNow.AddMinutes(-1);
         var startAt = boundary.AddHours(-4);
+        var providerPrevious = await parkingProvider.StartActionAsync(
+            new Parkeren.Application.ParkingProvider.ProviderParkingActionRequest(vehicle.LicensePlate, startAt, boundary, "Oss"),
+            cancellationToken);
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
             startAt, boundary.AddHours(2),
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
         visit.Activate();
         var previous = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, boundary);
         previous.MarkStarting();
-        previous.MarkActive($"provider-old-{suffix}", startAt);
+        previous.MarkActive(providerPrevious.ProviderActionId, startAt);
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
             VisitSchedulerWorkType.ContinueProviderCoverage, boundary.AddMinutes(-5));
         work.Claim("worker-oss-next", DateTimeOffset.UtcNow);
@@ -2592,6 +2597,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 Guid.NewGuid(), startAt.AddDays(-1), null, TimeSpan.FromHours(4), windows));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
+
+        if (externallyStopped)
+            (await http.PostAsync($"api/test/actions/{providerPrevious.ProviderActionId}/stop", null, cancellationToken))
+                .EnsureSuccessStatusCode();
 
         var configuration = new ConfigurationManager();
         configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -2612,14 +2621,27 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         }
 
         await using var verifyContext = fixture.CreateDbContext();
-        Assert.Equal(VisitSchedulerWorkStatus.Completed,
+        Assert.Equal(externallyStopped ? VisitSchedulerWorkStatus.Cancelled : VisitSchedulerWorkStatus.Completed,
             (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
-        Assert.Equal(2, await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == visit.Id, cancellationToken));
-        var operation = Assert.Single(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
-            .ToListAsync(cancellationToken));
-        Assert.Equal(ProviderOperationType.ContinueStart, operation.Type);
-        Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
-        Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
+        Assert.Equal(externallyStopped ? 1 : 2,
+            await verifyContext.ProviderParkingActions.CountAsync(x => x.VisitId == visit.Id, cancellationToken));
+        var operations = await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken);
+        if (externallyStopped)
+        {
+            Assert.Empty(operations);
+            Assert.Equal(VisitHealth.AttentionRequired,
+                (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
+            Assert.Equal(ProviderActionState.Stopped,
+                (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == previous.Id, cancellationToken)).State);
+        }
+        else
+        {
+            var operation = Assert.Single(operations);
+            Assert.Equal(ProviderOperationType.ContinueStart, operation.Type);
+            Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
+        }
+        Assert.Equal(externallyStopped ? 1 : 2, (await parkingProvider.GetActionsAsync(cancellationToken)).Count);
     }
 
     [Fact]
