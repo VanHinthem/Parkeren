@@ -75,6 +75,9 @@ public sealed class ChangeVisitEndTimeFlowTests
 
     private sealed class ThrowingChanger : IVisitEndTimeChanger
     {
+        public Task<ChangeVisitEndTimeResult> PrepareAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("End-time changer must not run when the requested end has elapsed.");
+
         public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("End-time changer must not run when the requested end has elapsed.");
     }
@@ -83,6 +86,20 @@ public sealed class ChangeVisitEndTimeFlowTests
     private sealed class RecordingChanger(Visit visit) : IVisitEndTimeChanger
     {
         public bool WasCalled { get; private set; }
+
+        public Task<ChangeVisitEndTimeResult> PrepareAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default)
+        {
+            var change = new VisitEndTimeChange(
+                Guid.NewGuid(),
+                command.OperationId,
+                command.VisitId,
+                command.ActorUserId,
+                visit.DesiredEndAt,
+                command.DesiredEndAt,
+                DateTimeOffset.UtcNow);
+            return Task.FromResult(new ChangeVisitEndTimeResult(visit, change, false));
+        }
+
         public Task<ChangeVisitEndTimeResult> ApplyAsync(ChangeVisitEndTimeCommand command, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
