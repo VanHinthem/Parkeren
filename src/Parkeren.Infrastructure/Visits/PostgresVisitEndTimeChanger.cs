@@ -70,10 +70,18 @@ internal sealed class PostgresVisitEndTimeChanger(
                     .Where(x => x.VisitId == visit.Id)
                     .ToListAsync(cancellationToken);
 
-                if (VisitEndTimeProviderImpactClassifier.Classify(desiredEndAt.Value, providerActions) ==
-                    VisitEndTimeProviderImpact.RequiresProviderMutation)
+                var affectedActions = providerActions
+                    .Where(x => x.PlannedEndAt > desiredEndAt.Value &&
+                                x.State is ProviderActionState.Active or ProviderActionState.Scheduled)
+                    .ToList();
+
+                if (affectedActions.Any(x => x.State == ProviderActionState.Active))
                     throw new InvalidOperationException(
-                        "Requested end requires a provider mutation whose strategy is not yet available.");
+                        "Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
+
+                if (affectedActions.Any(x => x.State == ProviderActionState.Scheduled))
+                    throw new InvalidOperationException(
+                        "Requested end affects a scheduled provider action; cancel/recreate must be completed before applying the end-time change.");
             }
 
             if (desiredEndAt is not null)
