@@ -70,9 +70,9 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
         if (visit.Status == VisitStatus.Active)
         {
             visit.SetHealth(VisitHealth.Healthy);
-            if (visit.PolicySnapshot.AllowVisitExtension &&
-                visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
-                desiredEndAt > action.PlannedEndAt)
+            var desiredEndAt = ProviderCoverageSchedule.PlanningEndAt(
+                visit, action.PlannedEndAt);
+            if (desiredEndAt > action.PlannedEndAt)
             {
                 var ruleSets = await dbContext.ParkingRuleSets
                     .Include(x => x.PaidWindows)
