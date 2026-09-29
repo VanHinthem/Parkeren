@@ -17,7 +17,7 @@ public static class VisitEndTimeProviderImpactClassifier
         ArgumentNullException.ThrowIfNull(providerActions);
 
         return providerActions.Any(action =>
-            action.State == ProviderActionState.Active &&
+            action.State is ProviderActionState.Active or ProviderActionState.Scheduled &&
             action.PlannedEndAt > requestedEndAt)
             ? VisitEndTimeProviderImpact.RequiresProviderMutation
             : VisitEndTimeProviderImpact.None;
