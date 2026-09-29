@@ -92,7 +92,7 @@ public static class DependencyInjection
                 UseCookies = true
             });
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(providerType))
         {
             throw new InvalidOperationException("ParkingProvider:Type must be configured as TwoParkMock or TwoPark.");
         }
