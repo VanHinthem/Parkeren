@@ -142,19 +142,21 @@ public sealed class ContinueVisitProviderExecutor(
             await resultStore.RecordConfirmedAsync(preparation, confirmed, cancellationToken);
             return new(preparation, confirmed, false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            await resultStore.RecordUnknownAsync(preparation, "timeout", cancellationToken);
+            await resultStore.RecordUnknownAsync(preparation, "timeout", CancellationToken.None);
+            if (cancellationToken.IsCancellationRequested)
+                throw;
             return new(preparation, null, true);
         }
         catch (HttpRequestException)
         {
-            await resultStore.RecordUnknownAsync(preparation, "network", cancellationToken);
+            await resultStore.RecordUnknownAsync(preparation, "network", CancellationToken.None);
             return new(preparation, null, true);
         }
         catch (System.Text.Json.JsonException)
         {
-            await resultStore.RecordUnknownAsync(preparation, "invalid-response", cancellationToken);
+            await resultStore.RecordUnknownAsync(preparation, "invalid-response", CancellationToken.None);
             return new(preparation, null, true);
         }
         catch (ArgumentException)
