@@ -5,7 +5,7 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal static class ProviderCoverageSchedule
 {
-    private static readonly TimeSpan OpenEndedPlanningHorizon = TimeSpan.FromDays(14);
+    internal static readonly TimeSpan OpenEndedPlanningHorizon = TimeSpan.FromDays(14);
 
     internal static DateTimeOffset PlanningEndAt(Visit visit, DateTimeOffset fromAt)
     {
