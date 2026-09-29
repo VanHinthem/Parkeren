@@ -3543,6 +3543,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.VisitEndTimeChanges.Add(change);
             seedContext.ProviderParkingActions.Add(originalAction);
             seedContext.ProviderOperations.Add(cancelOperation);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(),
+                visitStart.AddDays(-1),
+                requestedEnd.AddDays(1),
+                TimeSpan.FromHours(4),
+                Array.Empty<PaidWindow>()));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
