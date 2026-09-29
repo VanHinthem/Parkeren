@@ -214,8 +214,14 @@ internal sealed class VisitRecoveryService(
 
         if (activeAction is null || string.IsNullOrWhiteSpace(activeAction.ProviderActionId))
         {
-            if (activeAction is null && item.ProviderActions.Count == 0 &&
-                await IsEntireVisitFreeAsync(item.Visit.StartAt, desiredEndAt, cancellationToken))
+            if (activeAction is null &&
+                item.ProviderActions.All(x => x.State == ProviderActionState.Completed) &&
+                await RebuildFreeStartWorkAsync(
+                    item.Visit, desiredEndAt,
+                    item.ProviderActions.Count == 0
+                        ? item.Visit.StartAt
+                        : item.ProviderActions.Max(x => x.PlannedEndAt),
+                    cancellationToken))
                 return;
 
             await MarkAmbiguousAsync(item, cancellationToken);
@@ -290,11 +296,13 @@ internal sealed class VisitRecoveryService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<bool> IsEntireVisitFreeAsync(
-        DateTimeOffset startAt,
+    private async Task<bool> RebuildFreeStartWorkAsync(
+        Visit visit,
         DateTimeOffset endAt,
+        DateTimeOffset fromAt,
         CancellationToken cancellationToken)
     {
+        var startAt = visit.StartAt;
         if (endAt <= startAt)
             return false;
 
@@ -306,9 +314,26 @@ internal sealed class VisitRecoveryService(
 
         try
         {
-            return ParkingRuleSetPeriodSegmenter.Segment(startAt, endAt, ruleSets)
-                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
-                .All(x => !x.IsPaid);
+            var paid = fromAt < endAt
+                ? ProviderCoverageSchedule.NextPaidSegment(fromAt, endAt, ruleSets)
+                : null;
+            if (paid is null)
+                return true;
+
+            var exists = await dbContext.VisitSchedulerWork.AnyAsync(
+                x => x.VisitId == visit.Id && x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                     (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
+                cancellationToken);
+            if (exists)
+                return true;
+
+            if (paid.Start <= DateTimeOffset.UtcNow)
+                return false;
+
+            dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, paid.Start));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
         }
         catch (InvalidOperationException)
         {

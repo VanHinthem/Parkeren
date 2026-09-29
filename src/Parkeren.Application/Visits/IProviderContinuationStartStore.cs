@@ -4,6 +4,13 @@ namespace Parkeren.Application.Visits;
 
 public interface IProviderContinuationStartStore
 {
+    Task<ProviderStartPreparation> PrepareInitialCoverageAsync(
+        Visit visit,
+        Guid operationId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        CancellationToken cancellationToken = default);
+
     Task<ProviderStartPreparation> PrepareAttemptAsync(
         Visit visit,
         ProviderParkingAction precedingAction,

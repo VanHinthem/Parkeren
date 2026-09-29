@@ -3,6 +3,7 @@ using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -41,8 +42,12 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (latestAction is null)
         {
-            work.Complete(DateTimeOffset.UtcNow);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            var lastCompletedEnd = await dbContext.ProviderParkingActions.AsNoTracking()
+                .Where(x => x.VisitId == visit.Id && x.State == ProviderActionState.Completed)
+                .OrderByDescending(x => x.PlannedEndAt)
+                .Select(x => (DateTimeOffset?)x.PlannedEndAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            await ProcessInitialCoverageAsync(work, visit, lastCompletedEnd, cancellationToken);
             return;
         }
 
@@ -133,6 +138,46 @@ internal sealed class VisitSchedulerWorkProcessor(
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
+        }
+
+        var nextPaid = ProviderCoverageSchedule.NextPaidSegment(
+            latestAction.PlannedEndAt, desiredEndAt, ruleSets);
+        if (nextPaid is null)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (nextPaid.Start > latestAction.PlannedEndAt)
+        {
+            if (nextPaid.Start > now)
+            {
+                work.Release(nextPaid.Start);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
+            var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+            var previous = remoteActions.SingleOrDefault(x => x.ProviderActionId == latestAction.ProviderActionId);
+            if (previous is null ||
+                !string.Equals(previous.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+                (previous.End - latestAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+            {
+                if (previous?.Status is { } status &&
+                    string.Equals(status, "stopped", StringComparison.OrdinalIgnoreCase))
+                    latestAction.MarkExternallyStopped(status);
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            latestAction.MarkCompleted(latestAction.PlannedEndAt);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await ProcessInitialCoverageAsync(work, visit, nextPaid.Start, cancellationToken);
+            return;
         }
 
         var actionRules = ruleSets
@@ -271,6 +316,106 @@ internal sealed class VisitSchedulerWorkProcessor(
         work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    private async Task ProcessInitialCoverageAsync(
+        VisitSchedulerWork work, Visit visit, DateTimeOffset? fromAt,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (visit.DesiredEndAt is not DateTimeOffset desiredEndAt || desiredEndAt <= now)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (visit.PolicySnapshot.MaxVisitElapsedDuration is TimeSpan maxElapsed)
+        {
+            var hardEnd = visit.StartAt + maxElapsed;
+            if (hardEnd < desiredEndAt)
+                desiredEndAt = hardEnd;
+            if (desiredEndAt <= now)
+            {
+                work.Complete(now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+
+        var rules = await dbContext.ParkingRuleSets
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ValidFrom < desiredEndAt &&
+                        (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
+            .ToListAsync(cancellationToken);
+        if (ParkingRuleSetPaidTimeCalculator.Calculate(visit.StartAt, desiredEndAt, rules) >
+            visit.PolicySnapshot.MaxPaidParkingDuration)
+        {
+            desiredEndAt = FindPaidDurationBoundary(
+                visit.StartAt, desiredEndAt, visit.PolicySnapshot.MaxPaidParkingDuration, rules);
+            if (desiredEndAt <= now)
+            {
+                work.Complete(now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+        var paid = ProviderCoverageSchedule.NextPaidSegment(fromAt ?? visit.StartAt, desiredEndAt, rules);
+        if (paid is null)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (paid.Start > now)
+        {
+            work.Release(paid.Start);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var actionRules = rules.Single(x => x.ValidFrom <= paid.Start &&
+            (x.ValidUntil is null || x.ValidUntil > paid.Start));
+        var endAt = paid.End < paid.Start + actionRules.MaxProviderActionDuration
+            ? paid.End : paid.Start + actionRules.MaxProviderActionDuration;
+        var location = configuration["ParkingProvider:Location"];
+        var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
+        if (string.IsNullOrWhiteSpace(location) || executor is null)
+        {
+            work.Release(now.AddMinutes(1));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var licensePlate = await dbContext.Vehicles.AsNoTracking()
+            .Where(x => x.Id == visit.VehicleId)
+            .Select(x => x.LicensePlate)
+            .SingleAsync(cancellationToken);
+        if (!await dbContext.ProviderOperations.AnyAsync(x => x.OperationId == work.Id, cancellationToken))
+        {
+            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
+            var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+            if (remoteActions.Any(x =>
+                    Vehicle.NormalizeLicensePlate(x.LicensePlate) == Vehicle.NormalizeLicensePlate(licensePlate) &&
+                    (x.Start - paid.Start).Duration() < TimeSpan.FromMilliseconds(1)))
+            {
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+        var preparation = await continuationStartStore.PrepareInitialCoverageAsync(
+            visit, work.Id, paid.Start, endAt, cancellationToken);
+        var execution = await executor.ExecuteAsync(preparation, licensePlate, location, cancellationToken);
+        if (execution.RequiresReconciliation)
+            work.Release(now.AddMinutes(1));
+        else
+            work.Complete(now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static DateTimeOffset FindPaidDurationBoundary(
         DateTimeOffset start,
         DateTimeOffset end,

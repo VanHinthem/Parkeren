@@ -8,6 +8,68 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext)
     : IProviderContinuationStartStore
 {
+    public async Task<ProviderStartPreparation> PrepareInitialCoverageAsync(
+        Visit visit, Guid operationId, DateTimeOffset startAt, DateTimeOffset endAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (operationId == Guid.Empty || endAt <= startAt)
+            throw new ArgumentException("A valid operation and coverage interval are required.");
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(visit.Id);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var persistedVisit = await dbContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        if (persistedVisit.Status != VisitStatus.Active || persistedVisit.Health != VisitHealth.Healthy)
+            throw new InvalidOperationException("Initial coverage requires a healthy Active Visit.");
+
+        var existing = await dbContext.ProviderOperations.SingleOrDefaultAsync(
+            x => x.OperationId == operationId, cancellationToken);
+        if (existing is not null)
+        {
+            var action = await dbContext.ProviderParkingActions.SingleAsync(
+                x => x.Id == existing.ProviderParkingActionId, cancellationToken);
+            if (existing.Type != ProviderOperationType.ContinueStart ||
+                existing.VisitId != persistedVisit.Id || action.VisitId != persistedVisit.Id ||
+                action.PlannedStartAt != startAt || action.PlannedEndAt != endAt)
+                throw new InvalidOperationException("Existing initial coverage does not match this request.");
+
+            var attemptStartedNow = false;
+            if (existing.Status == ProviderOperationStatus.Pending && action.State == ProviderActionState.Planned)
+            {
+                action.MarkStarting();
+                existing.BeginAttempt();
+                attemptStartedNow = true;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return new ProviderStartPreparation(existing, action, true, attemptStartedNow);
+        }
+
+        if (startAt > DateTimeOffset.UtcNow ||
+            await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id &&
+                x.State != ProviderActionState.Completed && x.State != ProviderActionState.Stopped,
+                cancellationToken) ||
+            await dbContext.ProviderOperations.AnyAsync(x => x.VisitId == visit.Id &&
+                (x.Status == ProviderOperationStatus.InProgress ||
+                 x.Status == ProviderOperationStatus.Unknown ||
+                 x.Status == ProviderOperationStatus.Reconciling), cancellationToken))
+            throw new InvalidOperationException("Initial provider coverage is not safe to start.");
+
+        var nextAction = new ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, endAt);
+        var operation = new ProviderOperation(Guid.NewGuid(), operationId, visit.Id, nextAction.Id,
+            ProviderOperationType.ContinueStart);
+        nextAction.MarkStarting();
+        operation.BeginAttempt();
+        dbContext.ProviderParkingActions.Add(nextAction);
+        dbContext.ProviderOperations.Add(operation);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ProviderStartPreparation(operation, nextAction, false, true);
+    }
+
     public async Task<ProviderStartPreparation> PrepareAttemptAsync(
         Visit visit,
         ProviderParkingAction precedingAction,

@@ -59,12 +59,12 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         operation.Succeed(DateTimeOffset.UtcNow);
 
-        var previousAction = await dbContext.ProviderParkingActions.SingleAsync(
+        var previousAction = await dbContext.ProviderParkingActions.SingleOrDefaultAsync(
             x => x.VisitId == visit.Id && x.Id != action.Id &&
                  x.PlannedEndAt == action.PlannedStartAt &&
                  (x.State == ProviderActionState.Active || x.State == ProviderActionState.Completed),
             cancellationToken);
-        if (previousAction.State == ProviderActionState.Active)
+        if (previousAction?.State == ProviderActionState.Active)
             previousAction.MarkCompleted(action.PlannedStartAt);
 
         if (visit.Status == VisitStatus.Active)
@@ -74,7 +74,22 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
                 visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
                 desiredEndAt > action.PlannedEndAt)
             {
-                var nextDueAt = ProviderCoverageSchedule.PrecheckAt(action.PlannedEndAt);
+                var ruleSets = await dbContext.ParkingRuleSets
+                    .Include(x => x.PaidWindows)
+                    .Include(x => x.CalendarExceptions)
+                    .Where(x => x.ValidFrom < desiredEndAt &&
+                                (!x.ValidUntil.HasValue || x.ValidUntil.Value > action.PlannedEndAt))
+                    .ToListAsync(cancellationToken);
+                var nextPaid = ProviderCoverageSchedule.NextPaidSegment(action.PlannedEndAt, desiredEndAt, ruleSets);
+                if (nextPaid is null)
+                {
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    return;
+                }
+                var nextDueAt = nextPaid.Start > action.PlannedEndAt
+                    ? nextPaid.Start
+                    : ProviderCoverageSchedule.PrecheckAt(action.PlannedEndAt);
                 var exists = await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
                          x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&

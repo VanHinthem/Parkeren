@@ -44,3 +44,5 @@ Het dashboard toont de actieve Visit, verstreken tijd, gewenste eindtijd, Stop/V
 ### Fasegrens
 
 Fase 5 implementeert geen persistente scheduler/worker. Just-in-time continuation, restart recovery, obsolete-work invalidatie, worker concurrency en bredere reconciliation worden in fase 6 gebouwd. De scheduler plant een lokale controle vijf minuten voor het einde van providerdekking; de worker plant de daadwerkelijke provideractie pas op de grens. Providergedrag dat alleen tegen echt 2Park bewezen kan worden blijft gekoppeld aan spike #71/fase 9.
+
+Voor een gratis gestarte Visit met concrete eindtijd wordt het begin van het eerstvolgende betaalde segment als persistente scheduler-work opgeslagen. De worker maakt op die grens pas de eerste provideractie aan. Een gratis interval tussen betaalde provideracties krijgt eveneens werk op de volgende betaalgrens; de verlopen actie wordt afgerond. Bij een onzekere providerstart blijft de operation bewaard voor reconciliation. Het open-ended pad (`DesiredEndAt = null`) en validatie van werkelijk 2Park-grensgedrag blijven aparte vervolgstappen.
