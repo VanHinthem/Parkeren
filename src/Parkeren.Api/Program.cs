@@ -119,8 +119,7 @@ if (app.Environment.IsDevelopment())
         if (string.IsNullOrWhiteSpace(product.Location))
             return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
-        var start = DateTimeOffset.UtcNow;
-        var created = await provider.StartActionAsync(
+        if (request.StartInMinutes is < 0 or > 15)\n            return Results.BadRequest(new { error = "StartInMinutes moet voor de diagnostische test tussen 0 en 15 liggen." });\n\n        var start = DateTimeOffset.UtcNow.AddMinutes(request.StartInMinutes);\n        var created = await provider.StartActionAsync(
             new ProviderParkingActionRequest(
                 request.LicensePlate,
                 start,
@@ -716,7 +715,7 @@ void DeleteSessionCookie(HttpContext context, bool secure)
     });
 }
 
-public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes);
+public sealed record DevStartProviderActionRequest(string LicensePlate, int DurationMinutes, int StartInMinutes = 0);
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
