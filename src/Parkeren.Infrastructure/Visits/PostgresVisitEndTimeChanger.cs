@@ -125,7 +125,10 @@ internal sealed class PostgresVisitEndTimeChanger(
                     x => x.VisitId == visit.Id &&
                          x.Status == VisitSchedulerWorkStatus.Claimed,
                     cancellationToken))
+            {
+                await transaction.CommitAsync(cancellationToken);
                 throw new InvalidOperationException("End-time cannot change while scheduler work is being processed.");
+            }
 
             if (desiredEndAt is not null && visit.DesiredEndAt is not null && desiredEndAt < visit.DesiredEndAt)
             {
@@ -143,8 +146,11 @@ internal sealed class PostgresVisitEndTimeChanger(
                         "Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
 
                 if (affectedActions.Any(x => x.State == ProviderActionState.Scheduled))
+                {
+                    await transaction.CommitAsync(cancellationToken);
                     throw new InvalidOperationException(
                         "Requested end affects a scheduled provider action; cancel/recreate must be completed before applying the end-time change.");
+                }
             }
 
             if (desiredEndAt is not null)
