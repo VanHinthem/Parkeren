@@ -14,6 +14,9 @@ public interface IVisitRecoveryService
 
     Task RecoverAsync(
         CancellationToken cancellationToken = default);
+
+    Task ReconcileActiveProviderActionsAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public enum VisitRecoveryKind

@@ -17,6 +17,71 @@ internal sealed class VisitRecoveryService(
     IParkingProvider provider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
+    public async Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default)
+    {
+        var visitIds = await dbContext.Visits.AsNoTracking()
+            .Where(x => x.Status == VisitStatus.Active && x.Health == VisitHealth.Healthy)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var visitId in visitIds)
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var lockKey = VisitAdvisoryLock.For(visitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+            var visit = await dbContext.Visits.SingleAsync(x => x.Id == visitId, cancellationToken);
+            if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy ||
+                await dbContext.ProviderOperations.AnyAsync(x => x.VisitId == visitId &&
+                    (x.Status == ProviderOperationStatus.Pending ||
+                     x.Status == ProviderOperationStatus.InProgress ||
+                     x.Status == ProviderOperationStatus.Unknown ||
+                     x.Status == ProviderOperationStatus.Reconciling), cancellationToken))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            var actions = await dbContext.ProviderParkingActions
+                .Where(x => x.VisitId == visitId && x.State == ProviderActionState.Active)
+                .ToListAsync(cancellationToken);
+            if (actions.Count == 0)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            var remoteActions = await provider.GetActionsAsync(cancellationToken);
+            foreach (var action in actions)
+            {
+                var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
+                if (remote is not null &&
+                    string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+                    (remote.End - action.PlannedEndAt).Duration() < TimeSpan.FromMilliseconds(1))
+                    continue;
+
+                if (remote is not null && string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+                    action.MarkExternallyStopped(remote.Status);
+
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                var work = await dbContext.VisitSchedulerWork
+                    .Where(x => x.VisitId == visitId &&
+                        (x.Status == VisitSchedulerWorkStatus.Pending ||
+                         x.Status == VisitSchedulerWorkStatus.Claimed))
+                    .ToListAsync(cancellationToken);
+                foreach (var item in work)
+                    item.Cancel();
+                logger.LogWarning("Provider action {ProviderActionId} for Visit {VisitId} changed externally; continuation blocked.",
+                    action.ProviderActionId, visitId);
+                break;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
         await ReleaseClaimedSchedulerWorkAsync(cancellationToken);

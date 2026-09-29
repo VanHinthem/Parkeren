@@ -8,6 +8,7 @@ internal sealed class VisitSchedulerWorker(
     ILogger<VisitSchedulerWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ProviderCheckInterval = TimeSpan.FromMinutes(1);
     private readonly string workerId = $"{Environment.MachineName}:{Guid.NewGuid():N}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -35,12 +36,26 @@ internal sealed class VisitSchedulerWorker(
             }
         }
 
+        var nextProviderCheckAt = timeProvider.GetUtcNow() + ProviderCheckInterval;
         while (!stoppingToken.IsCancellationRequested)
         {
             Guid? claimedWorkId = null;
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
+                if (timeProvider.GetUtcNow() >= nextProviderCheckAt)
+                {
+                    nextProviderCheckAt = timeProvider.GetUtcNow() + ProviderCheckInterval;
+                    try
+                    {
+                        await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                            .ReconcileActiveProviderActionsAsync(stoppingToken);
+                    }
+                    catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        logger.LogError(exception, "Periodic provider action check failed; scheduler work continues.");
+                    }
+                }
                 var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
                 var processor = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>();
 
