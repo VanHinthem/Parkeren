@@ -53,6 +53,48 @@ public sealed class VisitEndTimeProviderImpactClassifierTests
         Assert.Equal(VisitEndTimeProviderImpact.None, impact);
     }
 
+
+    [Fact]
+    public void Scheduled_action_starting_at_requested_end_is_cancelled()
+    {
+        var requestedEndAt = DateTimeOffset.UtcNow.AddHours(1);
+        var action = CreateScheduledAction(requestedEndAt, requestedEndAt.AddHours(1));
+
+        var impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, new[] { action });
+
+        Assert.Equal(VisitEndTimeProviderImpact.CancelScheduled, impact);
+    }
+
+    [Fact]
+    public void Scheduled_action_overlapping_requested_end_is_replaced()
+    {
+        var requestedEndAt = DateTimeOffset.UtcNow.AddHours(1);
+        var action = CreateScheduledAction(requestedEndAt.AddMinutes(-30), requestedEndAt.AddMinutes(30));
+
+        var impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, new[] { action });
+
+        Assert.Equal(VisitEndTimeProviderImpact.ReplaceScheduled, impact);
+    }
+
+    [Fact]
+    public void Scheduled_action_within_requested_end_requires_no_provider_mutation()
+    {
+        var requestedEndAt = DateTimeOffset.UtcNow.AddHours(2);
+        var action = CreateScheduledAction(requestedEndAt.AddHours(-1), requestedEndAt);
+
+        var impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, new[] { action });
+
+        Assert.Equal(VisitEndTimeProviderImpact.None, impact);
+    }
+
+    private static ProviderParkingAction CreateScheduledAction(DateTimeOffset plannedStartAt, DateTimeOffset plannedEndAt)
+    {
+        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), plannedStartAt, plannedEndAt);
+        action.MarkStarting();
+        action.MarkScheduled("provider-scheduled", "scheduled");
+        return action;
+    }
+
     private static ProviderParkingAction CreateActiveAction(DateTimeOffset plannedEndAt)
     {
         var action = new ProviderParkingAction(
