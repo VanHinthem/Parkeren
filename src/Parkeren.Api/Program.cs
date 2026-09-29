@@ -110,8 +110,10 @@ if (app.Environment.IsDevelopment())
     {
         if (string.IsNullOrWhiteSpace(request.LicensePlate))
             return Results.BadRequest(new { error = "LicensePlate is verplicht." });
-        if (request.DurationMinutes is < 1 or > 15)
-            return Results.BadRequest(new { error = "DurationMinutes moet voor de diagnostische test tussen 1 en 15 liggen." });
+        var isShortDiagnostic = request.DurationMinutes is >= 1 and <= 15;
+        var isProviderDurationBoundaryDiagnostic = request.DurationMinutes is 240 or 241;
+        if (!isShortDiagnostic && !isProviderDurationBoundaryDiagnostic)
+            return Results.BadRequest(new { error = "DurationMinutes moet 1-15, 240 of 241 zijn voor de diagnostische test." });
 
         var product = await provider.GetProductAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(product.Location))
