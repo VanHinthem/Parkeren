@@ -82,21 +82,24 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (impact == VisitEndTimeProviderImpact.None)
             return new(false);
 
+        var scheduledProviderActionId = scheduled!.ProviderActionId
+            ?? throw new InvalidOperationException("Scheduled provider action has no provider action id.");
+
         var existingCancel = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.Stop &&
-                 x.ProviderParkingActionId == scheduled!.Id);
+                 x.ProviderParkingActionId == scheduled.Id);
 
         if (existingCancel is null)
         {
             var cancelOperationId = Guid.NewGuid();
             await PersistScheduledCancelAttemptAsync(
-                visit.Id, scheduled!.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
+                visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
 
             try
             {
-                await provider.StopActionAsync(scheduled!.ProviderActionId, cancellationToken);
+                await provider.StopActionAsync(scheduledProviderActionId, cancellationToken);
             var afterCancel = await provider.GetActionsAsync(cancellationToken);
-            if (afterCancel.Any(x => x.ProviderActionId == scheduled!.ProviderActionId &&
+            if (afterCancel.Any(x => x.ProviderActionId == scheduledProviderActionId &&
                                      !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
             {
                 await MarkScheduledCancelUnknownAsync(
