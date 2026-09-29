@@ -60,7 +60,8 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
         return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");
-    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, "active", DateTimeOffset.UtcNow + visibilityDelay);
+    var status = request.Start > DateTimeOffset.UtcNow ? "scheduled" : "active";
+    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, DateTimeOffset.UtcNow + visibilityDelay);
     actions[id] = action;
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
     if (omitCreatedActionBody) return Results.Created($"/api/actions/{id}", value: null);
