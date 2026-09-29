@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
@@ -9,8 +8,7 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitEndTimeProviderAdjuster(
     ParkerenDbContext dbContext,
-    IParkingProvider provider,
-    IConfiguration configuration) : IVisitEndTimeProviderAdjuster
+    IParkingProvider provider) : IVisitEndTimeProviderAdjuster
 {
     public async Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(
         ChangeVisitEndTimeCommand command,
@@ -133,9 +131,10 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (impact == VisitEndTimeProviderImpact.CancelScheduled)
             return new(false);
 
-        var location = configuration["ParkingProvider:Location"];
-        if (string.IsNullOrWhiteSpace(location))
-            throw new InvalidOperationException("ParkingProvider:Location is required to replace scheduled coverage.");
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            throw new InvalidOperationException("Parking provider product has no location configured.");
+        var location = product.Location;
 
         var existingReplacement = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.ContinueStart &&
