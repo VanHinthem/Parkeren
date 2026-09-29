@@ -233,7 +233,7 @@ internal sealed class VisitRecoveryService(
 
     private async Task<bool> ReconcileScheduledCancelAsync(
         ProviderOperation operation,
-        ProviderParkingAction action,
+        Parkeren.Domain.Visits.ProviderParkingAction action,
         CancellationToken cancellationToken)
     {
         if (operation.Status != ProviderOperationStatus.Unknown ||
