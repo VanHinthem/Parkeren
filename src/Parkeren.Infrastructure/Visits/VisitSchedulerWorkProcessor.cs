@@ -224,9 +224,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var nextEndAt = existing?.ProviderParkingActionId is Guid existingActionId
                 ? (await dbContext.ProviderParkingActions.AsNoTracking()
                     .SingleAsync(x => x.Id == existingActionId, cancellationToken)).PlannedEndAt
-                : desiredEndAt < latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration
-                    ? desiredEndAt
-                    : latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration;
+                : new[] { desiredEndAt, latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration, nextPaid.End }.Min();
 
             var location = configuration["ParkingProvider:Location"];
             var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
@@ -260,6 +258,8 @@ internal sealed class VisitSchedulerWorkProcessor(
         var maxExistingEndAt = latestAction.PlannedStartAt + actionRules.MaxProviderActionDuration;
         if (desiredEndAt > maxExistingEndAt)
             desiredEndAt = maxExistingEndAt;
+        if (desiredEndAt > nextPaid.End)
+            desiredEndAt = nextPaid.End;
         if (desiredEndAt <= latestAction.PlannedEndAt)
         {
             visit.SetHealth(VisitHealth.Reconciling);

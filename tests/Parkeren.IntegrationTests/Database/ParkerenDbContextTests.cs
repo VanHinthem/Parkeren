@@ -2951,7 +2951,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Scheduler_skips_free_gap_between_paid_provider_actions()
+    public async Task Scheduler_skips_free_gap_and_caps_next_action_at_paid_boundary()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -2965,8 +2965,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var vehicle = new Vehicle(Guid.NewGuid(), $"PG-{suffix}", $"PG{suffix}".ToUpperInvariant(), null);
         var nextPaidStart = DateTimeOffset.UtcNow.AddMinutes(-1);
         var firstPaidEnd = nextPaidStart.AddHours(-1);
+        var nextPaidEnd = nextPaidStart.AddHours(1);
         var start = firstPaidEnd.AddHours(-1);
-        var desiredEnd = nextPaidStart.AddHours(1);
+        var desiredEnd = nextPaidEnd.AddHours(1);
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
             start, desiredEnd,
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
@@ -2996,7 +2997,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
                 Guid.NewGuid(), firstPaidEnd, nextPaidStart, TimeSpan.FromHours(4), Array.Empty<PaidWindow>()));
             seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
-                Guid.NewGuid(), nextPaidStart, null, TimeSpan.FromHours(4), paidWindows));
+                Guid.NewGuid(), nextPaidStart, nextPaidEnd, TimeSpan.FromHours(4), paidWindows));
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), nextPaidEnd, null, TimeSpan.FromHours(4), Array.Empty<PaidWindow>()));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -3025,6 +3028,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
         Assert.Equal(ProviderActionState.Active, next.State);
         Assert.InRange((next.PlannedStartAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((next.PlannedEndAt - nextPaidEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(2, (await parkingProvider.GetActionsAsync(cancellationToken)).Count);
     }
 
