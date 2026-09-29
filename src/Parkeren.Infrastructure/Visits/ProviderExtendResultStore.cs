@@ -45,11 +45,27 @@ internal sealed class ProviderExtendResultStore(ParkerenDbContext dbContext) : I
             if (visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
                 desiredEndAt > providerAction.End)
             {
-                var nextDueAt = ProviderCoverageSchedule.PrecheckAt(providerAction.End);
+                var ruleSets = await dbContext.ParkingRuleSets
+                    .Include(x => x.PaidWindows)
+                    .Include(x => x.CalendarExceptions)
+                    .Where(x => x.ValidFrom < desiredEndAt &&
+                                (!x.ValidUntil.HasValue || x.ValidUntil.Value > providerAction.End))
+                    .ToListAsync(cancellationToken);
+                var nextPaid = ProviderCoverageSchedule.NextPaidSegment(providerAction.End, desiredEndAt, ruleSets);
+                if (nextPaid is null)
+                {
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    return;
+                }
+                var nextDueAt = nextPaid.Start > providerAction.End
+                    ? nextPaid.Start
+                    : ProviderCoverageSchedule.PrecheckAt(providerAction.End);
                 var nextWorkExists = await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
                          x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
-                         x.DueAt == nextDueAt,
+                         x.DueAt == nextDueAt &&
+                         x.Status == VisitSchedulerWorkStatus.Pending,
                     cancellationToken);
 
                 if (!nextWorkExists)
