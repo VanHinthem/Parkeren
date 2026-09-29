@@ -322,7 +322,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
     {
         if (!root.GetProperty("data").TryGetProperty("balance", out var balance) ||
             !balance.TryGetProperty("ble_parameters", out var parameters))
-            return (0m, ProviderBalanceUnit.Minute);
+            return (0m, ProviderBalanceUnit.Unknown);
 
         decimal amount = 0m;
         string? rawUnit = null;
@@ -336,7 +336,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             var value = valueElement.GetString();
             if (string.Equals(label, "AMOUNT", StringComparison.OrdinalIgnoreCase))
                 decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
-            else if (string.Equals(label, "CURRENCY", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(label, "CURRENCY_CODE", StringComparison.OrdinalIgnoreCase))
                 rawUnit = value;
         }
 
@@ -345,7 +345,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             "EURO" => ProviderBalanceUnit.Euro,
             "TIMES" => ProviderBalanceUnit.Times,
             "MINUTE" => ProviderBalanceUnit.Minute,
-            _ => ProviderBalanceUnit.Minute
+            _ => ProviderBalanceUnit.Unknown
         };
         return (amount, unit);
     }
