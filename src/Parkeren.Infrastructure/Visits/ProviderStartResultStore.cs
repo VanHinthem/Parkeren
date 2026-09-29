@@ -6,7 +6,9 @@ using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingActio
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IProviderStartResultStore
+internal sealed class ProviderStartResultStore(
+    ParkerenDbContext dbContext,
+    TimeProvider timeProvider) : IProviderStartResultStore
 {
     public async Task RecordResponseAsync(ProviderStartPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default)
     {
@@ -46,7 +48,7 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         ArgumentNullException.ThrowIfNull(providerAction);
         preparation.Action.MarkActive(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
-        preparation.Operation.Succeed(DateTimeOffset.UtcNow);
+        preparation.Operation.Succeed(timeProvider.GetUtcNow());
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
 
@@ -101,7 +103,7 @@ internal sealed class ProviderStartResultStore(ParkerenDbContext dbContext) : IP
         var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        preparation.Operation.Fail(errorCode, DateTimeOffset.UtcNow);
+        preparation.Operation.Fail(errorCode, timeProvider.GetUtcNow());
         preparation.Action.MarkFailed();
         var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
