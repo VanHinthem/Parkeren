@@ -33,7 +33,8 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         // the start may have executed. Ambiguous matches must not trigger a retry.
         if (candidates.Length != 1 ||
             !TimestampsMatch(candidates[0].End, preparation.Action.PlannedEndAt) ||
-            !string.Equals(candidates[0].Status, "active", StringComparison.OrdinalIgnoreCase))
+            (!string.Equals(candidates[0].Status, "active", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(candidates[0].Status, "scheduled", StringComparison.OrdinalIgnoreCase)))
             return null;
 
         var match = candidates[0];
