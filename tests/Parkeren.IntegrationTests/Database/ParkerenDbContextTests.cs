@@ -3477,7 +3477,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderActionState.Stopped, recoveredAction.State);
         Assert.InRange((recoveredVisit.DesiredEndAt!.Value - requestedEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndTimeChangeResult.Applied, recoveredChange.Result);
-        Assert.Empty(await parkingProvider.GetActionsAsync(cancellationToken));
+        var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+        var stoppedRemote = Assert.Single(remoteActions);
+        Assert.Equal(remote.ProviderActionId, stoppedRemote.ProviderActionId);
+        Assert.Equal("stopped", stoppedRemote.Status, ignoreCase: true);
     }
 
     [Fact]
