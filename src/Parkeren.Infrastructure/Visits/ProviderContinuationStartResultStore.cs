@@ -59,6 +59,14 @@ internal sealed class ProviderContinuationStartResultStore(ParkerenDbContext dbC
             providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         operation.Succeed(DateTimeOffset.UtcNow);
 
+        var previousAction = await dbContext.ProviderParkingActions.SingleAsync(
+            x => x.VisitId == visit.Id && x.Id != action.Id &&
+                 x.PlannedEndAt == action.PlannedStartAt &&
+                 (x.State == ProviderActionState.Active || x.State == ProviderActionState.Completed),
+            cancellationToken);
+        if (previousAction.State == ProviderActionState.Active)
+            previousAction.MarkCompleted(action.PlannedStartAt);
+
         if (visit.Status == VisitStatus.Active)
         {
             visit.SetHealth(VisitHealth.Healthy);

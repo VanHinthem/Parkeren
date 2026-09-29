@@ -44,6 +44,16 @@ public sealed class ProviderParkingAction
         State = ProviderActionState.Stopping;
     }
 
+    public void MarkCompleted(DateTimeOffset endedAt)
+    {
+        Ensure(ProviderActionState.Active);
+        if (ActualStartAt is DateTimeOffset startedAt && endedAt < startedAt)
+            throw new ArgumentOutOfRangeException(nameof(endedAt));
+        ActualEndAt = endedAt;
+        State = ProviderActionState.Completed;
+        Health = ProviderActionHealth.Healthy;
+    }
+
     public void MarkStopped(DateTimeOffset actualEndAt, string? providerStatus = null)
     {
         Ensure(ProviderActionState.Stopping);

@@ -2823,6 +2823,17 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Status);
         Assert.Equal(ProviderActionState.Active,
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == operation.ProviderParkingActionId, cancellationToken)).State);
+        Assert.Equal(ProviderActionState.Completed,
+            (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == previous.Id, cancellationToken)).State);
+
+        await using (var stopScope = provider.CreateAsyncScope())
+        {
+            var stopClaim = await stopScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>()
+                .ClaimAsync(new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id), cancellationToken);
+            var stopPreparation = await stopScope.ServiceProvider.GetRequiredService<IProviderStopStore>()
+                .PrepareAttemptAsync(stopClaim, cancellationToken);
+            Assert.Equal(operation.ProviderParkingActionId, stopPreparation.Action.Id);
+        }
     }
 
     [Fact]
