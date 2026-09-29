@@ -36,9 +36,52 @@ internal sealed class VisitSchedulerWorkProcessor(
         }
 
         var latestAction = await dbContext.ProviderParkingActions
-            .Where(x => x.VisitId == visit.Id && x.State == ProviderActionState.Active)
+            .Where(x => x.VisitId == visit.Id &&
+                        (x.State == ProviderActionState.Active || x.State == ProviderActionState.Scheduled))
             .OrderByDescending(x => x.PlannedEndAt)
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestAction?.State == ProviderActionState.Scheduled)
+        {
+            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
+            var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+            var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == latestAction.ProviderActionId);
+            if (remote is null)
+            {
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            if (string.Equals(remote.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
+            {
+                work.Release(ProviderCoverageSchedule.PrecheckAt(latestAction.PlannedEndAt));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            if (!string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase))
+            {
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            latestAction.ActivateScheduled(remote.Start, remote.Status);
+            var predecessor = await dbContext.ProviderParkingActions
+                .Where(x => x.VisitId == visit.Id &&
+                            x.Id != latestAction.Id &&
+                            x.State == ProviderActionState.Active &&
+                            x.PlannedEndAt < latestAction.PlannedStartAt)
+                .OrderByDescending(x => x.PlannedEndAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (predecessor is not null && predecessor.PlannedEndAt < DateTimeOffset.UtcNow)
+                predecessor.MarkCompleted(predecessor.PlannedEndAt);
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         if (latestAction is null)
         {
