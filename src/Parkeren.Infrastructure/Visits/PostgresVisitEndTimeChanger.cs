@@ -38,6 +38,28 @@ internal sealed class PostgresVisitEndTimeChanger(
         }
 
         visit.EnsureDesiredEndCanChange(desiredEndAt);
+
+        if (desiredEndAt is not null)
+        {
+            var operationalContext = await operationalContextResolver.ResolveAsync(
+                visit.StartAt,
+                desiredEndAt.Value,
+                cancellationToken);
+            if (operationalContext is null)
+                throw new InvalidOperationException("No parking rules apply to the requested Visit period.");
+
+            var assessment = VisitEndTimeChangeAssessor.Assess(
+                visit.StartAt,
+                desiredEndAt.Value,
+                operationalContext.RuleSets,
+                visit.PolicySnapshot.ToEffectivePolicy());
+
+            if (!assessment.PaidDuration.IsAllowed)
+                throw new InvalidOperationException("Requested end exceeds the Visit paid-duration policy.");
+            if (!assessment.ElapsedDuration.IsAllowed)
+                throw new InvalidOperationException("Requested end exceeds the Visit elapsed-duration policy.");
+        }
+
         var change = new VisitEndTimeChange(
             Guid.NewGuid(), command.OperationId, visit.Id, command.ActorUserId,
             visit.DesiredEndAt, desiredEndAt, timeProvider.GetUtcNow());
