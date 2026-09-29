@@ -147,8 +147,10 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.LastErrorCode).HasMaxLength(100);
             entity.Property(x => x.AttemptStartedAt);
             entity.Property(x => x.RequestedEndAt);
+            entity.Property(x => x.ParentOperationId);
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasIndex(x => x.OperationId).IsUnique();
+            entity.HasIndex(x => x.ParentOperationId);
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
         });
