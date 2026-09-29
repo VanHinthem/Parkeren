@@ -12,11 +12,27 @@ internal sealed class VisitSchedulerWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await using (var recoveryScope = scopeFactory.CreateAsyncScope())
+        // No scheduled provider mutation is safe until startup reconciliation succeeds.
+        // An outage during startup must not terminate the background worker permanently.
+        while (!stoppingToken.IsCancellationRequested)
         {
-            var recovery = recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
-            await recovery.RecoverAsync(stoppingToken);
-            logger.LogInformation("Visit startup recovery completed before scheduler claim loop.");
+            try
+            {
+                await using var recoveryScope = scopeFactory.CreateAsyncScope();
+                var recovery = recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
+                await recovery.RecoverAsync(stoppingToken);
+                logger.LogInformation("Visit startup recovery completed before scheduler claim loop.");
+                break;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Visit startup recovery failed; retrying before scheduler claims work.");
+                await Task.Delay(IdleDelay, timeProvider, stoppingToken);
+            }
         }
 
         while (!stoppingToken.IsCancellationRequested)
