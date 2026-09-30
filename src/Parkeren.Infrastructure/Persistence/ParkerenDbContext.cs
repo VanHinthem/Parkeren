@@ -28,6 +28,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
+    public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +128,14 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("parking_budget_periods");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.ValidFrom);
+        });
+
+        modelBuilder.Entity<ParkingBudgetWarningState>(entity =>
+        {
+            entity.ToTable("parking_budget_warning_states");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ParkingBudgetPeriodId, x.ThresholdPercentage }).IsUnique();
+            entity.HasOne<ParkingBudgetPeriod>().WithMany().HasForeignKey(x => x.ParkingBudgetPeriodId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
