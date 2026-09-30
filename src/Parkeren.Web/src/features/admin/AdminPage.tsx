@@ -41,8 +41,8 @@ export function AdminPage(){
       setUsers(u);
       setVehicles(v);
       if(!selectedUser){
-        const visitor=u.find(x=>x.role==="Visitor");
-        if(visitor)setSelectedUser(visitor.id);
+        const defaultUser=u.find(x=>x.role==="Visitor")??u[0];
+        if(defaultUser)setSelectedUser(defaultUser.id);
       }
       if(!selectedVehicle&&v[0])setSelectedVehicle(v[0].id);
     }catch(e){
@@ -176,7 +176,7 @@ export function AdminPage(){
             {vehicles.filter(v=>v.isActive).map(v=><option value={v.id} key={v.id}>{v.licensePlate}</option>)}
           </select>
         </label>
-        <Button onClick={link}>Toewijzen</Button>
+        <Button onClick={link} disabled={!selectedUser||!selectedVehicle}>Toewijzen</Button>
       </div>
 
       <div className="admin-list admin-assigned">
