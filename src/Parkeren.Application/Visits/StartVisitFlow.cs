@@ -49,6 +49,14 @@ public sealed class StartVisitFlow(
             ruleSets,
             coverageEvaluationEndAt);
 
+        if (preparation.RequiresProviderCoverageNow)
+        {
+            if (providerContext is null)
+                throw new InvalidOperationException("Server-resolved provider context is required for a paid Visit start.");
+            if (string.IsNullOrWhiteSpace(providerContext.LicensePlate) || string.IsNullOrWhiteSpace(providerContext.Location))
+                throw new InvalidOperationException("Provider context must contain a license plate and location.");
+        }
+
         var claim = await claimer.ClaimAsync(
             preparation,
             maxGlobalConcurrentVisits,
@@ -84,11 +92,6 @@ public sealed class StartVisitFlow(
         }
         else
         {
-            if (providerContext is null)
-                throw new InvalidOperationException("Server-resolved provider context is required for a paid Visit start.");
-            if (string.IsNullOrWhiteSpace(providerContext.LicensePlate) || string.IsNullOrWhiteSpace(providerContext.Location))
-                throw new InvalidOperationException("Provider context must contain a license plate and location.");
-
             var paidEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
             var providerEndAt = ProviderActionStartPlanner.PlanEnd(
                 command.StartAt, paidEndAt, ruleSets);
@@ -101,7 +104,7 @@ public sealed class StartVisitFlow(
             var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, providerEndAt, cancellationToken);
             var execution = await providerExecutor.ExecuteAsync(
                 providerPreparation,
-                new ProviderStartRequest(providerContext.LicensePlate, providerContext.Location,
+                new ProviderStartRequest(providerContext!.LicensePlate, providerContext.Location,
                     providerPreparation.Action.PlannedEndAt),
                 cancellationToken);
 
