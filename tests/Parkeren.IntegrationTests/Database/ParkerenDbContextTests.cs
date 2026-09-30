@@ -3172,10 +3172,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using (var scope = provider.CreateAsyncScope())
         {
             var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
-            var work = await claimer.ClaimNextDueAsync("free-paid-worker", DateTimeOffset.UtcNow, cancellationToken);
-            Assert.NotNull(work);
-            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
-                .ProcessAsync(work, cancellationToken);
+            VisitSchedulerWork? work;
+            do
+            {
+                work = await claimer.ClaimNextDueAsync("free-paid-worker", DateTimeOffset.UtcNow, cancellationToken);
+                Assert.NotNull(work);
+                await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                    .ProcessAsync(work, cancellationToken);
+            }
+            while (work.Type != VisitSchedulerWorkType.ContinueProviderCoverage);
         }
 
         await using var verifyContext = fixture.CreateDbContext();
