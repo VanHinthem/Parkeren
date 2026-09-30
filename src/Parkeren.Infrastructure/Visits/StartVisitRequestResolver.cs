@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -7,7 +7,7 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class StartVisitRequestResolver(
     ParkerenDbContext dbContext,
-    IConfiguration configuration) : IStartVisitRequestResolver
+    IParkingProvider parkingProvider) : IStartVisitRequestResolver
 {
     public async Task<StartVisitRequestContext?> ResolveAsync(
         Guid actorUserId,
@@ -37,10 +37,10 @@ internal sealed class StartVisitRequestResolver(
             new StartVisitOwner(owner.Id, owner.IsActive),
             new StartVisitVehicle(vehicle.Id, vehicle.IsActive, isAssigned));
 
-        var location = configuration["ParkingProvider:Location"];
-        var providerContext = string.IsNullOrWhiteSpace(location)
+        var product = await parkingProvider.GetProductAsync(cancellationToken);
+        var providerContext = string.IsNullOrWhiteSpace(product.Location)
             ? null
-            : new StartVisitProviderContext(vehicle.LicensePlate, location);
+            : new StartVisitProviderContext(vehicle.LicensePlate, product.Location);
 
         return new StartVisitRequestContext(startContext, providerContext);
     }
