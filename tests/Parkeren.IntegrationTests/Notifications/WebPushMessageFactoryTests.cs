@@ -7,7 +7,7 @@ namespace Parkeren.IntegrationTests.Notifications;
 public sealed class WebPushMessageFactoryTests
 {
     [Fact]
-    public void Visit_notification_links_to_visit()
+    public void Visit_started_notification_links_to_dashboard()
     {
         var visitId = Guid.NewGuid();
         var notification = new Notification(
@@ -21,7 +21,42 @@ public sealed class WebPushMessageFactoryTests
 
         Assert.NotNull(message);
         Assert.Equal("Parkeren gestart", message.Title);
+        Assert.Equal("/", message.Url);
+        Assert.Equal(notification.Id, message.NotificationId);
+    }
+
+
+    [Fact]
+    public void Visit_stopped_notification_links_to_visit_detail()
+    {
+        var visitId = Guid.NewGuid();
+        var notification = new Notification(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            NotificationType.VisitStopped,
+            DateTimeOffset.UtcNow,
+            visitId);
+
+        var message = WebPushMessageFactory.Create(notification);
+
+        Assert.NotNull(message);
         Assert.Equal($"/acties/{visitId}", message.Url);
+    }
+
+    [Fact]
+    public void Provider_continuation_succeeded_links_to_dashboard()
+    {
+        var notification = new Notification(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            NotificationType.ProviderContinuationSucceeded,
+            DateTimeOffset.UtcNow,
+            Guid.NewGuid());
+
+        var message = WebPushMessageFactory.Create(notification);
+
+        Assert.NotNull(message);
+        Assert.Equal("/", message.Url);
     }
 
     [Fact]
@@ -61,11 +96,13 @@ public sealed class WebPushMessageFactoryTests
     [Fact]
     public void Serialize_uses_service_worker_payload_shape()
     {
-        var json = WebPushMessageFactory.Serialize(new WebPushMessage("Titel", "Tekst", "/meldingen"));
+        var notificationId = Guid.NewGuid();
+        var json = WebPushMessageFactory.Serialize(new WebPushMessage("Titel", "Tekst", "/meldingen", notificationId));
         using var document = JsonDocument.Parse(json);
 
         Assert.Equal("Titel", document.RootElement.GetProperty("title").GetString());
         Assert.Equal("Tekst", document.RootElement.GetProperty("body").GetString());
         Assert.Equal("/meldingen", document.RootElement.GetProperty("url").GetString());
+        Assert.Equal(notificationId, document.RootElement.GetProperty("notificationId").GetGuid());
     }
 }
