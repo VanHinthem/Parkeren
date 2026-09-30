@@ -6,7 +6,7 @@ import { Card } from "../../design/primitives/Card";
 import { Loading } from "../../design/primitives/Loading";
 import "./VisitDetailPage.css";
 
-type Props={visitId:string;vehicles:VehicleSummary[];onBack:()=>void};
+type Props={visitId:string;vehicles:VehicleSummary[];onBack:()=>void;backLabel:string};
 
 function format(value:string|null){
   return value?new Date(value).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"}):"—";
@@ -30,7 +30,7 @@ function duration(visit:ActiveVisit){
   return hours>0?`${hours} u ${rest} min`:`${rest} min`;
 }
 
-export function VisitDetailPage({visitId,vehicles,onBack}:Props){
+export function VisitDetailPage({visitId,vehicles,onBack,backLabel}:Props){
   const[visit,setVisit]=useState<ActiveVisit|null|undefined>();
   const[error,setError]=useState<string|null>(null);
 
@@ -40,9 +40,9 @@ export function VisitDetailPage({visitId,vehicles,onBack}:Props){
     getVisit(visitId).then(setVisit).catch(e=>setError(e instanceof Error?e.message:"Parkeeractie kon niet worden geladen."));
   },[visitId]);
 
-  if(error)return <Card><div className="visit-detail"><p role="alert" style={{margin:0}}>{error}</p><Button variant="secondary" onClick={onBack}>← Terug naar parkeeracties</Button></div></Card>;
+  if(error)return <Card><div className="visit-detail"><p role="alert" style={{margin:0}}>{error}</p><Button variant="secondary" onClick={onBack}>← {backLabel}</Button></div></Card>;
   if(visit===undefined)return <Loading label="Parkeeractie laden"/>;
-  if(visit===null)return <Card><div className="visit-detail"><span>Deze parkeeractie bestaat niet meer of kon niet worden gevonden.</span><Button variant="secondary" onClick={onBack}>← Terug naar parkeeracties</Button></div></Card>;
+  if(visit===null)return <Card><div className="visit-detail"><span>Deze parkeeractie bestaat niet meer of kon niet worden gevonden.</span><Button variant="secondary" onClick={onBack}>← {backLabel}</Button></div></Card>;
 
   const vehicle=vehicles.find(x=>x.id===visit.vehicleId);
   const elapsed=duration(visit);
@@ -61,7 +61,7 @@ export function VisitDetailPage({visitId,vehicles,onBack}:Props){
         <div className="visit-detail__fact visit-detail__fact--muted"><dt>Gepland tot</dt><dd>{format(visit.desiredEndAt)}</dd></div>
       </dl>
 
-      <Button className="visit-detail__back" variant="secondary" onClick={onBack}>← Terug naar parkeeracties</Button>
+      <Button className="visit-detail__back" variant="secondary" onClick={onBack}>← {backLabel}</Button>
     </div>
   </Card>;
 }
