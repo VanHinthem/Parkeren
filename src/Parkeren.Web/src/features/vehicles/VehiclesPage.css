@@ -1,1 +1,17 @@
-.vehicle-list{display:grid;gap:1rem}.vehicle-list h2{margin:0 0 .35rem}.vehicle-list p{margin:0;color:var(--color-text-muted)}@media(min-width:800px){.vehicle-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vehicle-list{
+  display:grid;
+  gap:.75rem;
+}
+.vehicle-card{
+  display:grid;
+  justify-items:start;
+  gap:.5rem;
+}
+.vehicle-card p{
+  margin:0;
+  color:var(--color-text-muted);
+  font-size:.9rem;
+}
+@media(min-width:800px){
+  .vehicle-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
