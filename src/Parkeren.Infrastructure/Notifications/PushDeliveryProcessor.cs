@@ -11,10 +11,14 @@ public sealed class PushDeliveryProcessor(
     TimeProvider timeProvider,
     ILogger<PushDeliveryProcessor> logger)
 {
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
+
     public async Task<bool> ProcessNextAsync(CancellationToken cancellationToken = default)
     {
+        var retryBefore = timeProvider.GetUtcNow() - RetryDelay;
         var delivery = await dbContext.PushDeliveries
-            .Where(x => x.Status == PushDeliveryStatus.Pending)
+            .Where(x => x.Status == PushDeliveryStatus.Pending
+                && (x.LastAttemptAt == null || x.LastAttemptAt <= retryBefore))
             .OrderBy(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
