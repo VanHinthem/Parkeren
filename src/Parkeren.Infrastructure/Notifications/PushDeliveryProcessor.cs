@@ -45,12 +45,15 @@ public sealed class PushDeliveryProcessor(
 
         try
         {
-            await sender.SendAsync(
+            var result = await sender.SendAsync(
                 notification.RecipientUserId,
                 WebPushMessageFactory.Serialize(message),
                 cancellationToken);
 
-            delivery.MarkDelivered(timeProvider.GetUtcNow());
+            if (result is WebPushSendResult.Delivered or WebPushSendResult.NoSubscriptions)
+                delivery.MarkDelivered(timeProvider.GetUtcNow());
+            else if (result == WebPushSendResult.NotConfigured || delivery.AttemptCount >= 3)
+                delivery.MarkFailed();
         }
         catch (Exception exception)
         {
