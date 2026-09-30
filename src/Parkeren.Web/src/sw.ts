@@ -2,6 +2,8 @@
 
 export {};
 
+import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+
 type PushPayload = {
   title?: string;
   body?: string;
@@ -10,7 +12,8 @@ type PushPayload = {
 
 const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
 
-void (self as unknown as { __WB_MANIFEST: unknown }).__WB_MANIFEST;
+precacheAndRoute(self.__WB_MANIFEST);
+cleanupOutdatedCaches();
 
 serviceWorker.addEventListener("push",(event:PushEvent)=>{
   let payload:PushPayload={};
