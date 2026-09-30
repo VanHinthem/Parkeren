@@ -5,6 +5,7 @@ import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Card } from "../../design/primitives/Card";
 import { Input } from "../../design/primitives/Input";
+import { ThemeSelector } from "../../components/ThemeSelector";
 import "./SettingsPage.css";
 
 export function SettingsPage({user,onLoggedOut}:{user:AuthenticatedUser;onLoggedOut:()=>void}){
@@ -109,6 +110,11 @@ export function SettingsPage({user,onLoggedOut}:{user:AuthenticatedUser;onLogged
         </div>
         <Button variant="secondary" onClick={signOut}>Uitloggen</Button>
       </div>
+    </Card>
+
+    <Card className="settings-card">
+      <h2>Weergave</h2>
+      <ThemeSelector/>
     </Card>
 
     <Card className="settings-card">
