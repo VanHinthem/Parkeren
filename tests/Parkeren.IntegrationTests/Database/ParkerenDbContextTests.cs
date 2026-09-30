@@ -4153,6 +4153,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
             seedContext.ProviderParkingActions.Add(action);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), now.AddDays(-1), null, TimeSpan.FromHours(4),
+                Enumerable.Range(0, 7)
+                    .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                    .ToArray(),
+                continuation: ProviderCoverageContinuation.ExtendAction));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
