@@ -9,7 +9,8 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class ProviderContinuationStartResultStore(
     ParkerenDbContext dbContext,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    NotificationInboxWriter inboxWriter)
     : IProviderContinuationStartResultStore
 {
     public async Task RecordResponseAsync(
@@ -107,6 +108,14 @@ internal sealed class ProviderContinuationStartResultStore(
             visit.SetHealth(VisitHealth.Reconciling);
         }
 
+        var successEvent = new NotificationEvent(
+            Guid.NewGuid(),
+            NotificationEventType.ProviderContinuationSucceeded,
+            visit.Id,
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(successEvent);
+        await inboxWriter.WriteAsync(successEvent, NotificationType.ProviderContinuationSucceeded, visit.UserId, includeVisitor: false, includeAdmins: true, cancellationToken);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -122,11 +131,13 @@ internal sealed class ProviderContinuationStartResultStore(
         action.MarkFailed();
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
-        dbContext.NotificationEvents.Add(new NotificationEvent(
+        var notificationEvent = new NotificationEvent(
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            timeProvider.GetUtcNow()));
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(notificationEvent);
+        await inboxWriter.WriteAsync(notificationEvent, NotificationType.ProviderContinuationAttentionRequired, visit.UserId, includeVisitor: true, includeAdmins: true, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -142,11 +153,13 @@ internal sealed class ProviderContinuationStartResultStore(
         operation.MarkUnknown(errorCode);
         var visit = await LoadVisitAsync(preparation, cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
-        dbContext.NotificationEvents.Add(new NotificationEvent(
+        var notificationEvent = new NotificationEvent(
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            timeProvider.GetUtcNow()));
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(notificationEvent);
+        await inboxWriter.WriteAsync(notificationEvent, NotificationType.ProviderContinuationAttentionRequired, visit.UserId, includeVisitor: true, includeAdmins: true, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
