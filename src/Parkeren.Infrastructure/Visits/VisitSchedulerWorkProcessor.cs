@@ -64,6 +64,22 @@ internal sealed class VisitSchedulerWorkProcessor(
                 includeAdmins: settings.NotifyAdminOnLongVisit,
                 cancellationToken);
             work.Complete(occurredAt);
+
+            if (settings.LongVisitReminderInterval is TimeSpan reminderInterval &&
+                !await dbContext.VisitSchedulerWork.AnyAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.Type == VisitSchedulerWorkType.LongVisitWarning &&
+                         x.Id != work.Id &&
+                         (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
+                    cancellationToken))
+            {
+                dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                    Guid.NewGuid(),
+                    visit.Id,
+                    VisitSchedulerWorkType.LongVisitWarning,
+                    occurredAt + reminderInterval));
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
