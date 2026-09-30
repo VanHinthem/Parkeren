@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
+using Parkeren.Domain.Users;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -14,26 +15,47 @@ internal sealed class StartVisitNotificationPublisher(ParkerenDbContext dbContex
         if (visit.Status != VisitStatus.Active)
             throw new InvalidOperationException("A VisitStarted notification event can only be recorded for an active Visit.");
 
-        var exists = await dbContext.NotificationEvents
-            .AnyAsync(x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        if (exists)
-            return;
+        var notificationEvent = await dbContext.NotificationEvents
+            .SingleOrDefaultAsync(
+                x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id,
+                cancellationToken);
 
-        dbContext.NotificationEvents.Add(
-            new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStarted, visit.Id, DateTimeOffset.UtcNow));
-
-        try
+        if (notificationEvent is null)
         {
+            notificationEvent = new NotificationEvent(
+                Guid.NewGuid(),
+                NotificationEventType.VisitStarted,
+                visit.Id,
+                DateTimeOffset.UtcNow);
+            dbContext.NotificationEvents.Add(notificationEvent);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+
+        var recipientIds = await dbContext.Users
+            .Where(x => x.IsActive && (x.Id == visit.UserId || x.Role == UserRole.Admin))
+            .Select(x => x.Id)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var existingRecipientIds = await dbContext.Notifications
+            .Where(x => x.SourceEventId == notificationEvent.Id && recipientIds.Contains(x.RecipientUserId))
+            .Select(x => x.RecipientUserId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var recipientId in recipientIds.Except(existingRecipientIds))
         {
-            dbContext.ChangeTracker.Clear();
-            var duplicate = await dbContext.NotificationEvents
-                .AnyAsync(x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id, cancellationToken);
-            if (!duplicate)
-                throw;
+            dbContext.Notifications.Add(new Notification(
+                Guid.NewGuid(),
+                recipientId,
+                NotificationType.VisitStarted,
+                notificationEvent.OccurredAt,
+                visit.Id,
+                notificationEvent.Id));
         }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 }
