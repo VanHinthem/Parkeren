@@ -2,8 +2,6 @@
 
 Deze pagina legt de functionele betekenis en verantwoordelijkheid vast van parameters die bepalen **hoe lang een Visit mag lopen**, **wat een gebruiker ermee mag doen** en **hoe de benodigde 2Park-providerdekking wordt uitgevoerd**.
 
-> Doelmodel: de namen `AllowOpenEndedVisits` en `AllowVisitExtension` vervangen de huidige codevelden `AllowManualStop` en `AllowAutoExtension`. De huidige namen modelleren niet scherp genoeg wat de instelling daadwerkelijk toestaat.
-
 ## Verantwoordelijkheden
 
 Er zijn twee verschillende niveaus:
@@ -26,8 +24,6 @@ Een providerlimiet hoort niet in gebruikersbeleid. Andersom hoort een gebruikers
 ### Handmatig stoppen
 
 Handmatig stoppen is **geen configureerbaar gebruikersrecht**. Een gebruiker moet een eigen actieve Visit altijd kunnen stoppen. Een beheerder kan een Visit stoppen wanneer diens autorisatie dat toestaat.
-
-Daarom wordt de huidige naam `AllowManualStop` vervangen door `AllowOpenEndedVisits`.
 
 ### Open-ended Visit
 
@@ -64,7 +60,7 @@ new DesiredEndAt <= Visit.StartAt + MaxVisitElapsedDuration
 
 Ook `MaxPaidParkingDuration` (wanneer niet `null`) en de toepasselijke parkeerregels moeten opnieuw worden gevalideerd.
 
-Daarom wordt de huidige naam `AllowAutoExtension` vervangen door `AllowVisitExtension`. Het automatisch verzorgen van providerdekking is geen gebruikersrecht en staat los van het handmatig verlengen van een Visit.
+Het automatisch verzorgen van providerdekking is geen gebruikersrecht en staat los van het handmatig verlengen van een Visit.
 
 ## Parkeer- en 2Park-providerregels
 
@@ -99,6 +95,14 @@ Continuation = StartNewAction
 ```
 
 Een Visit van zes betaalde uren kan daardoor uit meerdere 2Park-actions bestaan zonder dat de logische Visit wordt onderbroken.
+
+### Bevestigd 2Park-gedrag voor Oss
+
+De gebruikte 2Park-interface exposeert `extend_action.json`, maar live tests op een actieve action lieten zien dat een `OK/SUCCESS` response de eindtijd niet persistent wijzigde, ook niet bij een JIT-poging één minuut voor het einde. De 2Park-UI biedt voor geplande en actieve actions alleen verwijderen/stoppen en geen verlengen.
+
+Daarom is voor Oss `Continuation = StartNewAction` de operationele strategie. Een volgende action wordt JIT gestart; wegens de door 2Park bevestigde overlapcontrole begint een successor na de vorige provider-eindtijd.
+
+Als een gebruiker de `DesiredEndAt` verkort tot een tijdstip vóór het einde van de actieve provider-action, kan de provider-eindtijd niet worden aangepast. De applicatie plant daarom duurzame `StopVisit` scheduler-work op de nieuwe `DesiredEndAt`. Tot dat moment blijft de bestaande action actief; op de gewenste eindtijd wordt hij gestopt en wordt de Visit afgerond.
 
 ## Belangrijke scheiding
 
