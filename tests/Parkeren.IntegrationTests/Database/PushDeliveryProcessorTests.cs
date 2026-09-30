@@ -19,7 +19,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         Assert.True(await processor.ProcessNextAsync(cancellationToken));
 
-        var delivery = await context.PushDeliveries.SingleAsync(x => x.Id == deliveryId, cancellationToken);
+        var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Delivered, delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
         Assert.NotNull(delivery.DeliveredAt);
@@ -36,7 +36,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         await processor.ProcessNextAsync(cancellationToken);
         await processor.ProcessNextAsync(cancellationToken);
 
-        var delivery = await context.PushDeliveries.SingleAsync(x => x.Id == deliveryId, cancellationToken);
+        var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Pending, delivery.Status);
         Assert.Equal(2, delivery.AttemptCount);
     }
@@ -53,7 +53,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         await processor.ProcessNextAsync(cancellationToken);
         await processor.ProcessNextAsync(cancellationToken);
 
-        var delivery = await context.PushDeliveries.SingleAsync(x => x.Id == deliveryId, cancellationToken);
+        var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Failed, delivery.Status);
         Assert.Equal(3, delivery.AttemptCount);
     }
@@ -68,7 +68,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         await processor.ProcessNextAsync(cancellationToken);
 
-        var delivery = await context.PushDeliveries.SingleAsync(x => x.Id == deliveryId, cancellationToken);
+        var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Failed, delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
     }
