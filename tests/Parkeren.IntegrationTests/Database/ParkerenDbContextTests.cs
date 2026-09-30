@@ -4124,6 +4124,80 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Successful_provider_extension_delivers_notification_to_active_admins_only()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"extend-success-{suffix}", $"EXTEND-SUCCESS-{suffix}", "hash", UserRole.Visitor);
+        var activeAdmin = new User(Guid.NewGuid(), $"extend-success-admin-{suffix}", $"EXTEND-SUCCESS-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var inactiveAdmin = new User(Guid.NewGuid(), $"extend-success-inactive-{suffix}", $"EXTEND-SUCCESS-INACTIVE-{suffix}", "hash", UserRole.Admin);
+        inactiveAdmin.Deactivate();
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ES-{suffix[..2]}-{suffix[2..4]}", $"ES{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var extendedEnd = now.AddHours(1);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive($"provider-{suffix}", now.AddHours(-1));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.AddRange(user, activeAdmin, inactiveAdmin);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var preparation = await scope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
+                .PrepareAttemptAsync(visit, action, Guid.NewGuid(), extendedEnd, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IProviderExtendResultStore>()
+                .RecordConfirmedAsync(
+                    preparation,
+                    new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                        $"provider-{suffix}", vehicle.NormalizedLicensePlate,
+                        now.AddHours(-1), extendedEnd, "Oss", "active"),
+                    cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var notificationEvent = await verifyContext.NotificationEvents.SingleAsync(
+            x => x.Type == NotificationEventType.ProviderContinuationSucceeded &&
+                 x.AggregateId == visit.Id,
+            cancellationToken);
+        var notifications = await verifyContext.Notifications
+            .Where(x => x.SourceEventId == notificationEvent.Id)
+            .ToListAsync(cancellationToken);
+
+        Assert.Contains(notifications, x =>
+            x.RecipientUserId == activeAdmin.Id &&
+            x.Type == NotificationType.ProviderContinuationSucceeded &&
+            x.VisitId == visit.Id);
+        Assert.DoesNotContain(notifications, x => x.RecipientUserId == user.Id);
+        Assert.DoesNotContain(notifications, x => x.RecipientUserId == inactiveAdmin.Id);
+        Assert.All(notifications, x =>
+            Assert.Equal(NotificationType.ProviderContinuationSucceeded, x.Type));
+    }
+
+    [Fact]
     public async Task Failed_provider_extension_delivers_attention_notification_to_visitor_and_active_admins()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
