@@ -1,9 +1,47 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-var actions = new ConcurrentDictionary<string, MockParkingAction>();
+var statePath = builder.Configuration["TwoParkMock:StatePath"];
+var stateGate = new SemaphoreSlim(1, 1);
+var actions = new ConcurrentDictionary<string, MockParkingAction>(
+    LoadPersistedActions(statePath).ToDictionary(x => x.Id, StringComparer.Ordinal));
+
+async Task PersistActionsAsync()
+{
+    if (string.IsNullOrWhiteSpace(statePath))
+        return;
+
+    await stateGate.WaitAsync();
+    try
+    {
+        var directory = Path.GetDirectoryName(statePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
+
+        var snapshot = actions.Values.OrderBy(x => x.Start).ToArray();
+        var json = JsonSerializer.Serialize(snapshot);
+        var temporaryPath = statePath + ".tmp";
+        await File.WriteAllTextAsync(temporaryPath, json);
+        File.Move(temporaryPath, statePath, true);
+    }
+    finally
+    {
+        stateGate.Release();
+    }
+}
+
+static IReadOnlyCollection<MockParkingAction> LoadPersistedActions(string? path)
+{
+    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        return Array.Empty<MockParkingAction>();
+
+    var json = File.ReadAllText(path);
+    return JsonSerializer.Deserialize<MockParkingAction[]>(json) ?? Array.Empty<MockParkingAction>();
+}
+
 var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
 var remainingMinutes = 1500 * 60;
@@ -63,12 +101,13 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     var status = request.Start > DateTimeOffset.UtcNow ? "scheduled" : "active";
     var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, DateTimeOffset.UtcNow + visibilityDelay);
     actions[id] = action;
+    await PersistActionsAsync();
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
     if (omitCreatedActionBody) return Results.Created($"/api/actions/{id}", value: null);
     return Results.Created($"/api/actions/{id}", action);
 });
 
-app.MapPut("/api/actions/{id}/end", (string id, MockExtendRequest request) =>
+app.MapPut("/api/actions/{id}/end", async (string id, MockExtendRequest request) =>
 {
     if (!actions.TryGetValue(id, out var current))
         return Results.NotFound();
@@ -78,29 +117,33 @@ app.MapPut("/api/actions/{id}/end", (string id, MockExtendRequest request) =>
 
     var updated = current with { End = request.End };
     actions[id] = updated;
+    await PersistActionsAsync();
     return Results.Ok(updated);
 });
 
-app.MapPost("/api/test/actions/{id}/stop", (string id) =>
+app.MapPost("/api/test/actions/{id}/stop", async (string id) =>
 {
     if (!actions.TryGetValue(id, out var current)) return Results.NotFound();
     actions[id] = current with { Status = "stopped" };
+    await PersistActionsAsync();
     return Results.NoContent();
 });
 
-app.MapPut("/api/test/actions/{id}/end", (string id, MockExtendRequest request) =>
+app.MapPut("/api/test/actions/{id}/end", async (string id, MockExtendRequest request) =>
 {
     if (!actions.TryGetValue(id, out var current)) return Results.NotFound();
     actions[id] = current with { End = request.End };
+    await PersistActionsAsync();
     return Results.NoContent();
 });
 
-app.MapPost("/api/actions/{id}/stop", (string id) =>
+app.MapPost("/api/actions/{id}/stop", async (string id) =>
 {
     if (!actions.TryGetValue(id, out var current))
         return Results.NotFound();
 
     actions[id] = current with { Status = "stopped" };
+    await PersistActionsAsync();
     return Results.NoContent();
 });
 
@@ -158,7 +201,7 @@ app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>
     return Results.NoContent();
 });
 
-app.MapPost("/api/test/reset", () =>
+app.MapPost("/api/test/reset", async () =>
 {
     actions.Clear();
     failure.Reset();
@@ -171,6 +214,7 @@ app.MapPost("/api/test/reset", () =>
     forcedValidationError = false;
     rejectDuplicateActiveActions = false;
     omitCreatedActionBody = false;
+    await PersistActionsAsync();
     return Results.NoContent();
 });
 
