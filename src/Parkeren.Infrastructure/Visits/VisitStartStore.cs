@@ -10,6 +10,27 @@ internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStart
     public async Task SaveAsync(Visit visit, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(visit);
+
+        if (visit.Status == VisitStatus.Active)
+        {
+            var longVisitWarningAfter = await dbContext.ParkingSystemSettings
+                .AsNoTracking()
+                .Select(x => x.LongVisitWarningAfter)
+                .SingleAsync(cancellationToken);
+            if (longVisitWarningAfter is TimeSpan warningAfter &&
+                !await dbContext.VisitSchedulerWork.AnyAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.Type == VisitSchedulerWorkType.LongVisitWarning &&
+                         (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
+                    cancellationToken))
+            {
+                dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                    Guid.NewGuid(),
+                    visit.Id,
+                    VisitSchedulerWorkType.LongVisitWarning,
+                    visit.StartAt + warningAfter));
+            }
+        }
         if (visit.Status == VisitStatus.Active && visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
             !await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, cancellationToken))
         {
