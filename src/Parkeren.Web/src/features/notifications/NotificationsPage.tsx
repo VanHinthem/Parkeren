@@ -14,18 +14,19 @@ const labels:Record<InboxNotification["type"],string>={
 
 type LongVisitPayload={visitor:string;licensePlate:string;startAt:string;elapsedDuration:string};
 
-function longVisitDetails(item:InboxNotification){
+function longVisitDetails(item:InboxNotification,isAdmin:boolean){
   if(item.type!=="LongVisitWarning"||!item.payload)return null;
   try{
     const payload=JSON.parse(item.payload) as Partial<LongVisitPayload>;
     if(!payload.licensePlate||!payload.startAt||!payload.elapsedDuration)return null;
-    return `${payload.licensePlate} · gestart ${new Date(payload.startAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})} · ${payload.elapsedDuration}`;
+    const visitor=isAdmin&&payload.visitor?`${payload.visitor} · `:"";
+    return `${visitor}${payload.licensePlate} · gestart ${new Date(payload.startAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})} · ${payload.elapsedDuration}`;
   }catch{return null;}
 }
 
-type Props={onUnreadCountChanged:(count:number)=>void;onNavigate:(path:string)=>void};
+type Props={userRole:"Admin"|"Visitor";onUnreadCountChanged:(count:number)=>void;onNavigate:(path:string)=>void};
 
-export function NotificationsPage({onUnreadCountChanged,onNavigate}:Props){
+export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Props){
   const[items,setItems]=useState<InboxNotification[]>();
   const[error,setError]=useState<string|null>(null);
   const unread=items?.filter(x=>!x.isRead).length??0;
@@ -66,7 +67,7 @@ export function NotificationsPage({onUnreadCountChanged,onNavigate}:Props){
           <span className="notification-item__dot" aria-hidden="true"/>
           <span>
             <strong>{labels[item.type]}</strong>
-            {longVisitDetails(item)&&<small>{longVisitDetails(item)}</small>}
+            {longVisitDetails(item,userRole==="Admin")&&<small>{longVisitDetails(item,userRole==="Admin")}</small>}
             <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})}</time>
           </span>
         </button>
