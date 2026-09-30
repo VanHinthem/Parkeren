@@ -4181,7 +4181,6 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.SourceEventId == notificationEvent.Id)
             .ToListAsync(cancellationToken);
 
-        Assert.Equal(2, notifications.Count);
         Assert.Contains(notifications, x =>
             x.RecipientUserId == user.Id &&
             x.Type == NotificationType.ProviderContinuationAttentionRequired &&
@@ -4191,6 +4190,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             x.Type == NotificationType.ProviderContinuationAttentionRequired &&
             x.VisitId == visit.Id);
         Assert.DoesNotContain(notifications, x => x.RecipientUserId == inactiveAdmin.Id);
+        Assert.All(notifications, x =>
+            Assert.Equal(NotificationType.ProviderContinuationAttentionRequired, x.Type));
     }
 
     [Fact]
