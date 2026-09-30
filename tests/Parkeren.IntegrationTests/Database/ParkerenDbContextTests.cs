@@ -2275,7 +2275,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     [Theory]
     [InlineData(-1, true)]
     [InlineData(0, false)]
-    public async Task Shortening_respects_active_provider_action_boundary(int minutesFromActionEnd, bool expectRejected)
+    public async Task Shortening_respects_active_provider_action_boundary(int minutesFromActionEnd, bool expectScheduledStop)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -2322,19 +2322,33 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var changer = scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>();
         var command = new ChangeVisitEndTimeCommand(Guid.NewGuid(), visit.Id, user.Id, requestedEndAt);
 
-        if (expectRejected)
-            await Assert.ThrowsAsync<InvalidOperationException>(() => changer.ApplyAsync(command, cancellationToken));
-        else
-            Assert.Equal(VisitEndTimeChangeResult.Applied, (await changer.ApplyAsync(command, cancellationToken)).Change.Result);
+        Assert.Equal(
+            VisitEndTimeChangeResult.Applied,
+            (await changer.ApplyAsync(command, cancellationToken)).Change.Result);
 
         await using var verifyContext = fixture.CreateDbContext();
         var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
         var change = await verifyContext.VisitEndTimeChanges.SingleAsync(x => x.OperationId == command.OperationId, cancellationToken);
 
-        Assert.Equal(expectRejected ? VisitEndTimeChangeResult.Rejected : VisitEndTimeChangeResult.Applied, change.Result);
+        Assert.Equal(VisitEndTimeChangeResult.Applied, change.Result);
         Assert.NotNull(persistedVisit.DesiredEndAt);
-        var expectedEndAt = expectRejected ? originalEndAt : requestedEndAt;
-        Assert.True((persistedVisit.DesiredEndAt.Value - expectedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        Assert.True((persistedVisit.DesiredEndAt.Value - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+
+        var scheduledStops = await verifyContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visit.Id &&
+                        x.Type == VisitSchedulerWorkType.StopVisit &&
+                        x.Status == VisitSchedulerWorkStatus.Pending)
+            .ToListAsync(cancellationToken);
+
+        if (expectScheduledStop)
+        {
+            var stopWork = Assert.Single(scheduledStops);
+            Assert.True((stopWork.DueAt - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
+        }
+        else
+        {
+            Assert.Empty(scheduledStops);
+        }
     }
 
     [Fact]
