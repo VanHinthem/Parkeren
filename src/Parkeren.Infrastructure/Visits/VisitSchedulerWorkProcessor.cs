@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Notifications;
+using Parkeren.Infrastructure.Notifications;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure.Persistence;
@@ -13,7 +15,9 @@ internal sealed class VisitSchedulerWorkProcessor(
     ParkerenDbContext dbContext,
     IProviderExtendStore providerExtendStore,
     IProviderContinuationStartStore continuationStartStore,
-    IServiceProvider serviceProvider)
+    IServiceProvider serviceProvider,
+    NotificationInboxWriter inboxWriter,
+    TimeProvider timeProvider)
     : IVisitSchedulerWorkProcessor
 {
     public async Task ProcessAsync(
@@ -30,6 +34,37 @@ internal sealed class VisitSchedulerWorkProcessor(
         if (work.Type == VisitSchedulerWorkType.StopVisit)
         {
             await ProcessScheduledStopAsync(work, visit, cancellationToken);
+            return;
+        }
+
+        if (work.Type == VisitSchedulerWorkType.LongVisitWarning)
+        {
+            if (visit.Status != VisitStatus.Active)
+            {
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var settings = await dbContext.ParkingSystemSettings
+                .AsNoTracking()
+                .SingleAsync(cancellationToken);
+            var occurredAt = timeProvider.GetUtcNow();
+            var notificationEvent = new NotificationEvent(
+                Guid.NewGuid(),
+                NotificationEventType.LongVisitWarning,
+                visit.Id,
+                occurredAt);
+            dbContext.NotificationEvents.Add(notificationEvent);
+            await inboxWriter.WriteAsync(
+                notificationEvent,
+                NotificationType.LongVisitWarning,
+                visit.UserId,
+                includeVisitor: true,
+                includeAdmins: settings.NotifyAdminOnLongVisit,
+                cancellationToken);
+            work.Complete(occurredAt);
+            await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
 
