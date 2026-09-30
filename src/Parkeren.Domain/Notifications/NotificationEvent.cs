@@ -5,7 +5,8 @@ public enum NotificationEventType
     VisitStarted,
     VisitStopped,
     ProviderContinuationSucceeded,
-    ProviderContinuationAttentionRequired
+    ProviderContinuationAttentionRequired,
+    LongVisitWarning
 }
 
 public sealed class NotificationEvent
