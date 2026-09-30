@@ -170,6 +170,23 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         return action;
     }
 
+    public async Task<string> ExtendActionDiagnosticAsync(
+        string providerActionId,
+        DateTimeOffset newEnd,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        using var data = await PostAsync("extend_action.json", new Dictionary<string, string>
+        {
+            ["action_id"] = providerActionId,
+            ["product_id"] = productId ?? string.Empty,
+            ["locale"] = Locale,
+            ["VALID_UNTIL"] = FormatProviderTime(newEnd)
+        }, cancellationToken);
+
+        return data.RootElement.GetRawText();
+    }
+
     public async Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
