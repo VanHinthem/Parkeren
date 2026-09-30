@@ -4720,4 +4720,60 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled, persistedWork.Status);
     }
 
+
+    [Fact]
+    public async Task Visit_start_store_schedules_single_initial_long_visit_warning()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"long-start-{suffix}", $"LONG-START-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"LS-{suffix}", $"LS{suffix}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            startAt, null,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            var settings = await seedContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+            settings.SetLongVisitNotifications(TimeSpan.FromHours(2), false, null);
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var persistedVisit = await context.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            var store = scope.ServiceProvider.GetRequiredService<IVisitStartStore>();
+            await store.SaveAsync(persistedVisit, cancellationToken);
+            await store.SaveAsync(persistedVisit, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var warnings = await verifyContext.VisitSchedulerWork
+            .Where(x => x.VisitId == visit.Id &&
+                        x.Type == VisitSchedulerWorkType.LongVisitWarning &&
+                        x.Status == VisitSchedulerWorkStatus.Pending)
+            .ToListAsync(cancellationToken);
+
+        var warning = Assert.Single(warnings);
+        Assert.Equal(startAt + TimeSpan.FromHours(2), warning.DueAt);
+    }
+
 }
