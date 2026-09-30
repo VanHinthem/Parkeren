@@ -4,6 +4,8 @@ using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Notifications;
+using Parkeren.Infrastructure.Notifications;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
@@ -17,6 +19,8 @@ internal sealed class VisitRecoveryService(
     IVisitEndTimeProviderAdjuster endTimeProviderAdjuster,
     IVisitEndTimeChanger endTimeChanger,
     IParkingProvider provider,
+    NotificationInboxWriter inboxWriter,
+    TimeProvider timeProvider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
     public async Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default)
@@ -66,7 +70,7 @@ internal sealed class VisitRecoveryService(
                 if (remote is not null && string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
                     action.MarkExternallyStopped(remote.Status);
 
-                visit.SetHealth(VisitHealth.AttentionRequired);
+                await MarkAttentionRequiredAsync(visit, cancellationToken);
                 var work = await dbContext.VisitSchedulerWork
                     .Where(x => x.VisitId == visitId &&
                         (x.Status == VisitSchedulerWorkStatus.Pending ||
@@ -402,7 +406,7 @@ internal sealed class VisitRecoveryService(
         var visit = await dbContext.Visits
             .SingleAsync(x => x.Id == item.Visit.Id, cancellationToken);
 
-        visit.SetHealth(VisitHealth.AttentionRequired);
+        await MarkAttentionRequiredAsync(visit, cancellationToken);
 
         var schedulerWork = await dbContext.VisitSchedulerWork
             .Where(x => x.VisitId == visit.Id &&
@@ -416,6 +420,34 @@ internal sealed class VisitRecoveryService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+
+    private async Task MarkAttentionRequiredAsync(
+        Visit visit,
+        CancellationToken cancellationToken)
+    {
+        var becameAttentionRequired = visit.Health != VisitHealth.AttentionRequired;
+        visit.SetHealth(VisitHealth.AttentionRequired);
+
+        if (!becameAttentionRequired)
+            return;
+
+        var occurredAt = timeProvider.GetUtcNow();
+        var notificationEvent = new NotificationEvent(
+            Guid.NewGuid(),
+            NotificationEventType.ProviderContinuationAttentionRequired,
+            visit.Id,
+            occurredAt);
+
+        dbContext.NotificationEvents.Add(notificationEvent);
+        await inboxWriter.WriteAsync(
+            notificationEvent,
+            NotificationType.ProviderContinuationAttentionRequired,
+            visit.UserId,
+            includeVisitor: true,
+            includeAdmins: true,
+            cancellationToken,
+            visitId: visit.Id);
+    }
 
     private async Task ReleaseClaimedSchedulerWorkAsync(CancellationToken cancellationToken)
     {
