@@ -34,3 +34,30 @@ public static class ParkingBudgetCalculator
         return new ParkingBudgetUsage(period, usedPaidDuration, remaining);
     }
 }
+
+
+public static class ParkingBudgetWarningEvaluator
+{
+    public static IReadOnlyList<int> GetNewlyReachedThresholds(
+        ParkingBudgetUsage usage,
+        IEnumerable<int> thresholds,
+        IEnumerable<int> alreadyNotifiedThresholds)
+    {
+        ArgumentNullException.ThrowIfNull(usage);
+        ArgumentNullException.ThrowIfNull(thresholds);
+        ArgumentNullException.ThrowIfNull(alreadyNotifiedThresholds);
+
+        if (usage.Period.MaximumPaidDuration <= TimeSpan.Zero)
+            return Array.Empty<int>();
+
+        var notified = alreadyNotifiedThresholds.ToHashSet();
+        var usedPercentage = usage.UsedPaidDuration.TotalMilliseconds /
+            usage.Period.MaximumPaidDuration.TotalMilliseconds * 100d;
+
+        return thresholds
+            .Distinct()
+            .OrderBy(x => x)
+            .Where(x => x > 0 && x <= 100 && x <= usedPercentage && !notified.Contains(x))
+            .ToArray();
+    }
+}
