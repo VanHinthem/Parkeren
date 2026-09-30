@@ -1,3 +1,4 @@
+using Xunit;
 using Parkeren.Domain.Notifications;
 
 namespace Parkeren.Domain.Tests;
