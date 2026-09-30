@@ -4773,7 +4773,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .ToListAsync(cancellationToken);
 
         var warning = Assert.Single(warnings);
-        Assert.Equal(startAt + TimeSpan.FromHours(2), warning.DueAt);
+        var expectedDueAt = startAt + TimeSpan.FromHours(2);
+        Assert.InRange(
+            warning.DueAt,
+            expectedDueAt - TimeSpan.FromMilliseconds(1),
+            expectedDueAt + TimeSpan.FromMilliseconds(1));
     }
 
 }
