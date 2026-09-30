@@ -3,13 +3,15 @@ using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.Notifications;
 using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
 
 namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class ProviderExtendResultStore(
     ParkerenDbContext dbContext,
-    TimeProvider timeProvider) : IProviderExtendResultStore
+    TimeProvider timeProvider,
+    NotificationInboxWriter inboxWriter) : IProviderExtendResultStore
 {
     public async Task RecordConfirmedAsync(
         ProviderExtendPreparation preparation,
@@ -111,11 +113,19 @@ internal sealed class ProviderExtendResultStore(
         if (visit.Status == VisitStatus.Active)
             visit.SetHealth(VisitHealth.Reconciling);
 
-        dbContext.NotificationEvents.Add(new NotificationEvent(
+        var notificationEvent = new NotificationEvent(
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            timeProvider.GetUtcNow()));
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(notificationEvent);
+        await inboxWriter.WriteAsync(
+            notificationEvent,
+            NotificationType.ProviderContinuationAttentionRequired,
+            visit.UserId,
+            includeVisitor: true,
+            includeAdmins: true,
+            cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -146,11 +156,19 @@ internal sealed class ProviderExtendResultStore(
         if (visit.Status == VisitStatus.Active)
             visit.SetHealth(VisitHealth.Reconciling);
 
-        dbContext.NotificationEvents.Add(new NotificationEvent(
+        var notificationEvent = new NotificationEvent(
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationAttentionRequired,
             visit.Id,
-            timeProvider.GetUtcNow()));
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(notificationEvent);
+        await inboxWriter.WriteAsync(
+            notificationEvent,
+            NotificationType.ProviderContinuationAttentionRequired,
+            visit.UserId,
+            includeVisitor: true,
+            includeAdmins: true,
+            cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
