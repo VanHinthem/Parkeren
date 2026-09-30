@@ -3,6 +3,7 @@ using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.Notifications;
 
 namespace Parkeren.Infrastructure.Visits;
 
