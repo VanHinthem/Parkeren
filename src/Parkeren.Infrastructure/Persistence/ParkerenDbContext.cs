@@ -77,6 +77,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.LongVisitWarningAfter);
             entity.Property(x => x.NotifyAdminOnLongVisit).IsRequired();
             entity.Property(x => x.LongVisitReminderInterval);
+            entity.Property(x => x.BudgetWarningThresholdPercentages).HasColumnType("integer[]").IsRequired();
         });
         modelBuilder.Entity<DefaultParkingPolicy>(entity =>
         {
