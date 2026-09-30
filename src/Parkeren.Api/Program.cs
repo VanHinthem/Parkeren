@@ -214,23 +214,58 @@ if (app.Environment.IsDevelopment())
 
             try
             {
-                var changed = await provider.ExtendActionAsync(
-                    created.ProviderActionId,
-                    requestedEnd,
-                    cancellationToken);
+                string? rawExtendResponse = null;
+                Parkeren.Application.ParkingProvider.ProviderParkingAction changed;
 
-                var after = (await provider.GetActionsAsync(cancellationToken))
+                if (provider is Parkeren.Infrastructure.ParkingProvider.TwoParkProvider twoParkProvider)
+                {
+                    rawExtendResponse = await twoParkProvider.ExtendActionDiagnosticAsync(
+                        created.ProviderActionId,
+                        requestedEnd,
+                        cancellationToken);
+
+                    changed = (await provider.GetActionsAsync(cancellationToken))
+                        .Single(x => x.ProviderActionId == created.ProviderActionId);
+                }
+                else
+                {
+                    changed = await provider.ExtendActionAsync(
+                        created.ProviderActionId,
+                        requestedEnd,
+                        cancellationToken);
+                }
+
+                var afterImmediate = (await provider.GetActionsAsync(cancellationToken))
                     .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                var afterOneSecond = (await provider.GetActionsAsync(cancellationToken))
+                    .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+                await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+                var afterFiveSeconds = (await provider.GetActionsAsync(cancellationToken))
+                    .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+                static bool MatchesRequestedEnd(
+                    Parkeren.Application.ParkingProvider.ProviderParkingAction? action,
+                    DateTimeOffset expectedEnd) =>
+                    action is not null &&
+                    (action.End - expectedEnd).Duration() < TimeSpan.FromSeconds(1);
 
                 return Results.Ok(new
                 {
                     requested = new { start, originalEnd, requestedEnd },
                     created,
                     before,
+                    rawExtendResponse,
                     changed,
-                    after,
-                    extensionApplied = after is not null &&
-                        (after.End - requestedEnd).Duration() < TimeSpan.FromMilliseconds(1)
+                    afterImmediate,
+                    afterOneSecond,
+                    afterFiveSeconds,
+                    extensionApplied =
+                        MatchesRequestedEnd(afterImmediate, requestedEnd) ||
+                        MatchesRequestedEnd(afterOneSecond, requestedEnd) ||
+                        MatchesRequestedEnd(afterFiveSeconds, requestedEnd)
                 });
             }
             catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
