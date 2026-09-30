@@ -40,14 +40,24 @@ internal sealed class NotificationInboxWriter(ParkerenDbContext dbContext)
 
         foreach (var recipientId in recipientIds.Except(existing))
         {
-            dbContext.Notifications.Add(new Notification(
+            var notification = new Notification(
                 Guid.NewGuid(),
                 recipientId,
                 type,
                 notificationEvent.OccurredAt,
                 visitId ?? notificationEvent.AggregateId,
                 notificationEvent.Id,
-                payload));
+                payload);
+
+            dbContext.Notifications.Add(notification);
+
+            if (WebPushMessageFactory.Create(notification) is not null)
+            {
+                dbContext.PushDeliveries.Add(new PushDelivery(
+                    Guid.NewGuid(),
+                    notification.Id,
+                    notificationEvent.OccurredAt));
+            }
         }
     }
 }
