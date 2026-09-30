@@ -85,8 +85,17 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<TimeSpan?>("LongVisitReminderInterval")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan?>("LongVisitWarningAfter")
+                        .HasColumnType("interval");
+
                     b.Property<int>("MaxConcurrentVisits")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("NotifyAdminOnLongVisit")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
