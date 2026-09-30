@@ -1,4 +1,4 @@
-import { getPushPublicKey, registerPushSubscription } from "../api/client";
+import { getPushPublicKey, registerPushSubscription, unregisterPushSubscription } from "../api/client";
 
 function base64UrlToUint8Array(value:string):Uint8Array<ArrayBuffer>{
   const padding="=".repeat((4-value.length%4)%4);
@@ -29,4 +29,20 @@ export async function enablePushNotifications():Promise<void>{
   }
 
   await registerPushSubscription(subscription);
+}
+
+export async function disablePushNotifications():Promise<void>{
+  if(!isPushSupported())return;
+  const registration=await navigator.serviceWorker.ready;
+  const subscription=await registration.pushManager.getSubscription();
+  if(!subscription)return;
+
+  await unregisterPushSubscription(subscription.endpoint);
+  await subscription.unsubscribe();
+}
+
+export async function hasPushSubscription():Promise<boolean>{
+  if(!isPushSupported()||Notification.permission!=="granted")return false;
+  const registration=await navigator.serviceWorker.ready;
+  return (await registration.pushManager.getSubscription())!==null;
 }
