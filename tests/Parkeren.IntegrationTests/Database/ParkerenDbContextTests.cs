@@ -439,6 +439,83 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
 
     [Fact]
+    public async Task Budget_warning_threshold_is_emitted_only_once_per_budget_period()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var visitor = new User(Guid.NewGuid(), $"budget-once-{suffix}", $"BUDGET-ONCE-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"BO-{suffix}", $"BO{suffix}".ToUpperInvariant(), null);
+        var firstStart = new DateTimeOffset(2026, 9, 30, 8, 0, 0, TimeSpan.Zero);
+        var secondStart = firstStart.AddHours(1);
+        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+        var firstVisit = new Visit(Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
+            firstStart, firstStart.AddHours(1), snapshot);
+        var secondVisit = new Visit(Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
+            secondStart, secondStart.AddHours(1), snapshot);
+        firstVisit.Activate();
+        secondVisit.Activate();
+
+        var paidWindows = Enumerable.Range(0, 7)
+            .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+            .ToArray();
+        var budgetPeriod = new ParkingBudgetPeriod(
+            Guid.NewGuid(), firstStart.AddDays(-1), firstStart.AddDays(1), TimeSpan.FromHours(1));
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            var settings = await seedContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+            settings.SetBudgetWarningThresholdPercentages(new[] { 80 });
+            seedContext.Users.Add(visitor);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.AddRange(firstVisit, secondVisit);
+            seedContext.ParkingBudgetPeriods.Add(budgetPeriod);
+            seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(), firstStart.AddDays(-2), null, TimeSpan.FromHours(4), paidWindows));
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        async Task CompleteAsync(Visit visit, DateTimeOffset actualEndAt)
+        {
+            StopVisitClaim claim;
+            await using (var claimScope = provider.CreateAsyncScope())
+            {
+                claim = await claimScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>().ClaimAsync(
+                    new StopVisitCommand(Guid.NewGuid(), visit.Id, visitor.Id),
+                    cancellationToken);
+            }
+
+            await using var finalizeScope = provider.CreateAsyncScope();
+            await finalizeScope.ServiceProvider.GetRequiredService<IStopVisitFinalizer>()
+                .CompleteWithoutProviderActionAsync(claim, actualEndAt, cancellationToken);
+        }
+
+        await CompleteAsync(firstVisit, firstStart.AddHours(1));
+        await CompleteAsync(secondVisit, secondStart.AddHours(1));
+
+        await using var verifyContext = fixture.CreateDbContext();
+        Assert.Single(await verifyContext.ParkingBudgetWarningStates
+            .Where(x => x.ParkingBudgetPeriodId == budgetPeriod.Id && x.ThresholdPercentage == 80)
+            .ToListAsync(cancellationToken));
+        Assert.Single(await verifyContext.NotificationEvents
+            .Where(x => x.Type == NotificationEventType.BudgetWarning)
+            .ToListAsync(cancellationToken));
+        Assert.Equal(VisitStatus.Completed,
+            (await verifyContext.Visits.SingleAsync(x => x.Id == secondVisit.Id, cancellationToken)).Status);
+    }
+
+
+    [Fact]
     public async Task Provider_start_prepare_serializes_same_operation()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
