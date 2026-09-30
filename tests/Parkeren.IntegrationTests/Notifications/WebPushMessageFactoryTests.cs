@@ -33,7 +33,7 @@ public sealed class WebPushMessageFactoryTests
             NotificationType.LongVisitWarning,
             DateTimeOffset.UtcNow,
             Guid.NewGuid(),
-            payload: JsonSerializer.Serialize(new { LicensePlate = "12ABC3" }));
+            payload: JsonSerializer.Serialize(new { licensePlate = "12ABC3" }));
 
         var message = WebPushMessageFactory.Create(notification);
 
@@ -49,7 +49,7 @@ public sealed class WebPushMessageFactoryTests
             Guid.NewGuid(),
             NotificationType.BudgetWarning,
             DateTimeOffset.UtcNow,
-            payload: JsonSerializer.Serialize(new { ThresholdPercentage = 90 }));
+            payload: JsonSerializer.Serialize(new { thresholdPercentage = 90 }));
 
         var message = WebPushMessageFactory.Create(notification);
 
