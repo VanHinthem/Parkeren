@@ -141,10 +141,6 @@ internal sealed class PostgresVisitEndTimeChanger(
                                 x.State is ProviderActionState.Active or ProviderActionState.Scheduled)
                     .ToList();
 
-                if (affectedActions.Any(x => x.State == ProviderActionState.Active))
-                    throw new InvalidOperationException(
-                        "Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
-
                 if (affectedActions.Any(x => x.State == ProviderActionState.Scheduled))
                 {
                     await transaction.CommitAsync(cancellationToken);
@@ -184,6 +180,23 @@ internal sealed class PostgresVisitEndTimeChanger(
                     .ToListAsync(cancellationToken);
                 foreach (var work in obsoleteWork)
                     work.Cancel();
+
+                var activeActionNeedsStop = await dbContext.ProviderParkingActions.AnyAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.State == ProviderActionState.Active &&
+                         x.PlannedEndAt > newEndAt,
+                    cancellationToken);
+                if (activeActionNeedsStop &&
+                    !await dbContext.VisitSchedulerWork.AnyAsync(
+                        x => x.VisitId == visit.Id &&
+                             x.Type == VisitSchedulerWorkType.StopVisit &&
+                             x.Status == VisitSchedulerWorkStatus.Pending &&
+                             x.DueAt == newEndAt,
+                        cancellationToken))
+                {
+                    dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                        Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.StopVisit, newEndAt));
+                }
             }
             change.MarkApplied();
             if (existing is null)
