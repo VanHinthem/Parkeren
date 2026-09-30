@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-declare const self: ServiceWorkerGlobalScope;
+export {};
 
 type PushPayload = {
   title?: string;
@@ -8,29 +8,32 @@ type PushPayload = {
   url?: string;
 };
 
-self.addEventListener("push",event=>{
+const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
+
+serviceWorker.addEventListener("push",(event:PushEvent)=>{
   let payload:PushPayload={};
   try{payload=event.data?.json() as PushPayload??{};}catch{payload={};}
 
-  event.waitUntil(self.registration.showNotification(payload.title??"Parkeren",{
+  event.waitUntil(serviceWorker.registration.showNotification(payload.title??"Parkeren",{
     body:payload.body??"Je hebt een nieuwe parkeermelding.",
     data:{url:payload.url??"/meldingen"}
   }));
 });
 
-self.addEventListener("notificationclick",event=>{
+serviceWorker.addEventListener("notificationclick",(event:NotificationEvent)=>{
   event.notification.close();
-  const url=new URL((event.notification.data as {url?:string}|undefined)?.url??"/meldingen",self.location.origin).href;
+  const url=new URL(
+    (event.notification.data as {url?:string}|undefined)?.url??"/meldingen",
+    serviceWorker.location.origin
+  ).href;
 
   event.waitUntil((async()=>{
-    const clients=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+    const clients=await serviceWorker.clients.matchAll({type:"window",includeUncontrolled:true});
     for(const client of clients){
-      if("focus" in client){
-        await client.focus();
-        client.postMessage({type:"navigate",url});
-        return;
-      }
+      await client.focus();
+      client.postMessage({type:"navigate",url});
+      return;
     }
-    await self.clients.openWindow(url);
+    await serviceWorker.clients.openWindow(url);
   })());
 });
