@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<NotificationInboxWriter>();
         services.AddScoped<PushSubscriptionService>();
         services.AddScoped<WebPushSender>();
+        services.AddScoped<PushDeliveryProcessor>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
         services.AddScoped<StartVisitPreparer>();
         services.AddScoped<StartVisitClaimer>();
