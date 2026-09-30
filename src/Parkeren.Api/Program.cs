@@ -1,6 +1,7 @@
 using Parkeren.Api;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
 using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Application.Visits;
@@ -968,7 +969,7 @@ app.MapPost("/api/notifications/push-subscriptions", async (
 });
 
 app.MapDelete("/api/notifications/push-subscriptions", async (
-    PushSubscriptionDeleteRequest request,
+    [FromBody] PushSubscriptionDeleteRequest request,
     PushSubscriptionService pushSubscriptions,
     IAuthenticationService authentication,
     HttpContext context,
