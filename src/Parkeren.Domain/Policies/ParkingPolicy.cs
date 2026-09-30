@@ -45,7 +45,7 @@ public sealed class ParkingSystemSettings
     }
     private static void ValidateLongVisitDuration(TimeSpan? value, string parameterName)
     {
-        if (value is <= TimeSpan.Zero)
+        if (value.HasValue && value.Value <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(parameterName);
     }
 }
