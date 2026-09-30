@@ -3,24 +3,24 @@ using Parkeren.Domain.Notifications;
 
 namespace Parkeren.Infrastructure.Notifications;
 
-public sealed record WebPushMessage(string Title, string Body, string Url);
+public sealed record WebPushMessage(string Title, string Body, string Url, Guid NotificationId);
 
 public static class WebPushMessageFactory
 {
     public static WebPushMessage? Create(Notification notification)
     {
-        var url = notification.VisitId is Guid visitId
+        var visitUrl = notification.VisitId is Guid visitId
             ? $"/acties/{visitId}"
             : "/meldingen";
 
         return notification.Type switch
         {
-            NotificationType.VisitStarted => new("Parkeren gestart", "De parkeeractie is gestart.", url),
-            NotificationType.VisitStopped => new("Parkeren gestopt", "De parkeeractie is gestopt.", url),
-            NotificationType.ProviderContinuationSucceeded => new("Parkeren voortgezet", "De parkeeractie is automatisch voortgezet.", url),
-            NotificationType.ProviderContinuationAttentionRequired => new("Parkeren vraagt aandacht", "De parkeeractie kon niet automatisch worden voortgezet.", url),
-            NotificationType.LongVisitWarning => CreateLongVisit(notification, url),
-            NotificationType.BudgetWarning => CreateBudgetWarning(notification, url),
+            NotificationType.VisitStarted => new("Parkeren gestart", "De parkeeractie is gestart.", "/", notification.Id),
+            NotificationType.VisitStopped => new("Parkeren gestopt", "De parkeeractie is gestopt.", visitUrl, notification.Id),
+            NotificationType.ProviderContinuationSucceeded => new("Parkeren voortgezet", "De parkeeractie is automatisch voortgezet.", "/", notification.Id),
+            NotificationType.ProviderContinuationAttentionRequired => new("Parkeren vraagt aandacht", "De parkeeractie kon niet automatisch worden voortgezet.", visitUrl, notification.Id),
+            NotificationType.LongVisitWarning => CreateLongVisit(notification, visitUrl),
+            NotificationType.BudgetWarning => CreateBudgetWarning(notification, "/meldingen"),
             _ => null
         };
     }
@@ -30,7 +30,8 @@ public static class WebPushMessageFactory
         {
             title = message.Title,
             body = message.Body,
-            url = message.Url
+            url = message.Url,
+            notificationId = message.NotificationId
         });
 
     private static WebPushMessage CreateLongVisit(Notification notification, string url)
@@ -39,7 +40,7 @@ public static class WebPushMessageFactory
         var body = string.IsNullOrWhiteSpace(licensePlate)
             ? "Een parkeeractie duurt langer dan ingesteld."
             : $"Parkeeractie {licensePlate} duurt langer dan ingesteld.";
-        return new("Langdurig parkeren", body, url);
+        return new("Langdurig parkeren", body, url, notification.Id);
     }
 
     private static WebPushMessage CreateBudgetWarning(Notification notification, string url)
@@ -48,7 +49,7 @@ public static class WebPushMessageFactory
         var body = threshold is null
             ? "Een waarschuwing voor het parkeerbudget is bereikt."
             : $"{threshold:0.#}% van het parkeerbudget is bereikt.";
-        return new("Parkeerbudget waarschuwing", body, url);
+        return new("Parkeerbudget waarschuwing", body, url, notification.Id);
     }
 
     private static string? ReadString(string? payload, string propertyName)
