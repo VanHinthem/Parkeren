@@ -36,6 +36,33 @@ public static class ParkingBudgetCalculator
 }
 
 
+
+public sealed class ParkingBudgetWarningState
+{
+    private ParkingBudgetWarningState() { }
+
+    public ParkingBudgetWarningState(
+        Guid id,
+        Guid parkingBudgetPeriodId,
+        int thresholdPercentage,
+        DateTimeOffset notifiedAt)
+    {
+        if (id == Guid.Empty) throw new ArgumentException("Budget warning state id is required.", nameof(id));
+        if (parkingBudgetPeriodId == Guid.Empty) throw new ArgumentException("Parking budget period id is required.", nameof(parkingBudgetPeriodId));
+        if (thresholdPercentage <= 0 || thresholdPercentage > 100) throw new ArgumentOutOfRangeException(nameof(thresholdPercentage));
+
+        Id = id;
+        ParkingBudgetPeriodId = parkingBudgetPeriodId;
+        ThresholdPercentage = thresholdPercentage;
+        NotifiedAt = notifiedAt;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid ParkingBudgetPeriodId { get; private set; }
+    public int ThresholdPercentage { get; private set; }
+    public DateTimeOffset NotifiedAt { get; private set; }
+}
+
 public static class ParkingBudgetWarningEvaluator
 {
     public static IReadOnlyList<int> GetNewlyReachedThresholds(
