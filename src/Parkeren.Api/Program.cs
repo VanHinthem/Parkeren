@@ -8,6 +8,7 @@ using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure;
@@ -71,6 +72,25 @@ await using (var scope = app.Services.CreateAsyncScope())
                 TimeSpan.FromHours(8),
                 allowVisitExtension: true,
                 allowOpenEndedVisits: false));
+        }
+
+        if (!await db.ParkingRuleSets.AnyAsync())
+        {
+            var paidWindows = Enumerable.Range((int)DayOfWeek.Monday, 6)
+                .Select(day => new PaidWindow(
+                    (DayOfWeek)day,
+                    new TimeOnly(9, 0),
+                    new TimeOnly(20, 0)))
+                .ToArray();
+
+            db.ParkingRuleSets.Add(new ParkingRuleSet(
+                Guid.NewGuid(),
+                DateTimeOffset.UnixEpoch,
+                validUntil: null,
+                TimeSpan.FromHours(4),
+                paidWindows,
+                publicHolidaysAreFree: true,
+                continuation: ProviderCoverageContinuation.StartNewAction));
         }
 
         await db.SaveChangesAsync();
