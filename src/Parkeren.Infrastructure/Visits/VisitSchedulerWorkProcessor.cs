@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Application.ParkingProvider;
@@ -56,13 +57,27 @@ internal sealed class VisitSchedulerWorkProcessor(
                 visit.Id,
                 occurredAt);
             dbContext.NotificationEvents.Add(notificationEvent);
+
+            var visitor = await dbContext.Users
+                .AsNoTracking()
+                .SingleAsync(x => x.Id == visit.UserId, cancellationToken);
+            var vehicle = await dbContext.Vehicles
+                .AsNoTracking()
+                .SingleAsync(x => x.Id == visit.VehicleId, cancellationToken);
+            var payload = JsonSerializer.Serialize(new LongVisitNotificationPayload(
+                visitor.Username,
+                vehicle.LicensePlate,
+                visit.StartAt,
+                occurredAt - visit.StartAt));
+
             await inboxWriter.WriteAsync(
                 notificationEvent,
                 NotificationType.LongVisitWarning,
                 visit.UserId,
                 includeVisitor: true,
                 includeAdmins: settings.NotifyAdminOnLongVisit,
-                cancellationToken);
+                cancellationToken,
+                payload);
             work.Complete(occurredAt);
 
             if (settings.LongVisitReminderInterval is TimeSpan reminderInterval &&
@@ -604,3 +619,9 @@ internal sealed class VisitSchedulerWorkProcessor(
         return end;
     }
 }
+
+internal sealed record LongVisitNotificationPayload(
+    string Visitor,
+    string LicensePlate,
+    DateTimeOffset StartAt,
+    TimeSpan ElapsedDuration);
