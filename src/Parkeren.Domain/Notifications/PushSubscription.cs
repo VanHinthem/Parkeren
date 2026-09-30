@@ -26,7 +26,7 @@ public sealed class PushSubscription
         CreatedAt = createdAt;
     }
 
-    public Guid Id { get; private set; }
+    public void UpdateKeys(string p256dh, string auth)\n    {\n        if (string.IsNullOrWhiteSpace(p256dh)) throw new ArgumentException("Push p256dh key is required.", nameof(p256dh));\n        if (string.IsNullOrWhiteSpace(auth)) throw new ArgumentException("Push auth key is required.", nameof(auth));\n\n        P256dh = p256dh.Trim();\n        Auth = auth.Trim();\n    }\n\n    public Guid Id { get; private set; }
     public Guid UserId { get; private set; }
     public string Endpoint { get; private set; } = string.Empty;
     public string P256dh { get; private set; } = string.Empty;
