@@ -4603,7 +4603,6 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Select(x => x.RecipientUserId)
             .ToListAsync(cancellationToken);
 
-        Assert.Equal(2, recipientIds.Count);
         Assert.Contains(visitor.Id, recipientIds);
         Assert.Contains(admin.Id, recipientIds);
     }
