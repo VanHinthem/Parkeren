@@ -7,7 +7,8 @@ public sealed class ParkingSystemSettings
         int maxConcurrentVisits,
         TimeSpan? longVisitWarningAfter = null,
         bool notifyAdminOnLongVisit = true,
-        TimeSpan? longVisitReminderInterval = null)
+        TimeSpan? longVisitReminderInterval = null,
+        IEnumerable<int>? budgetWarningThresholdPercentages = null)
     {
         if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
         ValidateLongVisitDuration(longVisitWarningAfter, nameof(longVisitWarningAfter));
@@ -17,6 +18,8 @@ public sealed class ParkingSystemSettings
         LongVisitWarningAfter = longVisitWarningAfter;
         NotifyAdminOnLongVisit = notifyAdminOnLongVisit;
         LongVisitReminderInterval = longVisitReminderInterval;
+        BudgetWarningThresholdPercentages = ValidateBudgetWarningThresholds(
+            budgetWarningThresholdPercentages ?? new[] { 80, 90, 100 });
         UpdatedAt = DateTimeOffset.UtcNow;
     }
     public Guid Id { get; private set; }
@@ -24,6 +27,7 @@ public sealed class ParkingSystemSettings
     public TimeSpan? LongVisitWarningAfter { get; private set; }
     public bool NotifyAdminOnLongVisit { get; private set; }
     public TimeSpan? LongVisitReminderInterval { get; private set; }
+    public IReadOnlyList<int> BudgetWarningThresholdPercentages { get; private set; } = Array.Empty<int>();
     public DateTimeOffset UpdatedAt { get; private set; }
     public void SetMaxConcurrentVisits(int maxConcurrentVisits)
     {
@@ -42,6 +46,19 @@ public sealed class ParkingSystemSettings
         NotifyAdminOnLongVisit = notifyAdmin;
         LongVisitReminderInterval = reminderInterval;
         UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    public void SetBudgetWarningThresholdPercentages(IEnumerable<int> thresholds)
+    {
+        BudgetWarningThresholdPercentages = ValidateBudgetWarningThresholds(thresholds);
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    private static IReadOnlyList<int> ValidateBudgetWarningThresholds(IEnumerable<int> thresholds)
+    {
+        ArgumentNullException.ThrowIfNull(thresholds);
+        var values = thresholds.OrderBy(x => x).ToArray();
+        if (values.Length == 0 || values.Any(x => x <= 0 || x > 100) || values.Distinct().Count() != values.Length)
+            throw new ArgumentOutOfRangeException(nameof(thresholds));
+        return values;
     }
     private static void ValidateLongVisitDuration(TimeSpan? value, string parameterName)
     {
