@@ -23,6 +23,7 @@ builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<VisitSchedulerWorker>();
 builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
+builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddHostedService<NotificationRetentionWorker>();
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
 
@@ -919,6 +920,22 @@ app.MapDelete("/api/notifications/{notificationId:guid}", async (
     dbContext.Notifications.Remove(notification);
     await dbContext.SaveChangesAsync(cancellationToken);
     return Results.NoContent();
+});
+
+app.MapGet("/api/notifications/push-public-key", async (
+    IAuthenticationService authentication,
+    HttpContext context,
+    IConfiguration configuration,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var publicKey = configuration["WebPush:PublicKey"];
+    return string.IsNullOrWhiteSpace(publicKey)
+        ? Results.Problem("Web Push is niet geconfigureerd.", statusCode: StatusCodes.Status503ServiceUnavailable)
+        : Results.Ok(new { publicKey });
 });
 
 app.MapPost("/api/notifications/push-subscriptions", async (
