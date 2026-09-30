@@ -807,6 +807,115 @@ app.MapGet("/api/visits/capacity", async (
     return Results.Ok(new { used, total = operationalContext.MaxConcurrentVisits });
 });
 
+app.MapGet("/api/notifications", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var notifications = await dbContext.Notifications
+        .AsNoTracking()
+        .Where(x => x.RecipientUserId == authenticated.User.Id)
+        .OrderByDescending(x => x.CreatedAt)
+        .Select(x => new
+        {
+            x.Id,
+            x.Type,
+            x.VisitId,
+            x.CreatedAt,
+            x.ReadAt,
+            isRead = x.ReadAt != null
+        })
+        .Take(100)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(notifications);
+});
+
+app.MapGet("/api/notifications/unread-count", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var count = await dbContext.Notifications
+        .CountAsync(x => x.RecipientUserId == authenticated.User.Id && x.ReadAt == null, cancellationToken);
+
+    return Results.Ok(new { count });
+});
+
+app.MapPost("/api/notifications/{notificationId:guid}/read", async (
+    Guid notificationId,
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var notification = await dbContext.Notifications
+        .SingleOrDefaultAsync(x => x.Id == notificationId && x.RecipientUserId == authenticated.User.Id, cancellationToken);
+    if (notification is null)
+        return Results.NotFound();
+
+    notification.MarkRead(DateTimeOffset.UtcNow);
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+});
+
+app.MapPost("/api/notifications/read-all", async (
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var now = DateTimeOffset.UtcNow;
+    var notifications = await dbContext.Notifications
+        .Where(x => x.RecipientUserId == authenticated.User.Id && x.ReadAt == null)
+        .ToListAsync(cancellationToken);
+
+    foreach (var notification in notifications)
+        notification.MarkRead(now);
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+});
+
+app.MapDelete("/api/notifications/{notificationId:guid}", async (
+    Guid notificationId,
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    var notification = await dbContext.Notifications
+        .SingleOrDefaultAsync(x => x.Id == notificationId && x.RecipientUserId == authenticated.User.Id, cancellationToken);
+    if (notification is null)
+        return Results.NotFound();
+
+    dbContext.Notifications.Remove(notification);
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+});
+
 app.MapGet("/api/visits/active", async (
     ParkerenDbContext dbContext,
     IAuthenticationService authentication,
