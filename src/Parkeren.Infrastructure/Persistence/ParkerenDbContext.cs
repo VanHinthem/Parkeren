@@ -74,6 +74,9 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("parking_system_settings");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.MaxConcurrentVisits).IsRequired();
+            entity.Property(x => x.LongVisitWarningAfter);
+            entity.Property(x => x.NotifyAdminOnLongVisit).IsRequired();
+            entity.Property(x => x.LongVisitReminderInterval);
         });
         modelBuilder.Entity<DefaultParkingPolicy>(entity =>
         {
