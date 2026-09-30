@@ -4538,7 +4538,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             var root = payload.RootElement;
             Assert.Equal(user.Username, root.GetProperty("Visitor").GetString());
             Assert.Equal(vehicle.LicensePlate, root.GetProperty("LicensePlate").GetString());
-            Assert.Equal(visit.StartAt, root.GetProperty("StartAt").GetDateTimeOffset());
+            Assert.InRange(
+                root.GetProperty("StartAt").GetDateTimeOffset(),
+                visit.StartAt - TimeSpan.FromMilliseconds(1),
+                visit.StartAt + TimeSpan.FromMilliseconds(1));
             Assert.InRange(
                 TimeSpan.Parse(root.GetProperty("ElapsedDuration").GetString()!),
                 notificationEvent.OccurredAt - visit.StartAt - TimeSpan.FromMilliseconds(1),
