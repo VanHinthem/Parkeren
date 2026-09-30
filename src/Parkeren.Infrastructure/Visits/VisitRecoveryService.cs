@@ -431,6 +431,14 @@ internal sealed class VisitRecoveryService(
         if (!becameAttentionRequired)
             return;
 
+        var alreadyNotified = await dbContext.NotificationEvents
+            .AnyAsync(
+                x => x.Type == NotificationEventType.ProviderContinuationAttentionRequired &&
+                     x.AggregateId == visit.Id,
+                cancellationToken);
+        if (alreadyNotified)
+            return;
+
         var occurredAt = timeProvider.GetUtcNow();
         var notificationEvent = new NotificationEvent(
             Guid.NewGuid(),
