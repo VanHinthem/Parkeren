@@ -919,6 +919,62 @@ app.MapDelete("/api/notifications/{notificationId:guid}", async (
     return Results.NoContent();
 });
 
+app.MapPost("/api/notifications/push-subscriptions", async (
+    PushSubscriptionRequest request,
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(request.Endpoint) ||
+        string.IsNullOrWhiteSpace(request.P256dh) ||
+        string.IsNullOrWhiteSpace(request.Auth))
+        return Results.BadRequest(new { error = "Een geldige push-subscription is verplicht." });
+
+    var endpoint = request.Endpoint.Trim();
+    var existing = await dbContext.PushSubscriptions
+        .SingleOrDefaultAsync(x => x.Endpoint == endpoint, cancellationToken);
+
+    if (existing is not null)
+        return existing.UserId == authenticated.User.Id
+            ? Results.NoContent()
+            : Results.Conflict(new { error = "Deze push-subscription is al gekoppeld." });
+
+    dbContext.PushSubscriptions.Add(new PushSubscription(
+        Guid.NewGuid(), authenticated.User.Id, endpoint, request.P256dh, request.Auth, DateTimeOffset.UtcNow));
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+});
+
+app.MapDelete("/api/notifications/push-subscriptions", async (
+    PushSubscriptionDeleteRequest request,
+    ParkerenDbContext dbContext,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(request.Endpoint))
+        return Results.BadRequest(new { error = "Push endpoint is verplicht." });
+
+    var endpoint = request.Endpoint.Trim();
+    var subscription = await dbContext.PushSubscriptions
+        .SingleOrDefaultAsync(x => x.UserId == authenticated.User.Id && x.Endpoint == endpoint, cancellationToken);
+    if (subscription is null)
+        return Results.NoContent();
+
+    dbContext.PushSubscriptions.Remove(subscription);
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+});
+
 app.MapGet("/api/visits/active", async (
     ParkerenDbContext dbContext,
     IAuthenticationService authentication,
@@ -1188,3 +1244,6 @@ public sealed record StopVisitRequest(Guid OperationId);
 public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);
 
 public partial class Program;
+
+public sealed record PushSubscriptionRequest(string Endpoint, string P256dh, string Auth);
+public sealed record PushSubscriptionDeleteRequest(string Endpoint);
