@@ -2,7 +2,8 @@ namespace Parkeren.Domain.Visits;
 
 public enum VisitSchedulerWorkType
 {
-    ContinueProviderCoverage
+    ContinueProviderCoverage,
+    StopVisit
 }
 
 public enum VisitSchedulerWorkStatus
