@@ -26,6 +26,13 @@ internal sealed class VisitSchedulerWorkProcessor(
             throw new InvalidOperationException("Only claimed scheduler work can be processed.");
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
+
+        if (work.Type == VisitSchedulerWorkType.StopVisit)
+        {
+            await ProcessScheduledStopAsync(work, visit, cancellationToken);
+            return;
+        }
+
         if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
             work.Cancel();
@@ -465,6 +472,58 @@ internal sealed class VisitSchedulerWorkProcessor(
             work.Release(now.AddMinutes(1));
         else
             work.Complete(now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+
+    private async Task ProcessScheduledStopAsync(
+        VisitSchedulerWork work,
+        Visit visit,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (visit.Status is VisitStatus.Completed or VisitStatus.Cancelled)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (visit.Status != VisitStatus.Active && visit.Status != VisitStatus.Stopping)
+        {
+            work.Cancel();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var claimer = serviceProvider.GetRequiredService<IStopVisitClaimer>();
+        var finalizer = serviceProvider.GetRequiredService<IStopVisitFinalizer>();
+        var stopStore = serviceProvider.GetRequiredService<IProviderStopStore>();
+        var executor = serviceProvider.GetRequiredService<StopVisitProviderExecutor>();
+
+        var command = new StopVisitCommand(work.Id, visit.Id, visit.UserId);
+        var claim = await claimer.ClaimAsync(command, cancellationToken);
+        if (claim.IsAlreadyCompleted)
+        {
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        while (await finalizer.RequiresProviderActionAsync(claim, cancellationToken))
+        {
+            var preparation = await stopStore.PrepareAttemptAsync(claim, cancellationToken);
+            var execution = await executor.ExecuteAsync(preparation, cancellationToken);
+            if (execution.RequiresReconciliation)
+            {
+                work.Release(now.AddMinutes(1));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }
+
+        await finalizer.CompleteWithoutProviderActionAsync(claim, now, cancellationToken);
+        work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
