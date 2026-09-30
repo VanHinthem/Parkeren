@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<ContinueVisitProviderReconciler>();
         services.AddScoped<IProviderStartMutationGuard, ProviderStartMutationGuard>();
         services.AddScoped<IProviderStartResultStore, ProviderStartResultStore>();
+        services.AddScoped<NotificationInboxWriter>();
         services.AddScoped<IStartVisitNotificationPublisher, StartVisitNotificationPublisher>();
         services.AddScoped<StartVisitPreparer>();
         services.AddScoped<StartVisitClaimer>();
