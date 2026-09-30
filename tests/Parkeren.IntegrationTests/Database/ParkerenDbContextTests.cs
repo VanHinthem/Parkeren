@@ -3093,6 +3093,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
                 .ReconcileActiveProviderActionsAsync(cancellationToken);
 
+        // A later provider check must not emit the same attention notification again.
+        await using (var scope = provider.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                .ReconcileActiveProviderActionsAsync(cancellationToken);
+
         await using var verifyContext = fixture.CreateDbContext();
         Assert.Equal(ProviderActionState.Stopped,
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken)).State);
@@ -3100,6 +3105,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
             (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+        Assert.Single(await verifyContext.NotificationEvents
+            .Where(x => x.AggregateId == visit.Id &&
+                        x.Type == NotificationEventType.ProviderContinuationAttentionRequired)
+            .ToListAsync(cancellationToken));
+        Assert.Single(await verifyContext.Notifications
+            .Where(x => x.VisitId == visit.Id &&
+                        x.RecipientUserId == user.Id &&
+                        x.Type == NotificationType.ProviderContinuationAttentionRequired)
+            .ToListAsync(cancellationToken));
     }
 
     [Fact]
@@ -3219,6 +3233,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using (var scope = provider.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>().RecoverAsync(cancellationToken);
 
+        // Re-running startup recovery must not duplicate the alert.
+        await using (var scope = provider.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>().RecoverAsync(cancellationToken);
+
         await using var verifyContext = fixture.CreateDbContext();
         Assert.Equal(ProviderActionState.Stopped,
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken)).State);
@@ -3226,6 +3244,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
             (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+        Assert.Single(await verifyContext.NotificationEvents
+            .Where(x => x.AggregateId == visit.Id &&
+                        x.Type == NotificationEventType.ProviderContinuationAttentionRequired)
+            .ToListAsync(cancellationToken));
+        Assert.Single(await verifyContext.Notifications
+            .Where(x => x.VisitId == visit.Id &&
+                        x.RecipientUserId == user.Id &&
+                        x.Type == NotificationType.ProviderContinuationAttentionRequired)
+            .ToListAsync(cancellationToken));
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
     }
 
