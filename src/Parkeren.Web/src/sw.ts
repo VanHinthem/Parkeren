@@ -12,7 +12,9 @@ type PushPayload = {
 
 const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
 
-precacheAndRoute((serviceWorker as ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision?: string | null }> }).__WB_MANIFEST);
+declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision?: string | null }> };
+
+precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 serviceWorker.addEventListener("push",(event:PushEvent)=>{
