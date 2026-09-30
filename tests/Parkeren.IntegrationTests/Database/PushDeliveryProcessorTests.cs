@@ -33,9 +33,11 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
-        var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired));
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired), timeProvider);
 
         await processor.ProcessNextAsync(cancellationToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(30));
         await processor.ProcessNextAsync(cancellationToken);
 
         var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
@@ -50,10 +52,13 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
-        var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired));
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired), timeProvider);
 
         await processor.ProcessNextAsync(cancellationToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(30));
         await processor.ProcessNextAsync(cancellationToken);
+        timeProvider.Advance(TimeSpan.FromSeconds(30));
         await processor.ProcessNextAsync(cancellationToken);
 
         var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
@@ -87,8 +92,9 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
     private static PushDeliveryProcessor CreateProcessor(
         Infrastructure.Persistence.ParkerenDbContext context,
-        IWebPushSender sender) =>
-        new(context, sender, TimeProvider.System, NullLogger<PushDeliveryProcessor>.Instance);
+        IWebPushSender sender,
+        TimeProvider? timeProvider = null) =>
+        new(context, sender, timeProvider ?? TimeProvider.System, NullLogger<PushDeliveryProcessor>.Instance);
 
     private async Task<Guid> CreateDeliveryAsync(CancellationToken cancellationToken)
     {
@@ -107,6 +113,15 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         context.PushDeliveries.Add(delivery);
         await context.SaveChangesAsync(cancellationToken);
         return delivery.Id;
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => utcNow;
+
+        public void Advance(TimeSpan duration) => utcNow += duration;
     }
 
     private sealed class FakeSender(WebPushSendResult result) : IWebPushSender
