@@ -11,6 +11,7 @@ using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.Notifications;
 using System.Threading.RateLimiting;
 using System.Text.Json.Serialization;
 
