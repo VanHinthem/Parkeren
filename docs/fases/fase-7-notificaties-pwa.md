@@ -63,7 +63,7 @@ Push is best effort. Geen parkeerproces, scheduler, continuation, stop, policy o
 1. **7.1 Notification foundation/inbox (#80)** — domein, persistence, API, unread/read/delete/retentie en eerste UI.
 2. **7.2 Deep links (#77)** — stabiele Visit-routes, auth return-url en server-side autorisatie.
 3. **7.3 Visit/scheduler notifications (#76/#53/#55) ✅** — start/stop, succesvolle continuation en mislukte/risicovolle continuation; centrale inbox-delivery met geteste recipientregels voor `StartNewAction` en `ExtendAction`.
-4. **7.4 Long Visit warnings (#54)** — server-side planning/reminders; melding gebruikt een snapshot van bezoeker, kenteken, starttijd en verstreken Visit-duur. Providerstatus en betaalde parkeertijd worden bewust niet in deze waarschuwing getoond.
+4. **7.4 Long Visit warnings (#54)** ✅ — server-side planning/reminders; melding gebruikt een snapshot van bezoeker, kenteken, starttijd en verstreken Visit-duur. Providerstatus en betaalde parkeertijd worden bewust niet in deze waarschuwing getoond.
 5. **7.5 Budget warnings (#56)**.
 6. **7.6 Push subscription/delivery** — bovenop bestaande Notifications.
 7. **7.7 Active Visit + badging (#79)**.
@@ -74,7 +74,7 @@ Push is best effort. Geen parkeerproces, scheduler, continuation, stop, policy o
 - **7.1 Notification foundation/inbox ✅**
 - **7.2 Deep links ✅**
 - **7.3 Visit/scheduler notifications ✅**
-- **7.4 Long Visit warnings** — volgende slice.
+- **7.4 Long Visit warnings** — afgerond ✅.
 
 ## Exit
 
