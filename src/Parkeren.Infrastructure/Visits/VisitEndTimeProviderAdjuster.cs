@@ -67,15 +67,28 @@ internal sealed class VisitEndTimeProviderAdjuster(
         {
             impact = VisitEndTimeProviderImpactClassifier.Classify(requestedEndAt, actions);
             if (impact == VisitEndTimeProviderImpact.ShortenActive)
-                throw new InvalidOperationException("Requested end shortens an active provider action; that provider mutation strategy is not yet available.");
+            {
+                // 2Park cannot change the end time of an active action. The active action is
+                // stopped durably by scheduler work at the new Visit end. Any scheduled
+                // successor that would outlive that end must be cancelled now.
+                scheduled = actions
+                    .Where(x => x.State == ProviderActionState.Scheduled && x.PlannedEndAt > requestedEndAt)
+                    .OrderBy(x => x.PlannedStartAt)
+                    .FirstOrDefault();
 
-            if (impact != VisitEndTimeProviderImpact.None)
+                if (scheduled is null)
+                    return new(false);
+
+                impact = VisitEndTimeProviderImpact.CancelScheduled;
+            }
+            else if (impact != VisitEndTimeProviderImpact.None)
             {
                 scheduled = actions.Where(x => x.State == ProviderActionState.Scheduled && x.PlannedEndAt > requestedEndAt)
                     .OrderBy(x => x.PlannedStartAt).First();
-                if (string.IsNullOrWhiteSpace(scheduled!.ProviderActionId))
-                    throw new InvalidOperationException("Scheduled provider action has no provider action id.");
             }
+
+            if (scheduled is not null && string.IsNullOrWhiteSpace(scheduled.ProviderActionId))
+                throw new InvalidOperationException("Scheduled provider action has no provider action id.");
         }
 
         if (impact == VisitEndTimeProviderImpact.None)
