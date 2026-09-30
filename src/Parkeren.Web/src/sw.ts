@@ -8,7 +8,9 @@ type PushPayload = {
   url?: string;
 };
 
-const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
+const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope & { __WB_MANIFEST: unknown };
+
+void serviceWorker.__WB_MANIFEST;
 
 serviceWorker.addEventListener("push",(event:PushEvent)=>{
   let payload:PushPayload={};
