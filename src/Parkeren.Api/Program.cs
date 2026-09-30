@@ -25,6 +25,7 @@ builder.Services.AddHostedService<VisitSchedulerWorker>();
 builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddHostedService<NotificationRetentionWorker>();
+builder.Services.AddHostedService<PushDeliveryWorker>();
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
 
 builder.Services.AddRateLimiter(options =>
