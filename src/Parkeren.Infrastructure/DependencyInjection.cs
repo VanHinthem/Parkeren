@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IStopVisitRequestResolver, StopVisitRequestResolver>();
         services.AddScoped<IStopVisitClaimer, PostgresStopVisitClaimer>();
         services.AddScoped<IStopVisitFinalizer, StopVisitFinalizer>();
+        services.AddScoped<BudgetWarningService>();
         services.AddScoped<IProviderStopStore, ProviderStopStore>();
         services.AddScoped<IProviderStopResultStore, ProviderStopResultStore>();
         services.AddScoped<StopVisitProviderReconciler>();
