@@ -20,6 +20,8 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.C
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<VisitSchedulerWorker>();
+builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
+builder.Services.AddHostedService<NotificationRetentionWorker>();
 builder.Services.AddHealthChecks().AddDbContextCheck<ParkerenDbContext>();
 
 builder.Services.AddRateLimiter(options =>
