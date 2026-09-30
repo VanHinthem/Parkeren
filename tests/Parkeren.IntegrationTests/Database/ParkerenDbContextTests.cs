@@ -424,11 +424,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .ToListAsync(cancellationToken);
         Assert.Equal(new[] { 80, 90, 100 }, states.Select(x => x.ThresholdPercentage));
 
+        var warningEvents = await verifyContext.NotificationEvents
+            .Where(x => x.Type == NotificationEventType.BudgetWarning)
+            .ToListAsync(cancellationToken);
+        Assert.Equal(3, warningEvents.Count);
+
         var warnings = await verifyContext.Notifications
             .Where(x => x.Type == NotificationType.BudgetWarning)
             .ToListAsync(cancellationToken);
-        Assert.Equal(3, warnings.Count);
-        Assert.All(warnings, x => Assert.Equal(activeAdmin.Id, x.RecipientUserId));
+        Assert.Equal(3, warnings.Count(x => x.RecipientUserId == activeAdmin.Id));
         Assert.DoesNotContain(warnings, x => x.RecipientUserId == visitor.Id);
         Assert.DoesNotContain(warnings, x => x.RecipientUserId == inactiveAdmin.Id);
     }
