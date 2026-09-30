@@ -84,6 +84,20 @@ internal sealed class ProviderExtendResultStore(
             }
         }
 
+        var successEvent = new NotificationEvent(
+            Guid.NewGuid(),
+            NotificationEventType.ProviderContinuationSucceeded,
+            visit.Id,
+            timeProvider.GetUtcNow());
+        dbContext.NotificationEvents.Add(successEvent);
+        await inboxWriter.WriteAsync(
+            successEvent,
+            NotificationType.ProviderContinuationSucceeded,
+            visit.UserId,
+            includeVisitor: false,
+            includeAdmins: true,
+            cancellationToken);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
