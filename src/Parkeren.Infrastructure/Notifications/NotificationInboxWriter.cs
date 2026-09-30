@@ -13,7 +13,8 @@ internal sealed class NotificationInboxWriter(ParkerenDbContext dbContext)
         Guid visitUserId,
         bool includeVisitor,
         bool includeAdmins,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? payload = null)
     {
         var recipientIds = new List<Guid>();
         if (includeVisitor)
@@ -44,7 +45,8 @@ internal sealed class NotificationInboxWriter(ParkerenDbContext dbContext)
                 type,
                 notificationEvent.OccurredAt,
                 notificationEvent.AggregateId,
-                notificationEvent.Id));
+                notificationEvent.Id,
+                payload));
         }
     }
 }
