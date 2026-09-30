@@ -4470,10 +4470,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.Notifications.ExecuteDeleteAsync(cancellationToken);
         await context.NotificationEvents.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingBudgetWarningStates.ExecuteDeleteAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
         await context.PaidWindows.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingCalendarExceptions.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingRuleSets.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingBudgetPeriods.ExecuteDeleteAsync(cancellationToken);
     }
 
 
