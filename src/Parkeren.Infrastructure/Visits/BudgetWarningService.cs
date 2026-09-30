@@ -57,19 +57,21 @@ internal sealed class BudgetWarningService(
             foreach (var threshold in reached)
             {
                 var occurredAt = completedVisit.ActualEndAt.Value;
+                var warningStateId = Guid.NewGuid();
                 var notificationEvent = new NotificationEvent(
                     Guid.NewGuid(),
                     NotificationEventType.BudgetWarning,
-                    period.Id,
+                    warningStateId,
                     occurredAt);
                 dbContext.NotificationEvents.Add(notificationEvent);
                 dbContext.ParkingBudgetWarningStates.Add(new ParkingBudgetWarningState(
-                    Guid.NewGuid(), period.Id, threshold, occurredAt));
+                    warningStateId, period.Id, threshold, occurredAt));
 
                 var payload = JsonSerializer.Serialize(new BudgetWarningNotificationPayload(
                     threshold,
                     usage.UsedPaidDuration,
-                    usage.RemainingPaidDuration));
+                    usage.RemainingPaidDuration,
+                    period.Id));
 
                 await inboxWriter.WriteAsync(
                     notificationEvent,
@@ -78,7 +80,8 @@ internal sealed class BudgetWarningService(
                     includeVisitor: false,
                     includeAdmins: true,
                     cancellationToken,
-                    payload);
+                    payload,
+                    completedVisit.Id);
             }
         }
     }
@@ -87,4 +90,5 @@ internal sealed class BudgetWarningService(
 internal sealed record BudgetWarningNotificationPayload(
     int ThresholdPercentage,
     TimeSpan UsedPaidDuration,
-    TimeSpan RemainingPaidDuration);
+    TimeSpan RemainingPaidDuration,
+    Guid ParkingBudgetPeriodId);
