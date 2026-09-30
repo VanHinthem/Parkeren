@@ -15,10 +15,18 @@ public enum WebPushSendResult
     RetryRequired
 }
 
+public interface IWebPushSender
+{
+    Task<WebPushSendResult> SendAsync(
+        Guid recipientUserId,
+        string payload,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class WebPushSender(
     ParkerenDbContext dbContext,
     IConfiguration configuration,
-    ILogger<WebPushSender> logger)
+    ILogger<WebPushSender> logger) : IWebPushSender
 {
     public async Task<WebPushSendResult> SendAsync(
         Guid recipientUserId,
