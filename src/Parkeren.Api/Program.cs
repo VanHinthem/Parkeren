@@ -61,8 +61,19 @@ await using (var scope = app.Services.CreateAsyncScope())
         if (!await db.ParkingSystemSettings.AnyAsync())
         {
             db.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
-            await db.SaveChangesAsync();
         }
+
+        if (!await db.DefaultParkingPolicies.AnyAsync())
+        {
+            db.DefaultParkingPolicies.Add(new DefaultParkingPolicy(
+                Guid.NewGuid(),
+                TimeSpan.FromHours(4),
+                TimeSpan.FromHours(8),
+                allowVisitExtension: true,
+                allowOpenEndedVisits: false));
+        }
+
+        await db.SaveChangesAsync();
         await settingsTransaction.CommitAsync();
     }
 
