@@ -59,7 +59,7 @@ public static class WebPushMessageFactory
         try
         {
             using var document = JsonDocument.Parse(payload);
-            return document.RootElement.TryGetProperty(propertyName, out var value)
+            return TryGetProperty(document.RootElement, propertyName, out var value)
                 ? value.GetString()
                 : null;
         }
@@ -67,6 +67,21 @@ public static class WebPushMessageFactory
         {
             return null;
         }
+    }
+
+    private static bool TryGetProperty(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     private static decimal? ReadNumber(string? payload, string propertyName)
@@ -77,7 +92,7 @@ public static class WebPushMessageFactory
         try
         {
             using var document = JsonDocument.Parse(payload);
-            return document.RootElement.TryGetProperty(propertyName, out var value) &&
+            return TryGetProperty(document.RootElement, propertyName, out var value) &&
                    value.TryGetDecimal(out var number)
                 ? number
                 : null;
