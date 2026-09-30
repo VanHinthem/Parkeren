@@ -120,6 +120,8 @@ internal sealed class PostgresVisitEndTimeChanger(
         try
         {
             visit.EnsureDesiredEndCanChange(desiredEndAt);
+            var previousDesiredEndAt = visit.DesiredEndAt;
+            IReadOnlyCollection<ParkingRuleSet>? applicableRuleSets = null;
 
             if (await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
@@ -158,10 +160,11 @@ internal sealed class PostgresVisitEndTimeChanger(
                 if (operationalContext is null)
                     throw new InvalidOperationException("No parking rules apply to the requested Visit period.");
 
+                applicableRuleSets = operationalContext.RuleSets;
                 var assessment = VisitEndTimeChangeAssessor.Assess(
                     visit.StartAt,
                     desiredEndAt.Value,
-                    operationalContext.RuleSets,
+                    applicableRuleSets,
                     visit.PolicySnapshot.ToEffectivePolicy());
 
                 if (!assessment.PaidDuration.IsAllowed)
@@ -197,6 +200,17 @@ internal sealed class PostgresVisitEndTimeChanger(
                     dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
                         Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.StopVisit, newEndAt));
                 }
+
+                if (previousDesiredEndAt is DateTimeOffset previousEndAt &&
+                    newEndAt > previousEndAt &&
+                    applicableRuleSets is not null)
+                {
+                    await EnsureContinuationWorkAsync(
+                        visit,
+                        newEndAt,
+                        applicableRuleSets,
+                        cancellationToken);
+                }
             }
             change.MarkApplied();
             if (existing is null)
@@ -216,6 +230,62 @@ internal sealed class PostgresVisitEndTimeChanger(
         await transaction.CommitAsync(cancellationToken);
         return new ChangeVisitEndTimeResult(visit, change, false);
     }
+    private async Task EnsureContinuationWorkAsync(
+        Visit visit,
+        DateTimeOffset newEndAt,
+        IReadOnlyCollection<ParkingRuleSet> ruleSets,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.VisitSchedulerWork.AnyAsync(
+                x => x.VisitId == visit.Id &&
+                     x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                     (x.Status == VisitSchedulerWorkStatus.Pending ||
+                      x.Status == VisitSchedulerWorkStatus.Claimed),
+                cancellationToken))
+            return;
+
+        var currentAction = await dbContext.ProviderParkingActions
+            .Where(x => x.VisitId == visit.Id &&
+                        (x.State == ProviderActionState.Active ||
+                         x.State == ProviderActionState.Scheduled))
+            .OrderByDescending(x => x.PlannedEndAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var coverageEndAt = currentAction?.PlannedEndAt;
+        if (coverageEndAt is null)
+        {
+            coverageEndAt = await dbContext.ProviderParkingActions
+                .Where(x => x.VisitId == visit.Id && x.State == ProviderActionState.Completed)
+                .OrderByDescending(x => x.PlannedEndAt)
+                .Select(x => (DateTimeOffset?)x.PlannedEndAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var now = timeProvider.GetUtcNow();
+            if (coverageEndAt is null || coverageEndAt < now)
+                coverageEndAt = now;
+        }
+
+        if (coverageEndAt >= newEndAt)
+            return;
+
+        var nextPaid = ProviderCoverageSchedule.NextPaidSegment(
+            coverageEndAt.Value,
+            newEndAt,
+            ruleSets);
+        if (nextPaid is null)
+            return;
+
+        var dueAt = currentAction is not null && nextPaid.Start <= currentAction.PlannedEndAt
+            ? ProviderCoverageSchedule.PrecheckAt(currentAction.PlannedEndAt)
+            : nextPaid.Start;
+
+        dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+            Guid.NewGuid(),
+            visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            dueAt));
+    }
+
     private static DateTimeOffset? NormalizeTimestamp(DateTimeOffset? value)
     {
         if (value is null) return null;
