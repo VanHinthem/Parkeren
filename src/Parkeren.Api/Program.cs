@@ -922,7 +922,7 @@ app.MapDelete("/api/notifications/{notificationId:guid}", async (
 
 app.MapPost("/api/notifications/push-subscriptions", async (
     PushSubscriptionRequest request,
-    ParkerenDbContext dbContext,
+    PushSubscriptionService pushSubscriptions,
     IAuthenticationService authentication,
     HttpContext context,
     CancellationToken cancellationToken) =>
@@ -936,24 +936,21 @@ app.MapPost("/api/notifications/push-subscriptions", async (
         string.IsNullOrWhiteSpace(request.Auth))
         return Results.BadRequest(new { error = "Een geldige push-subscription is verplicht." });
 
-    var endpoint = request.Endpoint.Trim();
-    var existing = await dbContext.PushSubscriptions
-        .SingleOrDefaultAsync(x => x.Endpoint == endpoint, cancellationToken);
+    var result = await pushSubscriptions.RegisterAsync(
+        authenticated.User.Id,
+        request.Endpoint,
+        request.P256dh,
+        request.Auth,
+        cancellationToken);
 
-    if (existing is not null)
-        return existing.UserId == authenticated.User.Id
-            ? Results.NoContent()
-            : Results.Conflict(new { error = "Deze push-subscription is al gekoppeld." });
-
-    dbContext.PushSubscriptions.Add(new PushSubscription(
-        Guid.NewGuid(), authenticated.User.Id, endpoint, request.P256dh, request.Auth, DateTimeOffset.UtcNow));
-    await dbContext.SaveChangesAsync(cancellationToken);
-    return Results.NoContent();
+    return result == PushSubscriptionRegistrationResult.EndpointOwnedByAnotherUser
+        ? Results.Conflict(new { error = "Deze push-subscription is al gekoppeld." })
+        : Results.NoContent();
 });
 
 app.MapDelete("/api/notifications/push-subscriptions", async (
     PushSubscriptionDeleteRequest request,
-    ParkerenDbContext dbContext,
+    PushSubscriptionService pushSubscriptions,
     IAuthenticationService authentication,
     HttpContext context,
     CancellationToken cancellationToken) =>
@@ -965,14 +962,10 @@ app.MapDelete("/api/notifications/push-subscriptions", async (
     if (string.IsNullOrWhiteSpace(request.Endpoint))
         return Results.BadRequest(new { error = "Push endpoint is verplicht." });
 
-    var endpoint = request.Endpoint.Trim();
-    var subscription = await dbContext.PushSubscriptions
-        .SingleOrDefaultAsync(x => x.UserId == authenticated.User.Id && x.Endpoint == endpoint, cancellationToken);
-    if (subscription is null)
-        return Results.NoContent();
-
-    dbContext.PushSubscriptions.Remove(subscription);
-    await dbContext.SaveChangesAsync(cancellationToken);
+    await pushSubscriptions.RemoveAsync(
+        authenticated.User.Id,
+        request.Endpoint,
+        cancellationToken);
     return Results.NoContent();
 });
 
