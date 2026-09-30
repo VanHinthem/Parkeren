@@ -1,4 +1,6 @@
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Visits;
 using Xunit;
 
 namespace Parkeren.Domain.Tests;
@@ -86,5 +88,63 @@ public sealed class ParkingBudgetCalculatorTests
 
         return ParkingBudgetCalculator.Calculate(period, TimeSpan.FromHours(usedHours));
     }
+    [Fact]
+    public void Realized_budget_usage_counts_only_paid_time()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 17, 0, 0, TimeSpan.Zero);
+        var visit = CompletedVisit(start, start.AddHours(5));
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { rules });
+
+        Assert.Equal(TimeSpan.FromHours(3), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Realized_budget_usage_counts_only_part_inside_budget_period()
+    {
+        var periodStart = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.Zero);
+        var periodEnd = periodStart.AddHours(2);
+        var visit = CompletedVisit(periodStart.AddHours(-1), periodEnd.AddHours(1));
+        var period = BudgetPeriod(periodStart, periodEnd, 100);
+        var rules = Rules(periodStart.AddDays(-1));
+
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { rules });
+
+        Assert.Equal(TimeSpan.FromHours(2), usage.UsedPaidDuration);
+    }
+
+    private static Visit CompletedVisit(DateTimeOffset start, DateTimeOffset end)
+    {
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(8), null, true)));
+        visit.Activate();
+        visit.BeginStopping();
+        visit.Complete(end);
+        return visit;
+    }
+
+    private static ParkingBudgetPeriod BudgetPeriod(DateTimeOffset start, DateTimeOffset end, double maximumHours) =>
+        new(Guid.NewGuid(), start, end, TimeSpan.FromHours(maximumHours));
+
+    private static ParkingRuleSet Rules(DateTimeOffset validFrom) =>
+        new(
+            Guid.NewGuid(),
+            validFrom,
+            null,
+            TimeSpan.FromHours(4),
+            new[]
+            {
+                new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Tuesday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Wednesday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Thursday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Friday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Saturday, new TimeOnly(9, 0), new TimeOnly(20, 0))
+            });
+
 }
 
