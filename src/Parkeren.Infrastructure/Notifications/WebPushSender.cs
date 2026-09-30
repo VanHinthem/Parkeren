@@ -7,12 +7,20 @@ using WebPush;
 
 namespace Parkeren.Infrastructure.Notifications;
 
+public enum WebPushSendResult
+{
+    Delivered,
+    NoSubscriptions,
+    NotConfigured,
+    RetryRequired
+}
+
 public sealed class WebPushSender(
     ParkerenDbContext dbContext,
     IConfiguration configuration,
     ILogger<WebPushSender> logger)
 {
-    public async Task SendAsync(
+    public async Task<WebPushSendResult> SendAsync(
         Guid recipientUserId,
         string payload,
         CancellationToken cancellationToken = default)
@@ -26,53 +34,45 @@ public sealed class WebPushSender(
             string.IsNullOrWhiteSpace(privateKey))
         {
             logger.LogWarning("Web Push delivery skipped because VAPID is not fully configured.");
-            return;
+            return WebPushSendResult.NotConfigured;
         }
 
-        var subscriptions = await dbContext.PushSubscriptions
-            .Where(x => x.UserId == recipientUserId)
-            .ToListAsync(cancellationToken);
-
+        var subscriptions = await dbContext.PushSubscriptions.Where(x => x.UserId == recipientUserId).ToListAsync(cancellationToken);
         if (subscriptions.Count == 0)
-            return;
+            return WebPushSendResult.NoSubscriptions;
 
         var client = new WebPushClient();
         var vapid = new VapidDetails(subject, publicKey, privateKey);
+        var delivered = false;
+        var retryRequired = false;
 
         foreach (var stored in subscriptions)
         {
             try
             {
-                var subscription = new WebPush.PushSubscription(
-                    stored.Endpoint,
-                    stored.P256dh,
-                    stored.Auth);
-
-                await client.SendNotificationAsync(
-                    subscription,
-                    payload,
-                    vapid,
-                    cancellationToken);
+                var subscription = new WebPush.PushSubscription(stored.Endpoint, stored.P256dh, stored.Auth);
+                await client.SendNotificationAsync(subscription, payload, vapid, cancellationToken);
+                delivered = true;
             }
-            catch (WebPushException exception) when (
-                exception.StatusCode is HttpStatusCode.Gone or HttpStatusCode.NotFound)
+            catch (WebPushException exception) when (exception.StatusCode is HttpStatusCode.Gone or HttpStatusCode.NotFound)
             {
-                logger.LogInformation(
-                    "Removing expired Web Push subscription {PushSubscriptionId} for user {UserId}.",
-                    stored.Id,
-                    recipientUserId);
+                logger.LogInformation("Removing expired Web Push subscription {PushSubscriptionId} for user {UserId}.", stored.Id, recipientUserId);
                 dbContext.PushSubscriptions.Remove(stored);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception exception)
             {
-                logger.LogWarning(
-                    exception,
-                    "Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}.",
-                    stored.Id,
-                    recipientUserId);
+                retryRequired = true;
+                logger.LogWarning(exception, "Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}.", stored.Id, recipientUserId);
             }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (retryRequired)
+            return WebPushSendResult.RetryRequired;
+        return delivered ? WebPushSendResult.Delivered : WebPushSendResult.NoSubscriptions;
     }
 }
