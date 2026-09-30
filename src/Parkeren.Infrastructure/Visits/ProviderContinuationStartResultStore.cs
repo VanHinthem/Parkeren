@@ -3,6 +3,7 @@ using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.Notifications;
 using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
 
 namespace Parkeren.Infrastructure.Visits;
