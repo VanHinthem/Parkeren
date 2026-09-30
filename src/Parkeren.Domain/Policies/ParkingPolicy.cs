@@ -2,21 +2,51 @@ namespace Parkeren.Domain.Policies;
 public sealed class ParkingSystemSettings
 {
     private ParkingSystemSettings() { }
-    public ParkingSystemSettings(Guid id, int maxConcurrentVisits)
+    public ParkingSystemSettings(
+        Guid id,
+        int maxConcurrentVisits,
+        TimeSpan? longVisitWarningAfter = null,
+        bool notifyAdminOnLongVisit = true,
+        TimeSpan? longVisitReminderInterval = null)
     {
         if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
+        ValidateLongVisitDuration(longVisitWarningAfter, nameof(longVisitWarningAfter));
+        ValidateLongVisitDuration(longVisitReminderInterval, nameof(longVisitReminderInterval));
         Id = id;
         MaxConcurrentVisits = maxConcurrentVisits;
+        LongVisitWarningAfter = longVisitWarningAfter;
+        NotifyAdminOnLongVisit = notifyAdminOnLongVisit;
+        LongVisitReminderInterval = longVisitReminderInterval;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
     public Guid Id { get; private set; }
     public int MaxConcurrentVisits { get; private set; }
+    public TimeSpan? LongVisitWarningAfter { get; private set; }
+    public bool NotifyAdminOnLongVisit { get; private set; }
+    public TimeSpan? LongVisitReminderInterval { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public void SetMaxConcurrentVisits(int maxConcurrentVisits)
     {
         if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
         MaxConcurrentVisits = maxConcurrentVisits;
         UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    public void SetLongVisitNotifications(
+        TimeSpan? warningAfter,
+        bool notifyAdmin,
+        TimeSpan? reminderInterval)
+    {
+        ValidateLongVisitDuration(warningAfter, nameof(warningAfter));
+        ValidateLongVisitDuration(reminderInterval, nameof(reminderInterval));
+        LongVisitWarningAfter = warningAfter;
+        NotifyAdminOnLongVisit = notifyAdmin;
+        LongVisitReminderInterval = reminderInterval;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    private static void ValidateLongVisitDuration(TimeSpan? value, string parameterName)
+    {
+        if (value is <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(parameterName);
     }
 }
 
