@@ -1,13 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
-using Parkeren.Domain.Users;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Notifications;
 
-internal sealed class StartVisitNotificationPublisher(ParkerenDbContext dbContext) : IStartVisitNotificationPublisher
+internal sealed class StartVisitNotificationPublisher(
+    ParkerenDbContext dbContext,
+    NotificationInboxWriter inboxWriter) : IStartVisitNotificationPublisher
 {
     public async Task PublishStartedAsync(Visit visit, CancellationToken cancellationToken = default)
     {
@@ -33,27 +34,13 @@ internal sealed class StartVisitNotificationPublisher(ParkerenDbContext dbContex
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var recipientIds = await dbContext.Users
-            .Where(x => x.IsActive && (x.Id == visit.UserId || x.Role == UserRole.Admin))
-            .Select(x => x.Id)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var existingRecipientIds = await dbContext.Notifications
-            .Where(x => x.SourceEventId == notificationEvent.Id && recipientIds.Contains(x.RecipientUserId))
-            .Select(x => x.RecipientUserId)
-            .ToListAsync(cancellationToken);
-
-        foreach (var recipientId in recipientIds.Except(existingRecipientIds))
-        {
-            dbContext.Notifications.Add(new Notification(
-                Guid.NewGuid(),
-                recipientId,
-                NotificationType.VisitStarted,
-                notificationEvent.OccurredAt,
-                visit.Id,
-                notificationEvent.Id));
-        }
+        await inboxWriter.WriteAsync(
+            notificationEvent,
+            NotificationType.VisitStarted,
+            visit.UserId,
+            includeVisitor: true,
+            includeAdmins: true,
+            cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
