@@ -39,6 +39,11 @@ services:
       context: ..
       dockerfile: src/Parkeren.TwoParkMock/Dockerfile
     restart: unless-stopped
+    environment:
+      TwoParkMock__StatePath: /data/actions.json
+    volumes:
+      - two_park_mock_data:/data
 
 volumes:
   parkeren_db:
+  two_park_mock_data:
