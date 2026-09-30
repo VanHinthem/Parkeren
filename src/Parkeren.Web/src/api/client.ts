@@ -58,6 +58,12 @@ export async function getRecentVisits():Promise<ActiveVisit[]>{
 export async function getVisitHistory():Promise<ActiveVisit[]>{
   return json<ActiveVisit[]>(await apiFetch("/api/visits/history"));
 }
+export async function getVisit(visitId:string):Promise<ActiveVisit|null>{
+  const response=await apiFetch(`/api/visits/${visitId}`);
+  if(response.status===404)return null;
+  if(response.status===403)throw new Error("Je hebt geen toegang tot deze parkeeractie.");
+  return json<ActiveVisit>(response);
+}
 
 async function visitError(response:Response,fallback:string):Promise<Error>{
   try{const body=await response.json() as {error?:string;detail?:string};const message=body.error??body.detail;if(message)return new Error(message);}catch{}
