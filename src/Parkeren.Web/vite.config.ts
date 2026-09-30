@@ -10,6 +10,11 @@ export default defineConfig({
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",
+      injectManifest: {
+        // Never precache the SPA shell. Navigations must fetch the current
+        // index.html so a deployment cannot revive an older asset graph.
+        globIgnores: ["**/index.html"]
+      },
       manifest: {
         name: "Parkeren",
         short_name: "Parkeren",
