@@ -25,6 +25,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<ProviderParkingAction> ProviderParkingActions => Set<ProviderParkingAction>();
     public DbSet<ProviderOperation> ProviderOperations => Set<ProviderOperation>();
     public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
 
@@ -164,6 +165,18 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
             entity.HasIndex(x => new { x.Type, x.AggregateId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.ToTable("notifications");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(60).IsRequired();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.RecipientUserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.RecipientUserId, x.ReadAt });
+            entity.HasIndex(x => x.VisitId);
         });
 
 
