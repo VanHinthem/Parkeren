@@ -304,6 +304,104 @@ if (app.Environment.IsDevelopment())
         }
     });
 
+    app.MapPost("/api/dev/parking-provider/actions/test-jit-extension", async (
+        DevJitExtensionRequest request,
+        IParkingProvider provider,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.LicensePlate))
+            return Results.BadRequest(new { error = "LicensePlate is verplicht." });
+        if (request.InitialDurationMinutes is < 2 or > 15)
+            return Results.BadRequest(new { error = "InitialDurationMinutes moet tussen 2 en 15 liggen." });
+        if (request.ExtendBeforeEndSeconds is < 30 or > 120)
+            return Results.BadRequest(new { error = "ExtendBeforeEndSeconds moet tussen 30 en 120 liggen." });
+        if (request.ExtensionMinutes is < 1 or > 15)
+            return Results.BadRequest(new { error = "ExtensionMinutes moet tussen 1 en 15 liggen." });
+
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            return Results.Problem("2Park-locatie kon niet worden bepaald.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        Parkeren.Application.ParkingProvider.ProviderParkingAction? created = null;
+        try
+        {
+            var start = DateTimeOffset.UtcNow;
+            var originalEnd = start.AddMinutes(request.InitialDurationMinutes);
+            var requestedEnd = originalEnd.AddMinutes(request.ExtensionMinutes);
+
+            created = await provider.StartActionAsync(
+                new ProviderParkingActionRequest(request.LicensePlate, start, originalEnd, product.Location),
+                cancellationToken);
+
+            var extendAt = created.End.AddSeconds(-request.ExtendBeforeEndSeconds);
+            var delay = extendAt - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay, cancellationToken);
+
+            var beforeExtend = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+            string? rawExtendResponse = null;
+            if (provider is Parkeren.Infrastructure.ParkingProvider.TwoParkProvider twoParkProvider)
+            {
+                rawExtendResponse = await twoParkProvider.ExtendActionDiagnosticAsync(
+                    created.ProviderActionId,
+                    requestedEnd,
+                    cancellationToken);
+            }
+            else
+            {
+                await provider.ExtendActionAsync(created.ProviderActionId, requestedEnd, cancellationToken);
+            }
+
+            var afterImmediate = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            var afterOneSecond = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            var afterFiveSeconds = (await provider.GetActionsAsync(cancellationToken))
+                .SingleOrDefault(x => x.ProviderActionId == created.ProviderActionId);
+
+            static bool MatchesEnd(
+                Parkeren.Application.ParkingProvider.ProviderParkingAction? action,
+                DateTimeOffset expectedEnd) =>
+                action is not null && (action.End - expectedEnd).Duration() < TimeSpan.FromSeconds(1);
+
+            return Results.Ok(new
+            {
+                requested = new { start, originalEnd, requestedEnd, extendAt },
+                created,
+                beforeExtend,
+                rawExtendResponse,
+                afterImmediate,
+                afterOneSecond,
+                afterFiveSeconds,
+                extensionApplied =
+                    MatchesEnd(afterImmediate, requestedEnd) ||
+                    MatchesEnd(afterOneSecond, requestedEnd) ||
+                    MatchesEnd(afterFiveSeconds, requestedEnd)
+            });
+        }
+        finally
+        {
+            if (created is not null)
+            {
+                try
+                {
+                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
+                }
+                catch (Exception cleanupException)
+                {
+                    app.Logger.LogWarning(
+                        cleanupException,
+                        "Failed to clean up JIT-extension diagnostic action {ProviderActionId}.",
+                        created.ProviderActionId);
+                }
+            }
+        }
+    });
+
     app.MapPost("/api/dev/parking-provider/actions/test-active-shortening", async (
         DevActiveShorteningRequest request,
         IParkingProvider provider,
@@ -965,6 +1063,7 @@ public sealed record DevStartProviderActionRequest(string LicensePlate, int Dura
 public sealed record DevAdjacentProviderActionsRequest(string LicensePlate, int FirstDurationMinutes = 5, int SecondDurationMinutes = 5);
 public sealed record DevActiveShorteningRequest(string LicensePlate, int InitialDurationMinutes = 5, int ShortenedDurationMinutes = 2);
 public sealed record DevActiveExtensionRequest(string LicensePlate, int InitialDurationMinutes = 2, int ExtendedDurationMinutes = 5);
+public sealed record DevJitExtensionRequest(string LicensePlate, int InitialDurationMinutes = 3, int ExtendBeforeEndSeconds = 60, int ExtensionMinutes = 3);
 public sealed record LoginRequest(string Username, string Pin);
 public sealed record ChangePinRequest(string CurrentPin, string NewPin);
 public sealed record ResetPinRequest(string NewPin);
