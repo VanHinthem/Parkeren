@@ -24,6 +24,21 @@ function longVisitDetails(item:InboxNotification,isAdmin:boolean){
   }catch{return null;}
 }
 
+function notificationTarget(item:InboxNotification){
+  switch(item.type){
+    case "VisitStarted":
+    case "ProviderContinuationSucceeded":
+      return "/";
+    case "VisitStopped":
+    case "ProviderContinuationAttentionRequired":
+    case "LongVisitWarning":
+      return item.visitId?"/acties/"+item.visitId:"/meldingen";
+    case "BudgetWarning":
+    default:
+      return "/meldingen";
+  }
+}
+
 type Props={userRole:"Admin"|"Visitor";onUnreadCountChanged:(count:number)=>void;onNavigate:(path:string)=>void};
 
 export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Props){
@@ -39,7 +54,7 @@ export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Pro
       await markNotificationRead(item.id);
       setItems(current=>current?.map(x=>x.id===item.id?{...x,isRead:true,readAt:new Date().toISOString()}:x));
     }
-    if(item.visitId)onNavigate(`/acties/${item.visitId}`);
+    onNavigate(notificationTarget(item));
   }
 
   async function remove(id:string){
