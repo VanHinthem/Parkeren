@@ -25,9 +25,17 @@ public sealed class PushSubscriptionService(ParkerenDbContext dbContext)
             .SingleOrDefaultAsync(x => x.Endpoint == normalizedEndpoint, cancellationToken);
 
         if (existing is not null)
-            return existing.UserId == userId
-                ? PushSubscriptionRegistrationResult.AlreadyRegistered
-                : PushSubscriptionRegistrationResult.EndpointOwnedByAnotherUser;
+        {
+            if (existing.UserId != userId)
+                return PushSubscriptionRegistrationResult.EndpointOwnedByAnotherUser;
+
+            if (existing.P256dh == p256dh.Trim() && existing.Auth == auth.Trim())
+                return PushSubscriptionRegistrationResult.AlreadyRegistered;
+
+            existing.UpdateKeys(p256dh, auth);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return PushSubscriptionRegistrationResult.AlreadyRegistered;
+        }
 
         dbContext.PushSubscriptions.Add(new PushSubscription(
             Guid.NewGuid(),
