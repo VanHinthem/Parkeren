@@ -27,6 +27,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<ProviderOperation> ProviderOperations => Set<ProviderOperation>();
     public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
@@ -195,6 +196,19 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasIndex(x => new { x.RecipientUserId, x.SourceEventId })
                 .IsUnique()
                 .HasFilter("\"SourceEventId\" IS NOT NULL");
+        });
+
+
+        modelBuilder.Entity<PushSubscription>(entity =>
+        {
+            entity.ToTable("push_subscriptions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Endpoint).HasMaxLength(2048).IsRequired();
+            entity.Property(x => x.P256dh).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.Auth).HasMaxLength(512).IsRequired();
+            entity.HasIndex(x => x.Endpoint).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
 
