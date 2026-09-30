@@ -28,6 +28,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
@@ -198,6 +199,16 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
                 .HasFilter("\"SourceEventId\" IS NOT NULL");
         });
 
+
+        modelBuilder.Entity<PushDelivery>(entity =>
+        {
+            entity.ToTable("push_deliveries");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.HasIndex(x => x.NotificationId).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.LastAttemptAt });
+            entity.HasOne<Notification>().WithOne().HasForeignKey<PushDelivery>(x => x.NotificationId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<PushSubscription>(entity =>
         {
