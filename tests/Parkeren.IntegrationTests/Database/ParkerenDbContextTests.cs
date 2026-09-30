@@ -1036,9 +1036,9 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.SourceEventId == notificationEvent.Id)
             .ToListAsync(cancellationToken);
 
-        Assert.Single(inboxNotifications.Where(x => x.RecipientUserId == user.Id));
+        Assert.Single(inboxNotifications, x => x.RecipientUserId == user.Id);
         Assert.All(activeAdminIds, adminId =>
-            Assert.Single(inboxNotifications.Where(x => x.RecipientUserId == adminId)));
+            Assert.Single(inboxNotifications, x => x.RecipientUserId == adminId));
         Assert.Equal(activeAdminIds.Append(user.Id).Distinct().Count(), inboxNotifications.Count);
         Assert.All(inboxNotifications, notification =>
         {
