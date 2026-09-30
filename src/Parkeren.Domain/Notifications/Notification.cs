@@ -19,7 +19,8 @@ public sealed class Notification
         Guid recipientUserId,
         NotificationType type,
         DateTimeOffset createdAt,
-        Guid? visitId = null)
+        Guid? visitId = null,
+        Guid? sourceEventId = null)
     {
         if (id == Guid.Empty) throw new ArgumentException("Notification id is required.", nameof(id));
         if (recipientUserId == Guid.Empty) throw new ArgumentException("Recipient user id is required.", nameof(recipientUserId));
@@ -28,6 +29,7 @@ public sealed class Notification
         RecipientUserId = recipientUserId;
         Type = type;
         VisitId = visitId;
+        SourceEventId = sourceEventId;
         CreatedAt = createdAt;
     }
 
@@ -35,6 +37,7 @@ public sealed class Notification
     public Guid RecipientUserId { get; private set; }
     public NotificationType Type { get; private set; }
     public Guid? VisitId { get; private set; }
+    public Guid? SourceEventId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ReadAt { get; private set; }
 
