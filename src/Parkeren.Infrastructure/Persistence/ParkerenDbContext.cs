@@ -177,6 +177,9 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasIndex(x => new { x.RecipientUserId, x.CreatedAt });
             entity.HasIndex(x => new { x.RecipientUserId, x.ReadAt });
             entity.HasIndex(x => x.VisitId);
+            entity.HasIndex(x => new { x.RecipientUserId, x.SourceEventId })
+                .IsUnique()
+                .HasFilter("\"SourceEventId\" IS NOT NULL");
         });
 
 
