@@ -1,0 +1,89 @@
+.settings-grid{
+  display:grid;
+  gap:.8rem;
+}
+.settings-card{
+  padding:.9rem 1rem;
+}
+.settings-card h2{
+  margin:0 0 .8rem;
+  font-size:1.05rem;
+}
+.settings-account{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+}
+.settings-account>div{
+  display:grid;
+  gap:.15rem;
+}
+.settings-account strong{
+  font-size:.95rem;
+}
+.settings-account span,
+.settings-copy,
+.push-status span{
+  color:var(--color-text-muted);
+}
+.settings-account .button,
+.settings-card>.button{
+  width:auto;
+}
+.settings-copy{
+  margin:0;
+}
+.push-status{
+  display:flex;
+  align-items:flex-start;
+  gap:.65rem;
+  margin-bottom:.8rem;
+}
+.push-status>div{
+  display:grid;
+  gap:.18rem;
+}
+.push-status strong{
+  font-size:.92rem;
+}
+.push-status span{
+  font-size:.82rem;
+  line-height:1.35;
+}
+.push-status__dot{
+  flex:none;
+  width:.65rem;
+  height:.65rem;
+  margin-top:.28rem;
+  border-radius:50%;
+  background:var(--color-border);
+}
+.push-status__dot--enabled{
+  background:var(--color-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--color-primary) 18%,transparent);
+}
+.push-status__dot--disabled{
+  background:var(--color-text-muted);
+}
+.settings-pin-form{
+  display:grid;
+  gap:.65rem;
+}
+.settings-card--pin .field{
+  gap:.3rem;
+}
+.settings-card--pin .field__label{
+  font-size:.8rem;
+}
+.settings-card--pin .field input{
+  min-height:2.6rem;
+}
+.settings-card--pin .button{
+  margin-top:.1rem;
+}
+@media(max-width:480px){
+  .settings-account{
+    align-items:flex-end;
+  }
+}
