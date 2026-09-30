@@ -13,6 +13,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
     public async Task Delivered_result_marks_delivery_delivered()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
         var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.Delivered));
@@ -29,6 +30,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
     public async Task Retry_required_stays_pending_before_third_attempt()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
         var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired));
@@ -45,6 +47,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
     public async Task Third_retry_required_marks_delivery_failed()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
         var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.RetryRequired));
@@ -62,6 +65,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
     public async Task Not_configured_marks_delivery_failed_without_retry()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearPushDeliveriesAsync(cancellationToken);
         var deliveryId = await CreateDeliveryAsync(cancellationToken);
         await using var context = fixture.CreateDbContext();
         var processor = CreateProcessor(context, new FakeSender(WebPushSendResult.NotConfigured));
@@ -71,6 +75,14 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Failed, delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
+    }
+
+
+    private async Task ClearPushDeliveriesAsync(CancellationToken cancellationToken)
+    {
+        await using var context = fixture.CreateDbContext();
+        await context.PushDeliveries.ExecuteDeleteAsync(cancellationToken);
+        await context.Notifications.ExecuteDeleteAsync(cancellationToken);
     }
 
     private static PushDeliveryProcessor CreateProcessor(
