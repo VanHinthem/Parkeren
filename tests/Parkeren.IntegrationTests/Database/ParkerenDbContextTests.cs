@@ -1025,9 +1025,27 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         }
 
         await using var verifyContext = fixture.CreateDbContext();
-        Assert.Equal(1, await verifyContext.NotificationEvents.CountAsync(
+        var notificationEvent = await verifyContext.NotificationEvents.SingleAsync(
             x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id,
-            cancellationToken));
+            cancellationToken);
+        var activeAdminIds = await verifyContext.Users
+            .Where(x => x.IsActive && x.Role == UserRole.Admin)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var inboxNotifications = await verifyContext.Notifications
+            .Where(x => x.SourceEventId == notificationEvent.Id)
+            .ToListAsync(cancellationToken);
+
+        Assert.Single(inboxNotifications.Where(x => x.RecipientUserId == user.Id));
+        Assert.All(activeAdminIds, adminId =>
+            Assert.Single(inboxNotifications.Where(x => x.RecipientUserId == adminId)));
+        Assert.Equal(activeAdminIds.Append(user.Id).Distinct().Count(), inboxNotifications.Count);
+        Assert.All(inboxNotifications, notification =>
+        {
+            Assert.Equal(NotificationType.VisitStarted, notification.Type);
+            Assert.Equal(visit.Id, notification.VisitId);
+            Assert.False(notification.IsRead);
+        });
     }
 
     [Fact]
