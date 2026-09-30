@@ -121,3 +121,17 @@ export async function logout(){const response=await apiFetch("/api/auth/logout",
 export async function changePin(currentPin:string,newPin:string){const r=await apiFetch("/api/auth/change-pin",{method:"POST",body:JSON.stringify({currentPin,newPin})});if(!r.ok)throw new Error("PIN kon niet worden gewijzigd.");}
 export async function resetUserPin(userId:string,newPin:string){const r=await apiFetch(`/api/admin/users/${userId}/reset-pin`,{method:"POST",body:JSON.stringify({newPin})});if(!r.ok)throw new Error("PIN kon niet worden gereset.");}
 export async function revokeUserSessions(userId:string){const r=await apiFetch(`/api/admin/users/${userId}/revoke-sessions`,{method:"POST"});if(!r.ok)throw new Error("Sessies konden niet worden ingetrokken.");}
+
+export type InboxNotification={
+  id:string;
+  type:"VisitStarted"|"VisitStopped"|"ProviderContinuationSucceeded"|"ProviderContinuationAttentionRequired"|"LongVisitWarning"|"BudgetWarning";
+  visitId:string|null;
+  createdAt:string;
+  readAt:string|null;
+  isRead:boolean;
+};
+export async function getNotifications(){return json<InboxNotification[]>(await apiFetch("/api/notifications"));}
+export async function getNotificationUnreadCount(){return json<{count:number}>(await apiFetch("/api/notifications/unread-count"));}
+export async function markNotificationRead(id:string){const r=await apiFetch(`/api/notifications/${id}/read`,{method:"POST"});if(!r.ok)throw new Error("Melding kon niet als gelezen worden gemarkeerd.");}
+export async function markAllNotificationsRead(){const r=await apiFetch("/api/notifications/read-all",{method:"POST"});if(!r.ok)throw new Error("Meldingen konden niet als gelezen worden gemarkeerd.");}
+export async function deleteNotification(id:string){const r=await apiFetch(`/api/notifications/${id}`,{method:"DELETE"});if(!r.ok)throw new Error("Melding kon niet worden verwijderd.");}
