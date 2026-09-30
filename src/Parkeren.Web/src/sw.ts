@@ -14,8 +14,11 @@ const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision?: string | null }> };
 
-precacheAndRoute(self.__WB_MANIFEST);
+precacheAndRoute(self.__WB_MANIFEST,{cleanURLs:false});
 cleanupOutdatedCaches();
+
+serviceWorker.addEventListener("install",()=>serviceWorker.skipWaiting());
+serviceWorker.addEventListener("activate",event=>event.waitUntil(serviceWorker.clients.claim()));
 
 serviceWorker.addEventListener("push",(event:PushEvent)=>{
   let payload:PushPayload={};
