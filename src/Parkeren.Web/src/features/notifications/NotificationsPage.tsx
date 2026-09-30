@@ -27,7 +27,7 @@ export function NotificationsPage({onUnreadCountChanged,onNavigate}:Props){
       await markNotificationRead(item.id);
       setItems(current=>current?.map(x=>x.id===item.id?{...x,isRead:true,readAt:new Date().toISOString()}:x));
     }
-    if(item.visitId)onNavigate(`/acties?visit=${item.visitId}`);
+    if(item.visitId)onNavigate(`/acties/${item.visitId}`);
   }
 
   async function remove(id:string){
