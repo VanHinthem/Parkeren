@@ -91,8 +91,8 @@ public sealed class ParkingBudgetCalculatorTests
     [Fact]
     public void Realized_budget_usage_counts_only_paid_time()
     {
-        var start = new DateTimeOffset(2026, 9, 28, 17, 0, 0, TimeSpan.Zero);
-        var visit = CompletedVisit(start, start.AddHours(5));
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero); // 17:00 Europe/Amsterdam
+        var visit = CompletedVisit(start, start.AddHours(5)); // through 22:00 Europe/Amsterdam
         var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
         var rules = Rules(start.AddDays(-1));
 
