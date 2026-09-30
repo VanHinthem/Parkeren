@@ -1,3 +1,5 @@
+using Parkeren.Domain.Visits;
+
 namespace Parkeren.Domain.Rules;
 
 public sealed class ParkingBudgetPeriod
@@ -36,6 +38,44 @@ public static class ParkingBudgetCalculator
 }
 
 
+
+
+public static class RealizedParkingBudgetUsageCalculator
+{
+    public static ParkingBudgetUsage Calculate(
+        ParkingBudgetPeriod period,
+        IEnumerable<Visit> visits,
+        IEnumerable<ParkingRuleSet> ruleSets)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(visits);
+        ArgumentNullException.ThrowIfNull(ruleSets);
+
+        var ruleSetArray = ruleSets.ToArray();
+        var usedPaidDuration = TimeSpan.Zero;
+
+        foreach (var visit in visits.Where(x =>
+                     x.Status == VisitStatus.Completed &&
+                     x.ActualEndAt.HasValue &&
+                     x.StartAt < period.ValidUntil &&
+                     x.ActualEndAt.Value > period.ValidFrom))
+        {
+            var start = visit.StartAt > period.ValidFrom ? visit.StartAt : period.ValidFrom;
+            var end = visit.ActualEndAt!.Value < period.ValidUntil ? visit.ActualEndAt.Value : period.ValidUntil;
+            if (end <= start)
+                continue;
+
+            var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(start, end, ruleSetArray)
+                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                .Where(x => x.IsPaid)
+                .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
+
+            usedPaidDuration += paidDuration;
+        }
+
+        return ParkingBudgetCalculator.Calculate(period, usedPaidDuration);
+    }
+}
 
 public sealed class ParkingBudgetWarningState
 {
