@@ -4536,11 +4536,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         using (var payload = JsonDocument.Parse(notification.Payload))
         {
             var root = payload.RootElement;
-            Assert.Equal(visitor.Username, root.GetProperty("Visitor").GetString());
+            Assert.Equal(user.Username, root.GetProperty("Visitor").GetString());
             Assert.Equal(vehicle.LicensePlate, root.GetProperty("LicensePlate").GetString());
             Assert.Equal(visit.StartAt, root.GetProperty("StartAt").GetDateTimeOffset());
             Assert.InRange(
-                root.GetProperty("ElapsedDuration").GetTimeSpan(),
+                TimeSpan.Parse(root.GetProperty("ElapsedDuration").GetString()!),
                 notificationEvent.OccurredAt - visit.StartAt - TimeSpan.FromMilliseconds(1),
                 notificationEvent.OccurredAt - visit.StartAt + TimeSpan.FromMilliseconds(1));
         }
