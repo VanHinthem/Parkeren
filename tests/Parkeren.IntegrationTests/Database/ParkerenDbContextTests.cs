@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
@@ -4531,6 +4532,18 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             cancellationToken);
         Assert.Equal(user.Id, notification.RecipientUserId);
         Assert.Equal(NotificationType.LongVisitWarning, notification.Type);
+        Assert.NotNull(notification.Payload);
+        using (var payload = JsonDocument.Parse(notification.Payload))
+        {
+            var root = payload.RootElement;
+            Assert.Equal(visitor.Username, root.GetProperty("Visitor").GetString());
+            Assert.Equal(vehicle.LicensePlate, root.GetProperty("LicensePlate").GetString());
+            Assert.Equal(visit.StartAt, root.GetProperty("StartAt").GetDateTimeOffset());
+            Assert.InRange(
+                root.GetProperty("ElapsedDuration").GetTimeSpan(),
+                notificationEvent.OccurredAt - visit.StartAt - TimeSpan.FromMilliseconds(1),
+                notificationEvent.OccurredAt - visit.StartAt + TimeSpan.FromMilliseconds(1));
+        }
 
         var completedWork = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
         Assert.Equal(VisitSchedulerWorkStatus.Completed, completedWork.Status);
