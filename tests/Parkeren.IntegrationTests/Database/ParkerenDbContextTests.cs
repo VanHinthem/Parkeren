@@ -4547,6 +4547,65 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
 
+
+    [Fact]
+    public async Task Long_visit_warning_does_not_schedule_reminder_when_interval_is_not_configured()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var visitor = new User(Guid.NewGuid(), $"long-no-reminder-{suffix}", $"LONG-NO-REMINDER-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"LNR-{suffix}", $"LNR{suffix}".ToUpperInvariant(), null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
+            now.AddHours(-2), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.LongVisitWarning, now.AddMinutes(-1));
+        work.Claim("long-no-reminder-worker", now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            var settings = await seedContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+            settings.SetLongVisitNotifications(TimeSpan.FromHours(1), false, null);
+            seedContext.Users.Add(visitor);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimedWork = await context.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                .ProcessAsync(claimedWork, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var completedWork = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Completed, completedWork.Status);
+        Assert.False(await verifyContext.VisitSchedulerWork.AnyAsync(
+            x => x.VisitId == visit.Id &&
+                 x.Type == VisitSchedulerWorkType.LongVisitWarning &&
+                 x.Id != work.Id &&
+                 (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
+            cancellationToken));
+    }
+
+
     [Fact]
     public async Task Long_visit_warning_is_delivered_to_active_admin_when_enabled()
     {
