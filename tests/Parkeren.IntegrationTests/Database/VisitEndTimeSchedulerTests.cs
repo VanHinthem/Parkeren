@@ -23,6 +23,8 @@ public sealed class VisitEndTimeSchedulerTests(PostgreSqlFixture fixture)
             await cleanup.VisitEndTimeChanges.ExecuteDeleteAsync(ct);
             await cleanup.ProviderOperations.ExecuteDeleteAsync(ct);
             await cleanup.ProviderParkingActions.ExecuteDeleteAsync(ct);
+            await cleanup.Notifications.ExecuteDeleteAsync(ct);
+            await cleanup.NotificationEvents.ExecuteDeleteAsync(ct);
             await cleanup.Visits.ExecuteDeleteAsync(ct);
             await cleanup.PaidWindows.ExecuteDeleteAsync(ct);
             await cleanup.ParkingCalendarExceptions.ExecuteDeleteAsync(ct);
