@@ -132,6 +132,7 @@ export type InboxNotification={
   id:string;
   type:"VisitStarted"|"VisitStopped"|"ProviderContinuationSucceeded"|"ProviderContinuationAttentionRequired"|"LongVisitWarning"|"BudgetWarning";
   visitId:string|null;
+  payload:string|null;
   createdAt:string;
   readAt:string|null;
   isRead:boolean;
