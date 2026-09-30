@@ -4546,4 +4546,66 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             TimeSpan.FromMinutes(30) + TimeSpan.FromMilliseconds(1));
     }
 
+
+    [Fact]
+    public async Task Long_visit_warning_is_delivered_to_active_admin_when_enabled()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var visitor = new User(Guid.NewGuid(), $"long-admin-visitor-{suffix}", $"LONG-ADMIN-VISITOR-{suffix}", "hash", UserRole.Visitor);
+        var admin = new User(Guid.NewGuid(), $"long-admin-{suffix}", $"LONG-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"LA-{suffix}", $"LA{suffix}".ToUpperInvariant(), null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
+            now.AddHours(-2), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.LongVisitWarning, now.AddMinutes(-1));
+        work.Claim("long-admin-worker", now);
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            var settings = await seedContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+            settings.SetLongVisitNotifications(TimeSpan.FromHours(1), true, null);
+            seedContext.Users.AddRange(visitor, admin);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimedWork = await context.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                .ProcessAsync(claimedWork, cancellationToken);
+        }
+
+        await using var verifyContext = fixture.CreateDbContext();
+        var notificationEvent = await verifyContext.NotificationEvents.SingleAsync(
+            x => x.Type == NotificationEventType.LongVisitWarning && x.AggregateId == visit.Id,
+            cancellationToken);
+        var recipientIds = await verifyContext.Notifications
+            .Where(x => x.SourceEventId == notificationEvent.Id)
+            .Select(x => x.RecipientUserId)
+            .ToListAsync(cancellationToken);
+
+        Assert.Equal(2, recipientIds.Count);
+        Assert.Contains(visitor.Id, recipientIds);
+        Assert.Contains(admin.Id, recipientIds);
+    }
+
 }
