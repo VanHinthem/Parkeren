@@ -449,11 +449,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var vehicle = new Vehicle(Guid.NewGuid(), $"BO-{suffix}", $"BO{suffix}".ToUpperInvariant(), null);
         var firstStart = new DateTimeOffset(2026, 9, 30, 8, 0, 0, TimeSpan.Zero);
         var secondStart = firstStart.AddHours(1);
-        var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
         var firstVisit = new Visit(Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
-            firstStart, firstStart.AddHours(1), snapshot);
+            firstStart, firstStart.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
         var secondVisit = new Visit(Guid.NewGuid(), Guid.NewGuid(), visitor.Id, vehicle.Id, visitor.Id,
-            secondStart, secondStart.AddHours(1), snapshot);
+            secondStart, secondStart.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
         firstVisit.Activate();
         secondVisit.Activate();
 
