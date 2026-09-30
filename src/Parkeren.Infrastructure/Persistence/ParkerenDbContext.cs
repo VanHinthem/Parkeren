@@ -175,6 +175,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("notifications");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(60).IsRequired();
+            entity.Property(x => x.Payload).HasColumnType("jsonb");
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(x => new { x.RecipientUserId, x.CreatedAt });
