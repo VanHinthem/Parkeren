@@ -27,7 +27,7 @@ public sealed class ParkingSystemSettings
     public TimeSpan? LongVisitWarningAfter { get; private set; }
     public bool NotifyAdminOnLongVisit { get; private set; }
     public TimeSpan? LongVisitReminderInterval { get; private set; }
-    public IReadOnlyList<int> BudgetWarningThresholdPercentages { get; private set; } = Array.Empty<int>();
+    public int[] BudgetWarningThresholdPercentages { get; private set; } = Array.Empty<int>();
     public DateTimeOffset UpdatedAt { get; private set; }
     public void SetMaxConcurrentVisits(int maxConcurrentVisits)
     {
@@ -52,7 +52,7 @@ public sealed class ParkingSystemSettings
         BudgetWarningThresholdPercentages = ValidateBudgetWarningThresholds(thresholds);
         UpdatedAt = DateTimeOffset.UtcNow;
     }
-    private static IReadOnlyList<int> ValidateBudgetWarningThresholds(IEnumerable<int> thresholds)
+    private static int[] ValidateBudgetWarningThresholds(IEnumerable<int> thresholds)
     {
         ArgumentNullException.ThrowIfNull(thresholds);
         var values = thresholds.OrderBy(x => x).ToArray();
