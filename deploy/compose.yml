@@ -8,6 +8,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren;Username=parkeren;Password=${PARKEREN_DB_PASSWORD}
       ParkingProvider__Type: TwoPark
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
       BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
       BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
     depends_on:
