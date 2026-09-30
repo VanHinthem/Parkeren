@@ -142,3 +142,16 @@ export async function getNotificationUnreadCount(){return json<{count:number}>(a
 export async function markNotificationRead(id:string){const r=await apiFetch(`/api/notifications/${id}/read`,{method:"POST"});if(!r.ok)throw new Error("Melding kon niet als gelezen worden gemarkeerd.");}
 export async function markAllNotificationsRead(){const r=await apiFetch("/api/notifications/read-all",{method:"POST"});if(!r.ok)throw new Error("Meldingen konden niet als gelezen worden gemarkeerd.");}
 export async function deleteNotification(id:string){const r=await apiFetch(`/api/notifications/${id}`,{method:"DELETE"});if(!r.ok)throw new Error("Melding kon niet worden verwijderd.");}
+
+export async function getPushPublicKey(){return json<{publicKey:string}>(await apiFetch("/api/notifications/push-public-key"));}
+export async function registerPushSubscription(subscription:PushSubscription){
+  const key=subscription.getKey("p256dh"),auth=subscription.getKey("auth");
+  if(!key||!auth)throw new Error("Browser heeft geen geldige push-sleutels geleverd.");
+  const encode=(value:ArrayBuffer)=>btoa(String.fromCharCode(...new Uint8Array(value)));
+  const r=await apiFetch("/api/notifications/push-subscriptions",{method:"POST",body:JSON.stringify({endpoint:subscription.endpoint,p256dh:encode(key),auth:encode(auth)})});
+  if(!r.ok)throw new Error("Pushmeldingen konden niet worden geregistreerd.");
+}
+export async function unregisterPushSubscription(endpoint:string){
+  const r=await apiFetch("/api/notifications/push-subscriptions",{method:"DELETE",body:JSON.stringify({endpoint})});
+  if(!r.ok)throw new Error("Pushregistratie kon niet worden verwijderd.");
+}
