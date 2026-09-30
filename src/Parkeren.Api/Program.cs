@@ -828,6 +828,7 @@ app.MapGet("/api/notifications", async (
             x.Id,
             x.Type,
             x.VisitId,
+            x.Payload,
             x.CreatedAt,
             x.ReadAt,
             isRead = x.ReadAt != null
