@@ -4,6 +4,7 @@ public enum NotificationEventType
 {
     VisitStarted,
     VisitStopped,
+    ProviderContinuationSucceeded,
     ProviderContinuationAttentionRequired
 }
 
