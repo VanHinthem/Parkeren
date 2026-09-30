@@ -1,6 +1,7 @@
 import { useEffect,useState } from "react";
 import { deleteNotification,getNotifications,markAllNotificationsRead,markNotificationRead,type InboxNotification } from "../../api/client";
 import { Card } from "../../design/primitives/Card";
+import { Icon } from "../../design/icons/Icon";
 import "./NotificationsPage.css";
 
 const labels:Record<InboxNotification["type"],string>={
@@ -12,16 +13,41 @@ const labels:Record<InboxNotification["type"],string>={
   BudgetWarning:"Parkeerbudget waarschuwing"
 };
 
-type LongVisitPayload={visitor:string;licensePlate:string;startAt:string;elapsedDuration:string};
+type NotificationPayload=Record<string,unknown>;
 
-function longVisitDetails(item:InboxNotification,isAdmin:boolean){
-  if(item.type!=="LongVisitWarning"||!item.payload)return null;
+function payloadValue<T>(payload:NotificationPayload,name:string):T|undefined{
+  const key=Object.keys(payload).find(x=>x.toLowerCase()===name.toLowerCase());
+  return key?payload[key] as T:undefined;
+}
+
+function notificationDetails(item:InboxNotification,isAdmin:boolean){
+  if(item.type==="ProviderContinuationAttentionRequired")
+    return "Automatisch voortzetten is niet gelukt.";
+
+  if(!item.payload)return null;
+
   try{
-    const payload=JSON.parse(item.payload) as Partial<LongVisitPayload>;
-    if(!payload.licensePlate||!payload.startAt||!payload.elapsedDuration)return null;
-    const visitor=isAdmin&&payload.visitor?`${payload.visitor} · `:"";
-    return `${visitor}${payload.licensePlate} · gestart ${new Date(payload.startAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})} · ${payload.elapsedDuration}`;
-  }catch{return null;}
+    const payload=JSON.parse(item.payload) as NotificationPayload;
+
+    if(item.type==="LongVisitWarning"){
+      const visitor=payloadValue<string>(payload,"Visitor");
+      const licensePlate=payloadValue<string>(payload,"LicensePlate");
+      const startAt=payloadValue<string>(payload,"StartAt");
+      const elapsedDuration=payloadValue<string>(payload,"ElapsedDuration");
+      if(!licensePlate||!startAt||!elapsedDuration)return null;
+      const visitorText=isAdmin&&visitor?`${visitor} · `:"";
+      return `${visitorText}${licensePlate} · gestart ${new Date(startAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})} · ${elapsedDuration}`;
+    }
+
+    if(item.type==="BudgetWarning"){
+      const threshold=payloadValue<number>(payload,"ThresholdPercentage");
+      return typeof threshold==="number"?`${threshold}% van het parkeerbudget is gebruikt.`:null;
+    }
+  }catch{
+    return null;
+  }
+
+  return null;
 }
 
 function notificationTarget(item:InboxNotification){
@@ -72,7 +98,7 @@ export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Pro
 
   return <div className="notification-inbox">
     <div className="notification-inbox__toolbar">
-      <span>{unread===0?"Geen ongelezen meldingen":`${unread} ongelezen`}</span>
+      <span>{unread===0?"Geen ongelezen meldingen":unread===1?"1 ongelezen melding":`${unread} ongelezen meldingen`}</span>
       {unread>0&&<button type="button" onClick={readAll}>Alles gelezen</button>}
     </div>
     {error&&<p role="alert" className="notification-inbox__error">{error}</p>}
@@ -82,11 +108,11 @@ export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Pro
           <span className="notification-item__dot" aria-hidden="true"/>
           <span>
             <strong>{labels[item.type]}</strong>
-            {longVisitDetails(item,userRole==="Admin")&&<small>{longVisitDetails(item,userRole==="Admin")}</small>}
+            {notificationDetails(item,userRole==="Admin")&&<small>{notificationDetails(item,userRole==="Admin")}</small>}
             <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})}</time>
           </span>
         </button>
-        <button type="button" className="notification-item__delete" aria-label="Melding verwijderen" onClick={()=>remove(item.id)}>×</button>
+        <button type="button" className="notification-item__delete" aria-label="Melding verwijderen" onClick={()=>remove(item.id)}><Icon name="trash"/></button>
       </article>)}
   </div>;
 }
