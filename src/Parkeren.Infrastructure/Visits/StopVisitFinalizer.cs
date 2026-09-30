@@ -7,7 +7,7 @@ using Parkeren.Infrastructure.Notifications;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, NotificationInboxWriter inboxWriter) : IStopVisitFinalizer
+internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, NotificationInboxWriter inboxWriter, BudgetWarningService budgetWarningService) : IStopVisitFinalizer
 {
     public async Task<bool> RequiresProviderActionAsync(
         StopVisitClaim claim,
@@ -73,6 +73,7 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, Notificati
         var notificationEvent = new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt);
         dbContext.NotificationEvents.Add(notificationEvent);
         await inboxWriter.WriteAsync(notificationEvent, NotificationType.VisitStopped, visit.UserId, includeVisitor: true, includeAdmins: false, cancellationToken);
+        await budgetWarningService.EvaluateAsync(visit, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
