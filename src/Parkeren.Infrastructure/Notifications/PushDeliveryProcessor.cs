@@ -7,7 +7,7 @@ namespace Parkeren.Infrastructure.Notifications;
 
 public sealed class PushDeliveryProcessor(
     ParkerenDbContext dbContext,
-    WebPushSender sender,
+    IWebPushSender sender,
     TimeProvider timeProvider,
     ILogger<PushDeliveryProcessor> logger)
 {
