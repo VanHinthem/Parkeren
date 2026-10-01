@@ -1517,6 +1517,7 @@ internal sealed class AdministrationService(
     private static AdminBudgetPeriodSummary ToAdminBudgetPeriodSummary(ParkingBudgetPeriod period) =>
         new(
             period.Id,
+            period.ProviderProductId,
             period.ValidFrom,
             period.ValidUntil,
             (int)period.MaximumPaidDuration.TotalMinutes);
@@ -1524,6 +1525,7 @@ internal sealed class AdministrationService(
     private static AdminParkingTariffSummary ToAdminParkingTariffSummary(ParkingTariff tariff) =>
         new(
             tariff.Id,
+            tariff.ProviderProductId,
             tariff.ValidFrom,
             tariff.ValidUntil,
             tariff.Rate,
@@ -1594,7 +1596,7 @@ internal sealed class AdministrationService(
                 x.Vehicle.LicensePlate,
                 x.StartedByUsername,
                 now,
-                ruleSets))
+                ruleSets.Where(ruleSet => ruleSet.ProviderProductId == x.Visit.ProviderProductId).ToArray()))
             .ToArray();
     }
 
@@ -1628,7 +1630,11 @@ internal sealed class AdministrationService(
         if (effectiveEnd <= row.Visit.StartAt)
             effectiveEnd = row.Visit.StartAt.AddSeconds(1);
 
-        var ruleSets = await LoadRuleSetsAsync(row.Visit.StartAt, effectiveEnd, cancellationToken);
+        var ruleSets = await LoadRuleSetsForProductAsync(
+            row.Visit.StartAt,
+            effectiveEnd,
+            row.Visit.ProviderProductId,
+            cancellationToken);
         var visitSummary = ToAdminVisitSummary(
             row.Visit,
             row.Username,
@@ -1720,6 +1726,20 @@ internal sealed class AdministrationService(
             .Include(x => x.PaidWindows)
             .Include(x => x.CalendarExceptions)
             .Where(x => x.ValidFrom < end && (x.ValidUntil == null || x.ValidUntil > start))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyList<ParkingRuleSet>> LoadRuleSetsForProductAsync(
+        DateTimeOffset start,
+        DateTimeOffset end,
+        Guid? providerProductId,
+        CancellationToken cancellationToken) =>
+        await dbContext.ParkingRuleSets.AsNoTracking()
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ProviderProductId == providerProductId &&
+                        x.ValidFrom < end &&
+                        (x.ValidUntil == null || x.ValidUntil > start))
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
