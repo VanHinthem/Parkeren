@@ -671,6 +671,21 @@ app.MapGet("/api/admin/users/{userId:guid}/parking-policy", async (
     return policy is null ? Results.NotFound() : Results.Ok(policy);
 });
 
+app.MapGet("/api/admin/provider/status", async (
+    IAdminProviderStatusService providerStatus,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
+});
+
 app.MapGet("/api/admin/visits", async (
     Guid? userId,
     string? licensePlate,
