@@ -109,8 +109,17 @@ internal sealed class VisitEndTimeProviderAdjuster(
 
             try
             {
-                await provider.StopActionAsync(scheduledProviderActionId, cancellationToken);
-            var afterCancel = await provider.GetActionsAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(scheduled.ProviderProductId))
+                    await provider.StopActionAsync(scheduledProviderActionId, cancellationToken);
+                else
+                    await provider.StopActionForProductAsync(
+                        scheduled.ProviderProductId,
+                        scheduledProviderActionId,
+                        cancellationToken);
+
+                var afterCancel = string.IsNullOrWhiteSpace(scheduled.ProviderProductId)
+                    ? await provider.GetActionsAsync(cancellationToken)
+                    : await provider.GetActionsForProductAsync(scheduled.ProviderProductId, cancellationToken);
             if (afterCancel.Any(x => x.ProviderActionId == scheduledProviderActionId &&
                                      !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
             {
@@ -145,10 +154,11 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (impact == VisitEndTimeProviderImpact.CancelScheduled)
             return new(false);
 
-        var product = await provider.GetProductAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(product.Location))
-            throw new InvalidOperationException("Parking provider product has no location configured.");
-        var location = product.Location;
+        if (string.IsNullOrWhiteSpace(visit.ProviderProductExternalId) ||
+            string.IsNullOrWhiteSpace(visit.ProviderLocation))
+            throw new InvalidOperationException("Visit has no provider product context.");
+        var providerProductId = visit.ProviderProductExternalId;
+        var location = visit.ProviderLocation;
 
         var existingReplacement = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.ContinueStart &&
@@ -171,9 +181,10 @@ internal sealed class VisitEndTimeProviderAdjuster(
                     vehicle.LicensePlate,
                     scheduled!.PlannedStartAt,
                     requestedEndAt,
-                    location),
+                    location,
+                    providerProductId),
                 cancellationToken);
-            var readBack = await provider.GetActionsAsync(cancellationToken);
+            var readBack = await provider.GetActionsForProductAsync(providerProductId, cancellationToken);
             var confirmed = readBack.SingleOrDefault(x => x.ProviderActionId == replacement.ProviderActionId);
             if (confirmed is null || !string.Equals(confirmed.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
             {
@@ -206,7 +217,15 @@ internal sealed class VisitEndTimeProviderAdjuster(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var lockKey = VisitAdvisoryLock.For(visitId);
         await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        var action = new Parkeren.Domain.Visits.ProviderParkingAction(actionId, visitId, startAt, endAt);
+        var persistedVisit = await dbContext.Visits.AsNoTracking()
+            .SingleAsync(x => x.Id == visitId, cancellationToken);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            actionId,
+            visitId,
+            startAt,
+            endAt,
+            persistedVisit.ProviderProductExternalId,
+            persistedVisit.ProviderLocation);
         action.MarkStarting();
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.ContinueStart);
         operation.SetParentOperationId(parentOperationId);
