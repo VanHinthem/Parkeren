@@ -44,7 +44,9 @@ static IReadOnlyCollection<MockParkingAction> LoadPersistedActions(string? path)
 
 var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
-var remainingMinutes = 1500 * 60;
+const string defaultProductId = "visitor";
+var remainingMinutesByProduct = new ConcurrentDictionary<string, int>(
+    new[] { new KeyValuePair<string, int>(defaultProductId, 1500 * 60) });
 var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
 var forcedValidationError = false;
@@ -53,7 +55,7 @@ var omitCreatedActionBody = false;
 var categories = new[] { new MockCategory("oss", "Oss") };
 var products = new[]
 {
-    new MockProduct("visitor", "Bezoekersparkeren", "OSS_J", "oss", "Oss")
+    new MockProduct(defaultProductId, "Bezoekersparkeren", "OSS_J", "oss", "Oss")
 };
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
@@ -68,16 +70,28 @@ app.MapGet("/api/balance", async (string? productId) =>
 {
     if (!validCredentials) return Results.Unauthorized();
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
+
+    var selectedProductId = string.IsNullOrWhiteSpace(productId) ? defaultProductId : productId;
+    if (!remainingMinutesByProduct.TryGetValue(selectedProductId, out var remainingMinutes))
+        return Results.NotFound();
+
     return Results.Ok(new
-{
-    remainingPaidMinutes = remainingMinutes,
-    retrievedAt = DateTimeOffset.UtcNow
+    {
+        remainingPaidMinutes = remainingMinutes,
+        retrievedAt = DateTimeOffset.UtcNow
     });
 });
 
-app.MapGet("/api/actions", (string? productId) => Results.Ok(actions.Values
-    .Where(x => DateTimeOffset.UtcNow >= x.VisibleAt)
-    .OrderBy(x => x.Start)));
+app.MapGet("/api/actions", (string? productId) =>
+{
+    var selectedProductId = string.IsNullOrWhiteSpace(productId) ? defaultProductId : productId;
+    if (!products.Any(x => x.Id == selectedProductId))
+        return Results.NotFound();
+
+    return Results.Ok(actions.Values
+        .Where(x => x.ProductId == selectedProductId && DateTimeOffset.UtcNow >= x.VisibleAt)
+        .OrderBy(x => x.Start));
+});
 
 app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
@@ -92,6 +106,10 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if (request.End - request.Start > maxActionDuration)
         return Results.BadRequest(new { error = "Provider action exceeds maximum duration." });
 
+    var selectedProductId = string.IsNullOrWhiteSpace(request.ProductId) ? defaultProductId : request.ProductId;
+    if (!remainingMinutesByProduct.TryGetValue(selectedProductId, out var remainingMinutes))
+        return Results.NotFound();
+
     if ((request.End - request.Start).TotalMinutes > remainingMinutes)
         return Results.Conflict(new { error = "Insufficient provider balance." });
 
@@ -103,7 +121,7 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
 
     var id = Guid.NewGuid().ToString("N");
     var status = request.Start > DateTimeOffset.UtcNow ? "scheduled" : "active";
-    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, DateTimeOffset.UtcNow + visibilityDelay);
+    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, DateTimeOffset.UtcNow + visibilityDelay, selectedProductId);
     actions[id] = action;
     await PersistActionsAsync();
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
@@ -111,9 +129,11 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     return Results.Created($"/api/actions/{id}", action);
 });
 
-app.MapPut("/api/actions/{id}/end", async (string id, MockExtendRequest request) =>
+app.MapPut("/api/actions/{id}/end", async (string id, string? productId, MockExtendRequest request) =>
 {
     if (!actions.TryGetValue(id, out var current))
+        return Results.NotFound();
+    if (!string.IsNullOrWhiteSpace(productId) && current.ProductId != productId)
         return Results.NotFound();
 
     if (request.End <= current.Start)
@@ -141,9 +161,11 @@ app.MapPut("/api/test/actions/{id}/end", async (string id, MockExtendRequest req
     return Results.NoContent();
 });
 
-app.MapPost("/api/actions/{id}/stop", async (string id) =>
+app.MapPost("/api/actions/{id}/stop", async (string id, string? productId) =>
 {
     if (!actions.TryGetValue(id, out var current))
+        return Results.NotFound();
+    if (!string.IsNullOrWhiteSpace(productId) && current.ProductId != productId)
         return Results.NotFound();
 
     actions[id] = current with { Status = "stopped" };
@@ -189,7 +211,7 @@ app.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>
 
 app.MapPost("/api/test/balance", (MockBalanceRequest request) =>
 {
-    remainingMinutes = Math.Max(0, request.RemainingPaidMinutes);
+    remainingMinutesByProduct[defaultProductId] = Math.Max(0, request.RemainingPaidMinutes);
     return Results.NoContent();
 });
 
@@ -212,7 +234,8 @@ app.MapPost("/api/test/reset", async () =>
     outcome.Reset();
     maxConcurrentActions = 5;
     maxActionDuration = TimeSpan.FromHours(4);
-    remainingMinutes = 1500 * 60;
+    remainingMinutesByProduct.Clear();
+    remainingMinutesByProduct[defaultProductId] = 1500 * 60;
     validCredentials = true;
     visibilityDelay = TimeSpan.Zero;
     forcedValidationError = false;
@@ -235,9 +258,22 @@ namespace Parkeren.TwoParkMock
     public partial class Program { }
 }
 
-public sealed record MockActionRequest(string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location);
+public sealed record MockActionRequest(
+    string LicensePlate,
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    string Location,
+    string? ProductId = null);
 public sealed record MockExtendRequest(DateTimeOffset End);
-public sealed record MockParkingAction(string Id, string LicensePlate, DateTimeOffset Start, DateTimeOffset End, string Location, string Status, DateTimeOffset VisibleAt);
+public sealed record MockParkingAction(
+    string Id,
+    string LicensePlate,
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    string Location,
+    string Status,
+    DateTimeOffset VisibleAt,
+    string ProductId = "visitor");
 
 public sealed record MockFailureRequest(int StatusCode = 503, int DelayMilliseconds = 0, int Count = 1);
 
