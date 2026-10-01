@@ -91,8 +91,19 @@ public interface IAdministrationService
     Task<IReadOnlyList<AdminBudgetPeriodSummary>> GetBudgetPeriodsAsync(
         Guid actorUserId,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminBudgetPeriodSummary>> GetBudgetPeriodsForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
+        CancellationToken cancellationToken);
     Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodAsync(
         Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset validUntil,
+        int maximumPaidDurationMinutes,
+        CancellationToken cancellationToken);
+    Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
         DateTimeOffset validFrom,
         DateTimeOffset validUntil,
         int maximumPaidDurationMinutes,
@@ -105,8 +116,20 @@ public interface IAdministrationService
     Task<IReadOnlyList<AdminParkingTariffSummary>> GetParkingTariffsAsync(
         Guid actorUserId,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminParkingTariffSummary>> GetParkingTariffsForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
+        CancellationToken cancellationToken);
     Task<AdminParkingTariffCreateResult> CreateParkingTariffAsync(
         Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        decimal rate,
+        ParkingTariffUnit unit,
+        CancellationToken cancellationToken);
+    Task<AdminParkingTariffCreateResult> CreateParkingTariffForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
         DateTimeOffset validFrom,
         DateTimeOffset? validUntil,
         decimal rate,
@@ -352,6 +375,7 @@ public sealed record AdminParkingRuleSetCreateResult(
 
 public sealed record AdminBudgetPeriodSummary(
     Guid Id,
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     DateTimeOffset ValidUntil,
     int MaximumPaidDurationMinutes);
@@ -376,6 +400,7 @@ public sealed record AdminBudgetUsageSummary(
 
 public sealed record AdminParkingTariffSummary(
     Guid Id,
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     DateTimeOffset? ValidUntil,
     decimal Rate,
