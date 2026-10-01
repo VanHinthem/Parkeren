@@ -21,6 +21,14 @@ Een providerlimiet hoort niet in gebruikersbeleid. Andersom hoort een gebruikers
 | `AllowVisitExtension` | `bool` | Bepaalt of een gebruiker de `DesiredEndAt` van een reeds actieve Visit naar een later tijdstip mag wijzigen. |
 | `MaxConcurrentVisits` | `int` | Maximaal aantal gelijktijdig actieve Visits voor deze gebruiker. |
 
+Bij `UserPolicyOverride` worden de twee duurvelden aangevuld met een `PolicyDurationOverrideMode`:
+
+- `Inherit`: default volgen;
+- `Value`: concrete overridewaarde gebruiken;
+- `Unlimited`: expliciet geen limiet.
+
+Hierdoor blijft `null` in de uiteindelijke `EffectiveParkingPolicy` ondubbelzinnig: het betekent daar altijd **onbeperkt**.
+
 ### Handmatig stoppen
 
 Handmatig stoppen is **geen configureerbaar gebruikersrecht**. Een gebruiker moet een eigen actieve Visit altijd kunnen stoppen. Een beheerder kan een Visit stoppen wanneer diens autorisatie dat toestaat.
