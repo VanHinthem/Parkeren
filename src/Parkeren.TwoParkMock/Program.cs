@@ -51,16 +51,20 @@ var forcedValidationError = false;
 var rejectDuplicateActiveActions = false;
 var omitCreatedActionBody = false;
 var categories = new[] { new MockCategory("oss", "Oss") };
-var product = new MockProduct("visitor", "Bezoekersparkeren", "Oss");
+var products = new[]
+{
+    new MockProduct("visitor", "Bezoekersparkeren", "OSS_J", "oss", "Oss")
+};
 var failure = new MockFailureState();
 var outcome = new MockUnknownOutcomeState();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "2park-mock" }));
 
 app.MapGet("/api/categories", () => Results.Ok(categories));
-app.MapGet("/api/product", () => Results.Ok(product));
+app.MapGet("/api/products", () => Results.Ok(products));
+app.MapGet("/api/product", () => Results.Ok(products.Single()));
 
-app.MapGet("/api/balance", async () =>
+app.MapGet("/api/balance", async (string? productId) =>
 {
     if (!validCredentials) return Results.Unauthorized();
     if (await failure.ApplyAsync()) return Results.StatusCode(failure.StatusCode);
@@ -71,7 +75,7 @@ app.MapGet("/api/balance", async () =>
     });
 });
 
-app.MapGet("/api/actions", () => Results.Ok(actions.Values
+app.MapGet("/api/actions", (string? productId) => Results.Ok(actions.Values
     .Where(x => DateTimeOffset.UtcNow >= x.VisibleAt)
     .OrderBy(x => x.Start)));
 
@@ -310,4 +314,9 @@ public sealed record MockDuplicateRequest(bool Enabled);
 public sealed record MockOmitCreatedBodyRequest(bool Enabled);
 
 public sealed record MockCategory(string Id, string Name);
-public sealed record MockProduct(string Id, string Name, string Location);
+public sealed record MockProduct(
+    string Id,
+    string Name,
+    string Location,
+    string? CategoryId = null,
+    string? CategoryName = null);
