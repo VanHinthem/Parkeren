@@ -176,6 +176,32 @@ Een uitgangspunt voor het volledige beheerportaal is dat backendvariabelen niet 
 - audit/providerhistorie;
 - systeemstatus/diagnostiek.
 
+## Vastgestelde beheerarchitectuur — 1 oktober 2026
+
+De eerste backendinventarisatie voor #95 is afgerond.
+
+Belangrijkste conclusie: veel benodigde domeinlogica bestaat al. Default/user policies, versioned parkeerregels, betaalvensters, kalenderuitzonderingen, provider-sessieduur, continuation, tarieven, budgetberekening, Visit/provider lifecycle en recovery zijn reeds als domeinconcept aanwezig. De belangrijkste resterende werkzaamheden zijn beheergerichte application services/API's, read models en de desktop frontend.
+
+Nieuwe domeinconcepten zijn met name nodig voor:
+
+- parkeerzones/multi-zoneconfiguratie;
+- persistente discrepancies voor traceerbare reconciliation.
+
+Het beheerportaal krijgt zes hoofdgebieden:
+
+1. **Overzicht** — operationele status, actieve Visits, capaciteit, saldo en waarschuwingen;
+2. **Bezoeken** — actief, historie, detail, verbruik en kosten;
+3. **Gebruikers & voertuigen** — accounts, voertuigen, toewijzingen en user policies;
+4. **Parkeerconfiguratie** — zones, rulesets, betaalvensters, uitzonderingen, tarieven en budgetperioden;
+5. **Provider & reconciliatie** — providerstatus/actions/operations, discrepancies en recoverycontext;
+6. **Systeem** — algemene policies/settings, notificaties, diagnostiek, scheduler/push en audit.
+
+Historische/providerdata is in beginsel read-only. Mutaties lopen via expliciete application/domain-use-cases; `/beheer` wordt geen generieke database-editor.
+
+Functionele configuratie wordt beheerbaar, maar secrets zoals database-/2Park-credentials en VAPID private keys blijven environment/secrets en worden niet via het portaal wijzigbaar.
+
+Zie voor de volledige inventarisatie en pagina-indeling `docs/technisch/beheerarchitectuur.md`.
+
 ## Exit
 
 Fase 8 is gereed wanneer:
