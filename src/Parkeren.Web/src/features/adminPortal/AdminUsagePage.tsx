@@ -141,6 +141,7 @@ export function AdminUsagePage(){
     <nav className="admin-usage__tabs" aria-label="Bezoeken">
       <a className="admin-usage__tab" href="/beheer/bezoeken">Bezoeken</a>
       <a className="admin-usage__tab active" href="/beheer/verbruik">Verbruik & kosten</a>
+      <a className="admin-usage__tab" href="/beheer/analyse">Analyse</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
