@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.Administration;
 using Parkeren.Domain.Notifications;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
