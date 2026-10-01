@@ -631,6 +631,49 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/admin/parking-rules", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await administration.GetParkingRuleSetsAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/parking-rules", async (
+    AdminParkingRuleSetCreateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.CreateParkingRuleSetVersionAsync(
+        authenticated.User.Id,
+        request.ValidFrom,
+        request.MaxProviderActionDurationMinutes,
+        request.Continuation,
+        request.PublicHolidaysAreFree,
+        request.PaidWindows,
+        request.CalendarExceptions,
+        DateTimeOffset.UtcNow,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminParkingRuleSetCreateOutcome.Created => Results.Ok(result),
+        AdminParkingRuleSetCreateOutcome.SequenceConflict => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
 app.MapGet("/api/admin/system/settings", async (
     IAdministrationService administration,
     IAuthenticationService authentication,
@@ -1547,6 +1590,13 @@ public sealed record CreateUserRequest(string Username, string Pin, UserRole Rol
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
+public sealed record AdminParkingRuleSetCreateRequest(
+    DateTimeOffset ValidFrom,
+    int MaxProviderActionDurationMinutes,
+    ProviderCoverageContinuation Continuation,
+    bool PublicHolidaysAreFree,
+    IReadOnlyList<AdminPaidWindowInput> PaidWindows,
+    IReadOnlyList<AdminCalendarExceptionInput> CalendarExceptions);
 public sealed record AdminDefaultPolicyUpdateRequest(
     int? MaxPaidParkingDurationMinutes,
     int? MaxVisitElapsedDurationMinutes,
