@@ -225,6 +225,7 @@ public sealed record AdminVisitDetail(
     IReadOnlyList<AdminProviderParkingActionSummary> ProviderActions,
     IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,
     IReadOnlyList<AdminVisitEndTimeChangeSummary> EndTimeChanges,
+    AdminParkingZoneSummary? ParkingZone,
     IReadOnlyList<AdminRuleSetSummary> RelevantRuleSets);
 
 public sealed record AdminParkingPolicyValues(
