@@ -18,7 +18,7 @@ public sealed class ParkingProviderMockTests
         var categories = await provider.GetCategoriesAsync(cancellationToken);
         Assert.Contains(categories, x => x.Id == "oss");
         var product = await provider.GetProductAsync(cancellationToken);
-        Assert.Equal("Oss", product.Location);
+        Assert.Equal("OSS_J", product.Location);
 
         var balance = await provider.GetBalanceAsync(cancellationToken);
         Assert.True(balance.RemainingBalance > 0);
