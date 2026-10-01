@@ -14,7 +14,8 @@ namespace Parkeren.Infrastructure.Administration;
 internal sealed class AdministrationService(
     ParkerenDbContext dbContext,
     IPasswordHasher<User> passwordHasher,
-    IStartVisitOperationalContextResolver operationalContextResolver) : IAdministrationService
+    IStartVisitOperationalContextResolver operationalContextResolver,
+    IAdminAuditWriter auditWriter) : IAdministrationService
 {
     public async Task<IReadOnlyList<UserSummary>> GetUsersAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
@@ -61,6 +62,13 @@ internal sealed class AdministrationService(
         }
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserCreated",
+            "User",
+            user.Id.ToString(),
+            new { user.Username, Role = user.Role.ToString(), user.IsActive },
+            cancellationToken);
         return new CreateUserResult(user.Id, user.Username, user.Role, user.IsActive);
     }
 
@@ -80,6 +88,13 @@ internal sealed class AdministrationService(
 
         if (isActive) user.Activate(); else user.Deactivate();
         await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            isActive ? "UserActivated" : "UserDeactivated",
+            "User",
+            user.Id.ToString(),
+            new { user.Username },
+            cancellationToken);
         return true;
     }
 
@@ -178,6 +193,13 @@ internal sealed class AdministrationService(
         var vehicle = new Vehicle(Guid.NewGuid(), normalized, normalized, string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim());
         dbContext.Vehicles.Add(vehicle);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "VehicleCreated",
+            "Vehicle",
+            vehicle.Id.ToString(),
+            new { vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive },
+            cancellationToken);
         return new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive);
     }
 
@@ -197,6 +219,13 @@ internal sealed class AdministrationService(
 
         if (isActive) vehicle.Activate(); else vehicle.Deactivate();
         await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            isActive ? "VehicleActivated" : "VehicleDeactivated",
+            "Vehicle",
+            vehicle.Id.ToString(),
+            new { vehicle.LicensePlate },
+            cancellationToken);
         return true;
     }
 
