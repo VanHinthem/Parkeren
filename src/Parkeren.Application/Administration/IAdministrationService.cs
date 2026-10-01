@@ -63,8 +63,23 @@ public interface IAdministrationService
     Task<IReadOnlyList<AdminParkingRuleSetVersion>> GetParkingRuleSetsAsync(
         Guid actorUserId,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminParkingRuleSetVersion>> GetParkingRuleSetsForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
+        CancellationToken cancellationToken);
     Task<AdminParkingRuleSetCreateResult> CreateParkingRuleSetVersionAsync(
         Guid actorUserId,
+        DateTimeOffset validFrom,
+        int maxProviderActionDurationMinutes,
+        ProviderCoverageContinuation continuation,
+        bool publicHolidaysAreFree,
+        IReadOnlyList<AdminPaidWindowInput> paidWindows,
+        IReadOnlyList<AdminCalendarExceptionInput> calendarExceptions,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+    Task<AdminParkingRuleSetCreateResult> CreateParkingRuleSetVersionForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
         DateTimeOffset validFrom,
         int maxProviderActionDurationMinutes,
         ProviderCoverageContinuation continuation,
@@ -314,6 +329,7 @@ public sealed record AdminCalendarExceptionSummary(
 
 public sealed record AdminParkingRuleSetVersion(
     Guid Id,
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     DateTimeOffset? ValidUntil,
     int MaxProviderActionDurationMinutes,
