@@ -1075,13 +1075,13 @@ internal sealed class AdministrationService(
 
     public async Task<AdminCostReport> GetCostReportAsync(
         Guid actorUserId,
-        DateTimeOffset from,
-        DateTimeOffset to,
+        DateTimeOffset reportFrom,
+        DateTimeOffset reportTo,
         CancellationToken cancellationToken)
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
-        if (to <= from)
-            throw new ArgumentException("To must be after from.", nameof(to));
+        if (reportTo <= reportFrom)
+            throw new ArgumentException("To must be after from.", nameof(reportTo));
 
         var rows = await (
             from visit in dbContext.Visits.AsNoTracking()
@@ -1089,8 +1089,8 @@ internal sealed class AdministrationService(
             join vehicle in dbContext.Vehicles.AsNoTracking() on visit.VehicleId equals vehicle.Id
             where visit.Status == VisitStatus.Completed &&
                   visit.ActualEndAt.HasValue &&
-                  visit.StartAt < to &&
-                  visit.ActualEndAt.Value > from
+                  visit.StartAt < reportTo &&
+                  visit.ActualEndAt.Value > reportFrom
             orderby visit.StartAt descending
             select new
             {
@@ -1100,18 +1100,18 @@ internal sealed class AdministrationService(
             })
             .ToListAsync(cancellationToken);
 
-        var ruleSets = await LoadRuleSetsAsync(from, to, cancellationToken);
+        var ruleSets = await LoadRuleSetsAsync(reportFrom, reportTo, cancellationToken);
         var tariffs = await dbContext.ParkingTariffs.AsNoTracking()
-            .Where(x => x.ValidFrom < to && (x.ValidUntil == null || x.ValidUntil > from))
+            .Where(x => x.ValidFrom < reportTo && (x.ValidUntil == null || x.ValidUntil > reportFrom))
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
         var visitCosts = new List<AdminVisitCostSummary>(rows.Count);
         foreach (var row in rows)
         {
-            var segmentStart = row.Visit.StartAt > from ? row.Visit.StartAt : from;
+            var segmentStart = row.Visit.StartAt > reportFrom ? row.Visit.StartAt : reportFrom;
             var actualEnd = row.Visit.ActualEndAt!.Value;
-            var segmentEnd = actualEnd < to ? actualEnd : to;
+            var segmentEnd = actualEnd < reportTo ? actualEnd : reportTo;
 
             try
             {
@@ -1176,8 +1176,8 @@ internal sealed class AdministrationService(
         var isComplete = visitCosts.All(x => x.IsComplete);
         var hasCompletePaidDurations = visitCosts.All(x => x.PaidDurationMinutes.HasValue);
         return new AdminCostReport(
-            from,
-            to,
+            reportFrom,
+            reportTo,
             hasCompletePaidDurations ? visitCosts.Sum(x => x.PaidDurationMinutes!.Value) : null,
             isComplete ? visitCosts.Sum(x => x.Amount!.Value) : null,
             isComplete,
