@@ -631,6 +631,46 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/admin/dashboard", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return Results.Ok(await administration.GetDashboardAsync(
+        authenticated.User.Id,
+        DateTimeOffset.UtcNow,
+        cancellationToken));
+});
+
+app.MapGet("/api/admin/users/{userId:guid}/parking-policy", async (
+    Guid userId,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    var policy = await administration.GetUserParkingPolicyAsync(
+        authenticated.User.Id,
+        userId,
+        DateTimeOffset.UtcNow,
+        cancellationToken);
+
+    return policy is null ? Results.NotFound() : Results.Ok(policy);
+});
+
 app.MapGet("/api/visits/policy", async (
     IStartVisitOperationalContextResolver operationalContextResolver,
     IAuthenticationService authentication,
