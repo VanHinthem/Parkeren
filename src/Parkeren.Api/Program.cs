@@ -631,6 +631,125 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/admin/budgets", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await administration.GetBudgetPeriodsAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/budgets", async (
+    AdminBudgetPeriodCreateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.CreateBudgetPeriodAsync(
+        authenticated.User.Id,
+        request.ValidFrom,
+        request.ValidUntil,
+        request.MaximumPaidDurationMinutes,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminBudgetPeriodCreateOutcome.Created => Results.Ok(result),
+        AdminBudgetPeriodCreateOutcome.Overlap => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
+app.MapGet("/api/admin/budgets/usage", async (
+    Guid? periodId,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.GetBudgetUsageAsync(
+        authenticated.User.Id,
+        periodId,
+        DateTimeOffset.UtcNow,
+        cancellationToken);
+
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+app.MapGet("/api/admin/tariffs", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await administration.GetParkingTariffsAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/tariffs", async (
+    AdminParkingTariffCreateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.CreateParkingTariffAsync(
+        authenticated.User.Id,
+        request.ValidFrom,
+        request.ValidUntil,
+        request.Rate,
+        request.Unit,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminParkingTariffCreateOutcome.Created => Results.Ok(result),
+        AdminParkingTariffCreateOutcome.Overlap => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
+app.MapGet("/api/admin/costs", async (
+    DateTimeOffset from,
+    DateTimeOffset to,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    if (to <= from) return Results.BadRequest(new { error = "to moet na from liggen." });
+
+    return Results.Ok(await administration.GetCostReportAsync(
+        authenticated.User.Id,
+        from,
+        to,
+        cancellationToken));
+});
+
 app.MapGet("/api/admin/parking-rules", async (
     IAdministrationService administration,
     IAuthenticationService authentication,
@@ -1590,6 +1709,15 @@ public sealed record CreateUserRequest(string Username, string Pin, UserRole Rol
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
+public sealed record AdminBudgetPeriodCreateRequest(
+    DateTimeOffset ValidFrom,
+    DateTimeOffset ValidUntil,
+    int MaximumPaidDurationMinutes);
+public sealed record AdminParkingTariffCreateRequest(
+    DateTimeOffset ValidFrom,
+    DateTimeOffset? ValidUntil,
+    decimal Rate,
+    ParkingTariffUnit Unit);
 public sealed record AdminParkingRuleSetCreateRequest(
     DateTimeOffset ValidFrom,
     int MaxProviderActionDurationMinutes,
