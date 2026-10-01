@@ -126,6 +126,20 @@ internal sealed class AdministrationService(
 
         var settings = await dbContext.ParkingSystemSettings.SingleAsync(cancellationToken);
         settings.SetMaxConcurrentVisits(maxConcurrentVisits);
+
+        var defaults = await dbContext.DefaultParkingPolicies
+            .OrderByDescending(x => x.UpdatedAt)
+            .FirstAsync(cancellationToken);
+        if (defaults.MaxConcurrentVisits > maxConcurrentVisits)
+        {
+            defaults.SetValues(
+                defaults.MaxPaidParkingDuration,
+                defaults.MaxVisitElapsedDuration,
+                defaults.AllowVisitExtension,
+                defaults.AllowOpenEndedVisits,
+                maxConcurrentVisits);
+        }
+
         var overrides = await dbContext.UserPolicyOverrides
             .Where(x => x.MaxConcurrentVisits > maxConcurrentVisits)
             .ToListAsync(cancellationToken);
@@ -525,6 +539,233 @@ internal sealed class AdministrationService(
             PolicyDurationOverrideMode.Value => minutes is > 0,
             _ => false
         };
+
+    public async Task<AdminSystemSettingsSummary> GetSystemSettingsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        var defaults = await dbContext.DefaultParkingPolicies.AsNoTracking()
+            .OrderByDescending(x => x.UpdatedAt)
+            .FirstAsync(cancellationToken);
+        var settings = await dbContext.ParkingSystemSettings.AsNoTracking()
+            .SingleAsync(cancellationToken);
+
+        return CreateSystemSettingsSummary(defaults, settings);
+    }
+
+    public async Task<AdminDefaultPolicyUpdateResult> SetDefaultParkingPolicyAsync(
+        Guid actorUserId,
+        int? maxPaidParkingDurationMinutes,
+        int? maxVisitElapsedDurationMinutes,
+        bool allowVisitExtension,
+        bool allowOpenEndedVisits,
+        int maxConcurrentVisits,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        if (maxPaidParkingDurationMinutes <= 0 ||
+            maxVisitElapsedDurationMinutes <= 0 ||
+            maxConcurrentVisits <= 0)
+        {
+            var current = await dbContext.DefaultParkingPolicies.AsNoTracking()
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstAsync(cancellationToken);
+            return new AdminDefaultPolicyUpdateResult(
+                AdminDefaultPolicyUpdateOutcome.Invalid,
+                0,
+                Array.Empty<AdminDefaultPolicyField>(),
+                ToAdminParkingPolicyValues(current));
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+
+        var defaults = await dbContext.DefaultParkingPolicies
+            .OrderByDescending(x => x.UpdatedAt)
+            .FirstAsync(cancellationToken);
+        var globalLimit = await dbContext.ParkingSystemSettings
+            .Select(x => x.MaxConcurrentVisits)
+            .SingleAsync(cancellationToken);
+
+        if (maxConcurrentVisits > globalLimit)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new AdminDefaultPolicyUpdateResult(
+                AdminDefaultPolicyUpdateOutcome.Invalid,
+                0,
+                Array.Empty<AdminDefaultPolicyField>(),
+                ToAdminParkingPolicyValues(defaults));
+        }
+
+        var proposedPaid = ToDuration(maxPaidParkingDurationMinutes);
+        var proposedElapsed = ToDuration(maxVisitElapsedDurationMinutes);
+
+        var changedFields = new HashSet<AdminDefaultPolicyField>();
+        if (defaults.MaxPaidParkingDuration != proposedPaid)
+            changedFields.Add(AdminDefaultPolicyField.MaxPaidParkingDuration);
+        if (defaults.MaxVisitElapsedDuration != proposedElapsed)
+            changedFields.Add(AdminDefaultPolicyField.MaxVisitElapsedDuration);
+        if (defaults.AllowVisitExtension != allowVisitExtension)
+            changedFields.Add(AdminDefaultPolicyField.AllowVisitExtension);
+        if (defaults.AllowOpenEndedVisits != allowOpenEndedVisits)
+            changedFields.Add(AdminDefaultPolicyField.AllowOpenEndedVisits);
+        if (defaults.MaxConcurrentVisits != maxConcurrentVisits)
+            changedFields.Add(AdminDefaultPolicyField.MaxConcurrentVisits);
+
+        if (changedFields.Count == 0)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new AdminDefaultPolicyUpdateResult(
+                AdminDefaultPolicyUpdateOutcome.Updated,
+                0,
+                Array.Empty<AdminDefaultPolicyField>(),
+                ToAdminParkingPolicyValues(defaults));
+        }
+
+        var activeVisits = await dbContext.Visits.AsNoTracking()
+            .Where(x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled)
+            .GroupBy(x => x.UserId)
+            .Select(x => new { UserId = x.Key, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        if (activeVisits.Count > 0)
+        {
+            var activeUserIds = activeVisits.Select(x => x.UserId).ToArray();
+            var overrides = await dbContext.UserPolicyOverrides.AsNoTracking()
+                .Where(x => activeUserIds.Contains(x.UserId))
+                .ToDictionaryAsync(x => x.UserId, cancellationToken);
+
+            var blockedFields = new HashSet<AdminDefaultPolicyField>();
+            var affectedVisitCount = 0;
+
+            foreach (var activeUser in activeVisits)
+            {
+                overrides.TryGetValue(activeUser.UserId, out var policyOverride);
+                var userAffected = false;
+
+                foreach (var field in changedFields)
+                {
+                    if (!InheritsDefault(policyOverride, field))
+                        continue;
+
+                    blockedFields.Add(field);
+                    userAffected = true;
+                }
+
+                if (userAffected)
+                    affectedVisitCount += activeUser.Count;
+            }
+
+            if (blockedFields.Count > 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AdminDefaultPolicyUpdateResult(
+                    AdminDefaultPolicyUpdateOutcome.ActiveVisitConflict,
+                    affectedVisitCount,
+                    blockedFields.OrderBy(x => x).ToArray(),
+                    ToAdminParkingPolicyValues(defaults));
+            }
+        }
+
+        defaults.SetValues(
+            proposedPaid,
+            proposedElapsed,
+            allowVisitExtension,
+            allowOpenEndedVisits,
+            maxConcurrentVisits);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new AdminDefaultPolicyUpdateResult(
+            AdminDefaultPolicyUpdateOutcome.Updated,
+            0,
+            Array.Empty<AdminDefaultPolicyField>(),
+            ToAdminParkingPolicyValues(defaults));
+    }
+
+    public async Task<AdminWarningSettingsUpdateResult> SetWarningSettingsAsync(
+        Guid actorUserId,
+        int? longVisitWarningAfterMinutes,
+        bool notifyAdminOnLongVisit,
+        int? longVisitReminderIntervalMinutes,
+        IReadOnlyList<int> budgetWarningThresholdPercentages,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        var settings = await dbContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+        if (longVisitWarningAfterMinutes <= 0 ||
+            longVisitReminderIntervalMinutes <= 0 ||
+            budgetWarningThresholdPercentages.Count == 0 ||
+            budgetWarningThresholdPercentages.Any(x => x <= 0 || x > 100) ||
+            budgetWarningThresholdPercentages.Distinct().Count() != budgetWarningThresholdPercentages.Count)
+        {
+            var defaults = await dbContext.DefaultParkingPolicies.AsNoTracking()
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstAsync(cancellationToken);
+            return new AdminWarningSettingsUpdateResult(
+                AdminWarningSettingsUpdateOutcome.Invalid,
+                CreateSystemSettingsSummary(defaults, settings));
+        }
+
+        settings.SetLongVisitNotifications(
+            ToDuration(longVisitWarningAfterMinutes),
+            notifyAdminOnLongVisit,
+            ToDuration(longVisitReminderIntervalMinutes));
+        settings.SetBudgetWarningThresholdPercentages(budgetWarningThresholdPercentages);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var currentDefaults = await dbContext.DefaultParkingPolicies.AsNoTracking()
+            .OrderByDescending(x => x.UpdatedAt)
+            .FirstAsync(cancellationToken);
+        return new AdminWarningSettingsUpdateResult(
+            AdminWarningSettingsUpdateOutcome.Updated,
+            CreateSystemSettingsSummary(currentDefaults, settings));
+    }
+
+    private static bool InheritsDefault(
+        UserPolicyOverride? policyOverride,
+        AdminDefaultPolicyField field) =>
+        field switch
+        {
+            AdminDefaultPolicyField.MaxPaidParkingDuration =>
+                policyOverride?.MaxPaidParkingDurationMode is null or PolicyDurationOverrideMode.Inherit,
+            AdminDefaultPolicyField.MaxVisitElapsedDuration =>
+                policyOverride?.MaxVisitElapsedDurationMode is null or PolicyDurationOverrideMode.Inherit,
+            AdminDefaultPolicyField.AllowVisitExtension =>
+                policyOverride?.AllowVisitExtension is null,
+            AdminDefaultPolicyField.AllowOpenEndedVisits =>
+                policyOverride?.AllowOpenEndedVisits is null,
+            AdminDefaultPolicyField.MaxConcurrentVisits =>
+                policyOverride?.MaxConcurrentVisits is null,
+            _ => throw new ArgumentOutOfRangeException(nameof(field))
+        };
+
+    private static AdminParkingPolicyValues ToAdminParkingPolicyValues(DefaultParkingPolicy defaults) =>
+        new(
+            ToMinutes(defaults.MaxPaidParkingDuration),
+            ToMinutes(defaults.MaxVisitElapsedDuration),
+            defaults.AllowVisitExtension,
+            defaults.AllowOpenEndedVisits,
+            defaults.MaxConcurrentVisits);
+
+    private static AdminSystemSettingsSummary CreateSystemSettingsSummary(
+        DefaultParkingPolicy defaults,
+        ParkingSystemSettings settings) =>
+        new(
+            ToAdminParkingPolicyValues(defaults),
+            defaults.UpdatedAt,
+            settings.MaxConcurrentVisits,
+            ToMinutes(settings.LongVisitWarningAfter),
+            settings.NotifyAdminOnLongVisit,
+            ToMinutes(settings.LongVisitReminderInterval),
+            settings.BudgetWarningThresholdPercentages,
+            settings.UpdatedAt);
 
     public async Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
