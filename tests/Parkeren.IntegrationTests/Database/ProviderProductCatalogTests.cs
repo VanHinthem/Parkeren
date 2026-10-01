@@ -98,6 +98,7 @@ public sealed class ProviderProductCatalogTests(PostgreSqlFixture fixture)
     private async Task ClearProductsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
+        await context.ProviderDiscrepancies.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingProviderProducts.ExecuteDeleteAsync(cancellationToken);
     }
 
