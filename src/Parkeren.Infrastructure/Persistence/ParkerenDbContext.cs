@@ -35,6 +35,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
     public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
+    public DbSet<ProviderDiscrepancy> ProviderDiscrepancies => Set<ProviderDiscrepancy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -167,6 +168,28 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Location).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.ProviderProductId).IsUnique();
             entity.HasIndex(x => x.IsDefault).IsUnique().HasFilter("\"IsDefault\" = TRUE");
+        });
+
+        modelBuilder.Entity<ProviderDiscrepancy>(entity =>
+        {
+            entity.ToTable("provider_discrepancies");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ProviderActionId).HasMaxLength(200);
+            entity.Property(x => x.ProviderStatus).HasMaxLength(100);
+            entity.Property(x => x.Version).IsRowVersion();
+            entity.HasIndex(x => x.Key)
+                .IsUnique()
+                .HasFilter("\"Status\" = 'Open'");
+            entity.HasIndex(x => new { x.Status, x.LastObservedAt });
+            entity.HasIndex(x => x.ProviderProductId);
+            entity.HasIndex(x => x.VisitId);
+            entity.HasIndex(x => x.ProviderParkingActionId);
+            entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
