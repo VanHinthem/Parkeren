@@ -340,6 +340,24 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
           </section>
 
           <section className="admin-visits__panel admin-visit-detail__section">
+            <h2>Parkeerzone</h2>
+            {detail.parkingZone
+              ? <div className="admin-visit-detail__list">
+                  <div className="admin-visit-detail__row">
+                    <div className="admin-visit-detail__row-head">
+                      <strong>{detail.parkingZone.name}</strong>
+                      <span>{detail.parkingZone.isDefault?"Defaultzone":"Zone"}</span>
+                    </div>
+                    <div className="admin-visit-detail__row-meta">
+                      <span>Provider-location: {detail.parkingZone.providerLocation}</span>
+                      <span>Geldig: {formatDateTime(detail.parkingZone.validFrom)} – {formatDateTime(detail.parkingZone.validUntil)}</span>
+                    </div>
+                  </div>
+                </div>
+              : <p className="admin-visit-detail__muted">Geen zone vastgelegd (legacy Visit).</p>}
+          </section>
+
+          <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Relevante parkeerregelversies</h2>
             {detail.relevantRuleSets.length===0
               ? <p className="admin-visit-detail__muted">Geen parkeerregelversie gevonden voor deze periode.</p>
