@@ -556,9 +556,9 @@ internal sealed class AdministrationService(
         IReadOnlyList<ParkingRuleSet> ruleSets)
     {
         int? paidDurationMinutes = null;
-        var end = visit.ActualEndAt ?? (visit.Status is VisitStatus.Completed or VisitStatus.Cancelled
-            ? visit.DesiredEndAt
-            : now);
+        var end = visit.Status == VisitStatus.Cancelled
+            ? null
+            : visit.ActualEndAt ?? (visit.Status == VisitStatus.Completed ? null : now);
 
         if (end.HasValue && end.Value > visit.StartAt && ruleSets.Count > 0)
         {
