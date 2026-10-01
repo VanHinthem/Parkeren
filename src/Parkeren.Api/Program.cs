@@ -649,6 +649,56 @@ app.MapGet("/api/admin/dashboard", async (
         cancellationToken));
 });
 
+app.MapGet("/api/admin/users/{userId:guid}/detail", async (
+    Guid userId,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    var detail = await administration.GetUserDetailAsync(authenticated.User.Id, userId, cancellationToken);
+    return detail is null ? Results.NotFound() : Results.Ok(detail);
+});
+
+app.MapPut("/api/admin/users/{userId:guid}/policy", async (
+    Guid userId,
+    AdminUserPolicyUpdateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    var result = await administration.SetUserPolicyAsync(
+        authenticated.User.Id,
+        userId,
+        request.MaxPaidParkingDurationMinutes,
+        request.MaxVisitElapsedDurationMinutes,
+        request.AllowVisitExtension,
+        request.AllowOpenEndedVisits,
+        request.MaxConcurrentVisits,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminUserPolicyUpdateOutcome.Updated => Results.Ok(result),
+        AdminUserPolicyUpdateOutcome.NotFound => Results.NotFound(),
+        AdminUserPolicyUpdateOutcome.ActiveVisitConflict => Results.Conflict(result),
+        _ => Results.BadRequest(new { error = "Ongeldige gebruikerspolicy." })
+    };
+});
+
 app.MapGet("/api/admin/users/{userId:guid}/parking-policy", async (
     Guid userId,
     IAdministrationService administration,
@@ -1269,7 +1319,16 @@ app.MapPut("/api/admin/users/{userId:guid}/active", async (
     var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
-    return await administration.SetUserActiveAsync(authenticated.User.Id, userId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
+    try
+    {
+        return await administration.SetUserActiveAsync(authenticated.User.Id, userId, request.IsActive, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
 });
 
 app.MapPut("/api/admin/users/{userId:guid}/policy/max-concurrent-visits", async (
@@ -1329,7 +1388,16 @@ app.MapPut("/api/admin/vehicles/{vehicleId:guid}/active", async (
     var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
-    return await administration.SetVehicleActiveAsync(authenticated.User.Id, vehicleId, request.IsActive, cancellationToken) ? Results.NoContent() : Results.NotFound();
+    try
+    {
+        return await administration.SetVehicleActiveAsync(authenticated.User.Id, vehicleId, request.IsActive, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
 });
 
 app.MapGet("/api/admin/users/{userId:guid}/vehicles", async (
@@ -1412,6 +1480,12 @@ public sealed record CreateUserRequest(string Username, string Pin, UserRole Rol
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
+public sealed record AdminUserPolicyUpdateRequest(
+    int? MaxPaidParkingDurationMinutes,
+    int? MaxVisitElapsedDurationMinutes,
+    bool? AllowVisitExtension,
+    bool? AllowOpenEndedVisits,
+    int? MaxConcurrentVisits);
 public sealed record StartVisitRequest(Guid OperationId, Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 public sealed record StopVisitRequest(Guid OperationId);
 public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);
