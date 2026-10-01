@@ -239,6 +239,7 @@ De beheerimplementatie staat inmiddels op **slice 8.5 afgerond**:
 - 8.3 Visit-detail & beheerhistorie ✅
 - 8.4 providerstatus & officieel saldo ✅
 - 8.5 gebruikers & voertuigen ✅
+- 8.6 algemene policies/settings ✅
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -267,7 +268,31 @@ Server-side beveiliging:
 
 De duur-overrides zijn aangescherpt naar drie expliciete toestanden: **Standaard**, **Limiet** en **Onbeperkt**. Dit wordt persistent vastgelegd via `PolicyDurationOverrideMode`, zodat een begrensde default per gebruiker expliciet onbeperkt kan worden gemaakt zonder ambigu `null`-gedrag.
 
-Volgende slice: **8.6 Algemene policies/settings**.
+### 8.6 Algemene policies/settings
+
+Beschikbaar op `/beheer/systeem`:
+
+- standaard user policy beheren;
+- maximale betaalde parkeertijd begrensd of onbeperkt;
+- maximale totale Visitduur begrensd of onbeperkt;
+- `AllowVisitExtension`;
+- `AllowOpenEndedVisits`;
+- default `MaxConcurrentVisits`;
+- globale capaciteit;
+- Long Visit-warningtijd;
+- adminnotificatie bij Long Visit;
+- Long Visit-reminderinterval;
+- budgetwaarschuwingsdrempels.
+
+Default-policywijzigingen worden server-side **per veld** getoetst tegen actieve Visits. Alleen actieve gebruikers die het gewijzigde veld van de default erven blokkeren de wijziging. De UI toont bij een conflict het aantal geraakte actieve Visits en de betreffende velden.
+
+De globale capaciteit behoudt de strengere bestaande lock: wijzigen kan niet zolang er actieve Visits zijn. Bij verlagen worden hogere user-overrides én de default concurrency automatisch naar het nieuwe globale maximum geklemd.
+
+Long Visit scheduler-semantiek: bestaande reeds geplande warning-work behoudt zijn huidige `DueAt`. Nieuwe Visits gebruiken de nieuwe warning threshold; wanneer een warning wordt verwerkt gebruikt de worker de actuele admin-notificatie- en reminderinstellingen.
+
+Generieke persistente beheer-audit volgt in 8.12; daarom blijft #74 nog open ondanks dat de functionele default/user policy-beheercriteria zijn gerealiseerd.
+
+Volgende slice: **8.7 Parkeerregels**.
 
 ## Exit
 
