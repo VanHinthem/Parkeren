@@ -37,7 +37,7 @@ Dit is geen tweede backend. Het beheerportaal gebruikt dezelfde API, domeinlogic
 Het portaal is bedoeld voor volledige backendconfiguratie en beheer, waaronder uiteindelijk:
 
 - gebruikers, voertuigen en toewijzingen;
-- parkeerzones en geldigheidsperiodes;
+- providerproducten en productgebonden parkeerconfiguratie;
 - parkeerregels en betaalvensters;
 - provider- en systeemlimieten;
 - algemene en per-user policies;
@@ -265,7 +265,7 @@ Voorbeelden:
 
 ## Realisatiestatus beheerportaal — 1 oktober 2026
 
-De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.8:
+De beheerimplementatie staat inmiddels op **slice 8.10 in CI-validatie**:
 
 - **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
@@ -276,6 +276,7 @@ De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.8:
 - **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation;
 - **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage;
 - **8.9 Analyse** — periodeaggregatie per bezoeker/kenteken met historische kosten en Visit-drill-down.
+- **8.10 Providerproducten** — gesynchroniseerde 2Park-productcatalogus, expliciet defaultproduct, Visit/action-productsnapshot en product-scoped rules, tarieven en budgetten.
 
 Voor user policy overrides geldt in 8.5:
 
