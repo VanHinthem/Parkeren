@@ -6,6 +6,10 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import {
+  providerDiscrepancyContextLabel,
+  providerDiscrepancyTypeLabel
+} from "./providerDiscrepancyPresentation";
 import "./AdminProvider.css";
 
 function formatDateTime(value:string|null){
@@ -14,28 +18,8 @@ function formatDateTime(value:string|null){
     : "—";
 }
 
-function typeLabel(type:AdminProviderDiscrepancy["type"]){
-  switch(type){
-    case "MissingProviderAction": return "Actie ontbreekt bij 2Park";
-    case "ProviderActionStatusMismatch": return "Providerstatus wijkt af";
-    case "ProviderActionEndMismatch": return "Eindtijd wijkt af";
-    case "ExternalProviderAction": return "Externe 2Park-actie";
-    case "BalanceMismatch": return "Saldo-afwijking";
-  }
-}
-
 function statusLabel(status:AdminProviderDiscrepancy["status"]){
   return status==="Open"?"Open":"Opgelost";
-}
-
-function contextLabel(item:AdminProviderDiscrepancy){
-  if(item.localProviderActionState&&item.providerStatus)
-    return `Lokaal: ${item.localProviderActionState} · 2Park: ${item.providerStatus}`;
-  if(item.localProviderActionState)
-    return `Lokaal: ${item.localProviderActionState}`;
-  if(item.providerStatus)
-    return `2Park: ${item.providerStatus}`;
-  return "Geen aanvullende statuscontext";
 }
 
 export function AdminProviderDiscrepanciesPage(){
@@ -110,14 +94,14 @@ export function AdminProviderDiscrepanciesPage(){
         <div className="admin-provider__discrepancy-heading">
           <div>
             <div className="admin-provider__discrepancy-title">
-              <h2>{typeLabel(item.type)}</h2>
+              <h2>{providerDiscrepancyTypeLabel(item.type)}</h2>
               <span className={item.status==="Open"
                 ?"admin-provider__state admin-provider__state--error"
                 :"admin-provider__state"}>
                 {statusLabel(item.status)}
               </span>
             </div>
-            <p>{contextLabel(item)}</p>
+            <p>{providerDiscrepancyContextLabel(item)}</p>
           </div>
           {item.visitId&&<a className="admin-provider__link" href={`/beheer/bezoeken/${item.visitId}`}>
             Visit openen
