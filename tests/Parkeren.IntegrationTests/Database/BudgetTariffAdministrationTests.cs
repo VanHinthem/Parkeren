@@ -92,8 +92,6 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
                 new DateTimeOffset(2026, 9, 28, 8, 0, 0, localOffset),
                 new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset),
                 ct);
-            vehicleId = visitor.VehicleId;
-
             await using var administration = CreateAdministration();
             var budget = await administration.Service.CreateBudgetPeriodAsync(
                 admin.Id, periodFrom, periodUntil, 10 * 60, ct);
