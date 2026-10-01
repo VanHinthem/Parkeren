@@ -85,7 +85,9 @@ public sealed class ContinueVisitProviderExecutor(
             // A scheduler/recovery continuation must never rely on local state alone.
             // Read the current provider action immediately before the mutation so a
             // continuation already applied externally or during downtime is not repeated.
-            var currentActions = await provider.GetActionsAsync(cancellationToken);
+            var currentActions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+                ? await provider.GetActionsAsync(cancellationToken)
+                : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
             var currentAction = currentActions.SingleOrDefault(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId);
 
@@ -122,12 +124,20 @@ public sealed class ContinueVisitProviderExecutor(
                 return new(preparation, currentAction, true);
             }
 
-            var action = await provider.ExtendActionAsync(
-                preparation.Action.ProviderActionId,
-                preparation.ProviderEndAt,
-                cancellationToken);
+            var action = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+                ? await provider.ExtendActionAsync(
+                    preparation.Action.ProviderActionId,
+                    preparation.ProviderEndAt,
+                    cancellationToken)
+                : await provider.ExtendActionForProductAsync(
+                    preparation.Action.ProviderProductId,
+                    preparation.Action.ProviderActionId,
+                    preparation.ProviderEndAt,
+                    cancellationToken);
 
-            var actions = await provider.GetActionsAsync(cancellationToken);
+            var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+                ? await provider.GetActionsAsync(cancellationToken)
+                : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
             var confirmed = actions.SingleOrDefault(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId &&
                 string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
@@ -191,7 +201,9 @@ public sealed class ContinueVisitProviderReconciler(
         var requestedEndAt = preparation.Operation.RequestedEndAt
             ?? throw new InvalidOperationException("Provider continuation requires a persisted requested end.");
 
-        var actions = await provider.GetActionsAsync(cancellationToken);
+        var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+            ? await provider.GetActionsAsync(cancellationToken)
+            : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
         var match = actions.SingleOrDefault(x =>
             x.ProviderActionId == preparation.Action.ProviderActionId &&
             string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
