@@ -1031,25 +1031,38 @@ internal sealed class AdministrationService(
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
+        ParkingTariff? latestOpenToClose = null;
+        var validationTariffs = existing.Cast<ParkingTariff>().ToList();
         if (!validUntil.HasValue)
         {
-            var latestOpen = existing
+            latestOpenToClose = existing
                 .Where(x => !x.ValidUntil.HasValue)
                 .OrderByDescending(x => x.ValidFrom)
                 .FirstOrDefault();
-            if (latestOpen is not null && validFrom > latestOpen.ValidFrom)
-                latestOpen.CloseAt(validFrom);
+            if (latestOpenToClose is not null && validFrom > latestOpenToClose.ValidFrom)
+            {
+                validationTariffs.Remove(latestOpenToClose);
+                validationTariffs.Add(new ParkingTariff(
+                    latestOpenToClose.Id,
+                    latestOpenToClose.ValidFrom,
+                    validFrom,
+                    latestOpenToClose.Rate,
+                    latestOpenToClose.Unit));
+            }
         }
 
         try
         {
-            ParkingTariffResolver.ValidateNoOverlap(existing.Append(proposed));
+            ParkingTariffResolver.ValidateNoOverlap(validationTariffs.Append(proposed));
         }
         catch (InvalidOperationException)
         {
             await transaction.RollbackAsync(cancellationToken);
             return new AdminParkingTariffCreateResult(AdminParkingTariffCreateOutcome.Overlap, null);
         }
+
+        if (latestOpenToClose is not null && validFrom > latestOpenToClose.ValidFrom)
+            latestOpenToClose.CloseAt(validFrom);
 
         dbContext.ParkingTariffs.Add(proposed);
         await dbContext.SaveChangesAsync(cancellationToken);
