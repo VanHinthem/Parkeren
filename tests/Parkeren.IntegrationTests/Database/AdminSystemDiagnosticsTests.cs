@@ -87,8 +87,8 @@ public sealed class AdminSystemDiagnosticsTests(PostgreSqlFixture fixture)
         });
 
         var services = new ServiceCollection();
-        services.AddInfrastructure(configuration);
         services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
+        services.AddInfrastructure(configuration);
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
         var diagnostics = scope.ServiceProvider.GetRequiredService<IAdminSystemDiagnosticsService>();
