@@ -221,6 +221,7 @@ export type AdminCalendarException={
 };
 export type AdminParkingRuleSetVersion={
   id:string;
+  providerProductId:string|null;
   validFrom:string;
   validUntil:string|null;
   maxProviderActionDurationMinutes:number;
@@ -230,6 +231,7 @@ export type AdminParkingRuleSetVersion={
   calendarExceptions:AdminCalendarException[];
 };
 export type AdminParkingRuleSetCreateInput={
+  providerProductId:string|null;
   validFrom:string;
   maxProviderActionDurationMinutes:number;
   continuation:"ExtendAction"|"StartNewAction";
@@ -241,8 +243,9 @@ export type AdminParkingRuleSetCreateResult={
   outcome:"Created"|"Invalid"|"MustBeFuture"|"SequenceConflict";
   version:AdminParkingRuleSetVersion|null;
 };
-export async function getAdminParkingRuleSets(){
-  return json<AdminParkingRuleSetVersion[]>(await apiFetch("/api/admin/parking-rules"));
+export async function getAdminParkingRuleSets(productId?:string){
+  const query=productId?"?productId="+encodeURIComponent(productId):"";
+  return json<AdminParkingRuleSetVersion[]>(await apiFetch("/api/admin/parking-rules"+query));
 }
 
 export type AdminBudgetPeriod={
