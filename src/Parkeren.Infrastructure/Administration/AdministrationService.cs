@@ -1315,6 +1315,7 @@ internal sealed class AdministrationService(
         DateTimeOffset validFrom,
         DateTimeOffset? validUntil,
         bool isDefault,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
@@ -1344,6 +1345,13 @@ internal sealed class AdministrationService(
 
         if (isDefault)
         {
+            var existingDefaults = zones.Where(x => x.IsDefault).ToArray();
+            if (existingDefaults.Length > 0 && validFrom <= now)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AdminParkingZoneCreateResult(AdminParkingZoneCreateOutcome.Invalid, null);
+            }
+
             var openDefault = zones
                 .Where(x => x.IsDefault && !x.ValidUntil.HasValue)
                 .OrderByDescending(x => x.ValidFrom)
