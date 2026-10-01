@@ -128,9 +128,17 @@ public sealed class StopVisitProviderExecutor(
 
         try
         {
-            await provider.StopActionAsync(preparation.Action.ProviderActionId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId))
+                await provider.StopActionAsync(preparation.Action.ProviderActionId, cancellationToken);
+            else
+                await provider.StopActionForProductAsync(
+                    preparation.Action.ProviderProductId,
+                    preparation.Action.ProviderActionId,
+                    cancellationToken);
 
-            var actions = await provider.GetActionsAsync(cancellationToken);
+            var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+                ? await provider.GetActionsAsync(cancellationToken)
+                : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
             var remaining = actions.SingleOrDefault(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId);
             if (remaining is not null &&
@@ -146,8 +154,9 @@ public sealed class StopVisitProviderExecutor(
                 string.Empty,
                 preparation.Action.PlannedStartAt,
                 actualEndAt,
-                string.Empty,
-                "stopped");
+                preparation.Action.ProviderLocation ?? string.Empty,
+                "stopped",
+                preparation.Action.ProviderProductId);
             await resultStore.RecordConfirmedAsync(preparation, confirmed, actualEndAt, cancellationToken);
             return new(preparation, confirmed, false);
         }
@@ -189,7 +198,9 @@ public sealed class StopVisitProviderReconciler(
             string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
             throw new InvalidOperationException("Only an unknown provider Stop with a persisted provider action id can be reconciled.");
 
-        var actions = await provider.GetActionsAsync(cancellationToken);
+        var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+            ? await provider.GetActionsAsync(cancellationToken)
+            : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
         var match = actions.SingleOrDefault(x =>
             x.ProviderActionId == preparation.Action.ProviderActionId &&
             string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase));
