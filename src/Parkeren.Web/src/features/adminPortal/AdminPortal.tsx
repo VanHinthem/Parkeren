@@ -63,6 +63,7 @@ const sections: AdminSection[] = [
 
 function resolveSection(path: string): AdminSection {
   if (path === "/beheer" || path === "/beheer/") return sections[0];
+  if (path === "/beheer/verbruik" || path === "/beheer/historie") return sections[1];
   if (path === "/beheer/voertuigen" || path.startsWith("/beheer/voertuigen/")) return sections[2];
   return sections.find(section => section.path !== "/beheer" && path.startsWith(section.path)) ?? sections[0];
 }
