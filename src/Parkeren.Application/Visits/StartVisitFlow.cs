@@ -16,7 +16,11 @@ public sealed record StartVisitFlowResult(
     bool IsReplay,
     bool RequiresProviderCoverageNow,
     StartVisitFlowOutcome Outcome);
-public sealed record StartVisitProviderContext(string LicensePlate, string Location);
+public sealed record StartVisitProviderContext(
+    string LicensePlate,
+    string Location,
+    Guid? ProductId = null,
+    string? ProviderProductId = null);
 
 public interface IStartVisitNotificationPublisher
 {
@@ -47,7 +51,10 @@ public sealed class StartVisitFlow(
             context,
             policy,
             ruleSets,
-            coverageEvaluationEndAt);
+            coverageEvaluationEndAt,
+            providerContext?.ProductId,
+            providerContext?.ProviderProductId,
+            providerContext?.Location);
 
         if (preparation.RequiresProviderCoverageNow)
         {
@@ -104,8 +111,11 @@ public sealed class StartVisitFlow(
             var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, providerEndAt, cancellationToken);
             var execution = await providerExecutor.ExecuteAsync(
                 providerPreparation,
-                new ProviderStartRequest(providerContext!.LicensePlate, providerContext.Location,
-                    providerPreparation.Action.PlannedEndAt),
+                new ProviderStartRequest(
+                    providerContext!.LicensePlate,
+                    providerContext.Location,
+                    providerPreparation.Action.PlannedEndAt,
+                    providerContext.ProviderProductId),
                 cancellationToken);
 
             if (execution.RequiresReconciliation)
