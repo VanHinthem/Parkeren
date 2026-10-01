@@ -49,7 +49,10 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
 
         try
         {
-            var administration = CreateAdministration();
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
             var result = await administration.SetDefaultParkingPolicyAsync(
                 admin.Id,
                 240,
@@ -61,7 +64,8 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
 
             Assert.Equal(AdminDefaultPolicyUpdateOutcome.ActiveVisitConflict, result.Outcome);
             Assert.Equal(1, result.AffectedActiveVisitCount);
-            Assert.Equal(new[] { AdminDefaultPolicyField.AllowVisitExtension }, result.BlockedFields);
+            Assert.Single(result.BlockedFields);
+            Assert.Contains(AdminDefaultPolicyField.AllowVisitExtension, result.BlockedFields);
 
             await using var verify = fixture.CreateDbContext();
             Assert.True((await verify.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct)).AllowVisitExtension);
@@ -119,7 +123,10 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
 
         try
         {
-            var administration = CreateAdministration();
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
             var result = await administration.SetDefaultParkingPolicyAsync(
                 admin.Id,
                 240,
@@ -163,7 +170,10 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
 
         try
         {
-            var administration = CreateAdministration();
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
             var result = await administration.SetDefaultParkingPolicyAsync(
                 admin.Id,
                 240,
@@ -187,7 +197,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         }
     }
 
-    private IAdministrationService CreateAdministration()
+    private ServiceCollection CreateServices()
     {
         var configuration = new ConfigurationManager();
         configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -196,9 +206,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         });
         var services = new ServiceCollection();
         services.AddInfrastructure(configuration);
-        var provider = services.BuildServiceProvider();
-        var scope = provider.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+        return services;
     }
 
     private async Task CleanupAsync(
