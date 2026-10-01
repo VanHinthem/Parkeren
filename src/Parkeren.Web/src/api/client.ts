@@ -541,6 +541,7 @@ export type AdminVisitDetail={
   providerActions:AdminProviderParkingActionSummary[];
   providerOperations:AdminProviderOperationSummary[];
   endTimeChanges:AdminVisitEndTimeChangeSummary[];
+  parkingZone:AdminParkingZone|null;
   relevantRuleSets:AdminRuleSetSummary[];
 };
 export type AdminVisitFilters={
