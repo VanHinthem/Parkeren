@@ -94,6 +94,15 @@ public sealed class ProviderParkingAction
         // The provider did not supply an actual stop instant; observation time is not that instant.
     }
 
+    public void MarkProviderMissing()
+    {
+        Ensure(ProviderActionState.Stopping);
+        ProviderStatus = "missing";
+        State = ProviderActionState.Stopped;
+        Health = ProviderActionHealth.Healthy;
+        // Provider absence proves there is no action left to stop, but not when it ended.
+    }
+
     public void MarkStopped(DateTimeOffset actualEndAt, string? providerStatus = null)
     {
         Ensure(ProviderActionState.Stopping);

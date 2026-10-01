@@ -53,12 +53,22 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
 
         if (providerAction.ProviderActionId != action.ProviderActionId)
             throw new InvalidOperationException("Provider read-back does not match the persisted provider action.");
-        if (!string.Equals(providerAction.Status, "stopped", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Provider action is not confirmed stopped.");
         if (visit.Status != VisitStatus.Stopping)
             throw new InvalidOperationException("Visit must be Stopping before provider Stop confirmation.");
 
-        action.MarkStopped(actualEndAt, providerAction.Status);
+        if (string.Equals(providerAction.Status, "missing", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!preparation.ProviderActionKnownMissing)
+                throw new InvalidOperationException("A provider action may only be finalized as missing after a recorded missing-action discrepancy.");
+            action.MarkProviderMissing();
+        }
+        else
+        {
+            if (!string.Equals(providerAction.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Provider action is not confirmed stopped.");
+            action.MarkStopped(actualEndAt, providerAction.Status);
+        }
+
         operation.Succeed(actualEndAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);

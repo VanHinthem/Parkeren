@@ -48,7 +48,8 @@ public sealed record ProviderStopPreparation(
     ProviderOperation Operation,
     ProviderParkingAction Action,
     bool IsReplay,
-    bool AttemptStartedNow);
+    bool AttemptStartedNow,
+    bool ProviderActionKnownMissing = false);
 
 public interface IProviderStopStore
 {
@@ -128,6 +129,30 @@ public sealed class StopVisitProviderExecutor(
 
         try
         {
+            if (preparation.ProviderActionKnownMissing)
+            {
+                var currentActions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+                    ? await provider.GetActionsAsync(cancellationToken)
+                    : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
+                var current = currentActions.SingleOrDefault(x =>
+                    x.ProviderActionId == preparation.Action.ProviderActionId);
+
+                if (current is null)
+                {
+                    var observedAt = clock.GetUtcNow();
+                    var missing = new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                        preparation.Action.ProviderActionId!,
+                        string.Empty,
+                        preparation.Action.PlannedStartAt,
+                        preparation.Action.PlannedEndAt,
+                        preparation.Action.ProviderLocation ?? string.Empty,
+                        "missing",
+                        preparation.Action.ProviderProductId);
+                    await resultStore.RecordConfirmedAsync(preparation, missing, observedAt, cancellationToken);
+                    return new(preparation, missing, false);
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId))
                 await provider.StopActionAsync(preparation.Action.ProviderActionId, cancellationToken);
             else

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -73,6 +74,12 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
             operation.AttachProviderParkingAction(action.Id);
         }
 
+        var providerActionKnownMissing = await dbContext.ProviderDiscrepancies.AnyAsync(
+            x => x.ProviderParkingActionId == action.Id &&
+                 x.Type == ProviderDiscrepancyType.MissingProviderAction &&
+                 x.Status == ProviderDiscrepancyStatus.Open,
+            cancellationToken);
+
         var attemptStartedNow = false;
         if (operation.Status == ProviderOperationStatus.Pending && action.State is ProviderActionState.Active or ProviderActionState.Scheduled)
         {
@@ -83,6 +90,11 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new ProviderStopPreparation(operation, action, !attemptStartedNow, attemptStartedNow);
+        return new ProviderStopPreparation(
+            operation,
+            action,
+            !attemptStartedNow,
+            attemptStartedNow,
+            providerActionKnownMissing);
     }
 }
