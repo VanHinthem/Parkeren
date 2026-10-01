@@ -114,6 +114,7 @@ public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(x => x.ValidUntil, previousValidUntil), ct);
 
+            await cleanup.AdminAuditEvents.Where(x => x.ActorUserId == admin.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
         }
     }
