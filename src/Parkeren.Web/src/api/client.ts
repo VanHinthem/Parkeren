@@ -298,6 +298,38 @@ export type AdminCostReport={
 export async function getAdminCostReport(from:string,to:string){
   return json<AdminCostReport>(await apiFetch("/api/admin/costs?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)));
 }
+
+export type AdminAnalysisVisitReference={
+  visitId:string;
+  userId:string;
+  username:string;
+  licensePlate:string;
+  startAt:string;
+  actualEndAt:string;
+  paidDurationMinutes:number|null;
+  amount:number|null;
+  isComplete:boolean;
+};
+export type AdminUsageAnalysisGroup={
+  key:string;
+  userId:string|null;
+  label:string;
+  isArchived:boolean;
+  visitCount:number;
+  paidDurationMinutes:number|null;
+  amount:number|null;
+  isComplete:boolean;
+  visits:AdminAnalysisVisitReference[];
+};
+export type AdminUsageAnalysis={
+  from:string;
+  to:string;
+  byUser:AdminUsageAnalysisGroup[];
+  byLicensePlate:AdminUsageAnalysisGroup[];
+};
+export async function getAdminUsageAnalysis(from:string,to:string){
+  return json<AdminUsageAnalysis>(await apiFetch("/api/admin/analysis/usage?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)));
+}
 export async function createAdminParkingRuleSetVersion(input:AdminParkingRuleSetCreateInput){
   const response=await apiFetch("/api/admin/parking-rules",{
     method:"POST",
