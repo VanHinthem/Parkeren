@@ -85,11 +85,14 @@ public sealed class ParkingZoneAdministrationTests(PostgreSqlFixture fixture)
                 secondFrom.AddMinutes(1),
                 ct);
 
-            Assert.NotNull(resolved);
-            Assert.NotNull(resolved.ProviderContext);
-            Assert.Equal(secondId, resolved.ProviderContext.ParkingZoneId);
-            Assert.Equal("OSS_NEW", resolved.ProviderContext.Location);
-            Assert.Equal(vehicle.LicensePlate, resolved.ProviderContext.LicensePlate);
+            var resolvedContext = resolved
+                ?? throw new Xunit.Sdk.XunitException("StartVisit request context was not resolved.");
+            var providerContext = resolvedContext.ProviderContext
+                ?? throw new Xunit.Sdk.XunitException("Parking zone provider context was not resolved.");
+
+            Assert.Equal(secondId, providerContext.ParkingZoneId);
+            Assert.Equal("OSS_NEW", providerContext.Location);
+            Assert.Equal(vehicle.LicensePlate, providerContext.LicensePlate);
         }
         finally
         {
