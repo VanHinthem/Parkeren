@@ -971,14 +971,71 @@ internal sealed class AdministrationService(
             .OrderByDescending(x => x.ValidFrom)
             .Select(x => new AdminBudgetPeriodSummary(
                 x.Id,
+                x.ProviderProductId,
                 x.ValidFrom,
                 x.ValidUntil,
                 (int)x.MaximumPaidDuration.TotalMinutes))
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodAsync(
+    public async Task<IReadOnlyList<AdminBudgetPeriodSummary>> GetBudgetPeriodsForProductAsync(
         Guid actorUserId,
+        Guid providerProductId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        return await dbContext.ParkingBudgetPeriods.AsNoTracking()
+            .Where(x => x.ProviderProductId == providerProductId)
+            .OrderByDescending(x => x.ValidFrom)
+            .Select(x => new AdminBudgetPeriodSummary(
+                x.Id,
+                x.ProviderProductId,
+                x.ValidFrom,
+                x.ValidUntil,
+                (int)x.MaximumPaidDuration.TotalMinutes))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset validUntil,
+        int maximumPaidDurationMinutes,
+        CancellationToken cancellationToken) =>
+        CreateBudgetPeriodInternalAsync(
+            actorUserId,
+            null,
+            validFrom,
+            validUntil,
+            maximumPaidDurationMinutes,
+            cancellationToken);
+
+    public async Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
+        DateTimeOffset validFrom,
+        DateTimeOffset validUntil,
+        int maximumPaidDurationMinutes,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (!await dbContext.ParkingProviderProducts.AsNoTracking()
+                .AnyAsync(x => x.Id == providerProductId && x.IsAvailable, cancellationToken))
+            return new AdminBudgetPeriodCreateResult(AdminBudgetPeriodCreateOutcome.Invalid, null);
+
+        return await CreateBudgetPeriodInternalAsync(
+            actorUserId,
+            providerProductId,
+            validFrom,
+            validUntil,
+            maximumPaidDurationMinutes,
+            cancellationToken);
+    }
+
+    private async Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodInternalAsync(
+        Guid actorUserId,
+        Guid? providerProductId,
         DateTimeOffset validFrom,
         DateTimeOffset validUntil,
         int maximumPaidDurationMinutes,
@@ -994,11 +1051,14 @@ internal sealed class AdministrationService(
             validFrom,
             validUntil,
             TimeSpan.FromMinutes(maximumPaidDurationMinutes));
+        if (providerProductId.HasValue)
+            proposed.AssignProviderProduct(providerProductId.Value);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await LockCapacitySettingsAsync(cancellationToken);
 
         var existing = await dbContext.ParkingBudgetPeriods.AsNoTracking()
+            .Where(x => x.ProviderProductId == providerProductId)
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
@@ -1037,21 +1097,35 @@ internal sealed class AdministrationService(
         }
         else
         {
+            var defaultProductId = await dbContext.ParkingProviderProducts.AsNoTracking()
+                .Where(x => x.IsDefault)
+                .Select(x => (Guid?)x.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+
             period = await dbContext.ParkingBudgetPeriods.AsNoTracking()
-                .SingleOrDefaultAsync(x => x.ValidFrom <= now && now < x.ValidUntil, cancellationToken);
+                .SingleOrDefaultAsync(
+                    x => x.ProviderProductId == defaultProductId &&
+                         x.ValidFrom <= now &&
+                         now < x.ValidUntil,
+                    cancellationToken);
         }
 
         if (period is null)
             return null;
 
         var visits = await dbContext.Visits.AsNoTracking()
-            .Where(x => x.Status == VisitStatus.Completed &&
+            .Where(x => x.ProviderProductId == period.ProviderProductId &&
+                        x.Status == VisitStatus.Completed &&
                         x.ActualEndAt.HasValue &&
                         x.StartAt < period.ValidUntil &&
                         x.ActualEndAt.Value > period.ValidFrom)
             .ToListAsync(cancellationToken);
 
-        var ruleSets = await LoadRuleSetsAsync(period.ValidFrom, period.ValidUntil, cancellationToken);
+        var ruleSets = await LoadRuleSetsForProductAsync(
+            period.ValidFrom,
+            period.ValidUntil,
+            period.ProviderProductId,
+            cancellationToken);
 
         try
         {
@@ -1084,6 +1158,7 @@ internal sealed class AdministrationService(
             .OrderByDescending(x => x.ValidFrom)
             .Select(x => new AdminParkingTariffSummary(
                 x.Id,
+                x.ProviderProductId,
                 x.ValidFrom,
                 x.ValidUntil,
                 x.Rate,
@@ -1091,8 +1166,69 @@ internal sealed class AdministrationService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<AdminParkingTariffCreateResult> CreateParkingTariffAsync(
+    public async Task<IReadOnlyList<AdminParkingTariffSummary>> GetParkingTariffsForProductAsync(
         Guid actorUserId,
+        Guid providerProductId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        return await dbContext.ParkingTariffs.AsNoTracking()
+            .Where(x => x.ProviderProductId == providerProductId)
+            .OrderByDescending(x => x.ValidFrom)
+            .Select(x => new AdminParkingTariffSummary(
+                x.Id,
+                x.ProviderProductId,
+                x.ValidFrom,
+                x.ValidUntil,
+                x.Rate,
+                x.Unit))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<AdminParkingTariffCreateResult> CreateParkingTariffAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        decimal rate,
+        ParkingTariffUnit unit,
+        CancellationToken cancellationToken) =>
+        CreateParkingTariffInternalAsync(
+            actorUserId,
+            null,
+            validFrom,
+            validUntil,
+            rate,
+            unit,
+            cancellationToken);
+
+    public async Task<AdminParkingTariffCreateResult> CreateParkingTariffForProductAsync(
+        Guid actorUserId,
+        Guid providerProductId,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        decimal rate,
+        ParkingTariffUnit unit,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (!await dbContext.ParkingProviderProducts.AsNoTracking()
+                .AnyAsync(x => x.Id == providerProductId && x.IsAvailable, cancellationToken))
+            return new AdminParkingTariffCreateResult(AdminParkingTariffCreateOutcome.Invalid, null);
+
+        return await CreateParkingTariffInternalAsync(
+            actorUserId,
+            providerProductId,
+            validFrom,
+            validUntil,
+            rate,
+            unit,
+            cancellationToken);
+    }
+
+    private async Task<AdminParkingTariffCreateResult> CreateParkingTariffInternalAsync(
+        Guid actorUserId,
+        Guid? providerProductId,
         DateTimeOffset validFrom,
         DateTimeOffset? validUntil,
         decimal rate,
@@ -1110,6 +1246,8 @@ internal sealed class AdministrationService(
         try
         {
             proposed = new ParkingTariff(Guid.NewGuid(), validFrom, validUntil, rate, unit);
+            if (providerProductId.HasValue)
+                proposed.AssignProviderProduct(providerProductId.Value);
         }
         catch (ArgumentException)
         {
@@ -1120,6 +1258,7 @@ internal sealed class AdministrationService(
         await LockCapacitySettingsAsync(cancellationToken);
 
         var existing = await dbContext.ParkingTariffs
+            .Where(x => x.ProviderProductId == providerProductId)
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
@@ -1134,12 +1273,15 @@ internal sealed class AdministrationService(
             if (latestOpenToClose is not null && validFrom > latestOpenToClose.ValidFrom)
             {
                 validationTariffs.Remove(latestOpenToClose);
-                validationTariffs.Add(new ParkingTariff(
+                var closed = new ParkingTariff(
                     latestOpenToClose.Id,
                     latestOpenToClose.ValidFrom,
                     validFrom,
                     latestOpenToClose.Rate,
-                    latestOpenToClose.Unit));
+                    latestOpenToClose.Unit);
+                if (providerProductId.HasValue)
+                    closed.AssignProviderProduct(providerProductId.Value);
+                validationTariffs.Add(closed);
             }
         }
 
@@ -1204,11 +1346,17 @@ internal sealed class AdministrationService(
             var segmentStart = row.Visit.StartAt > reportFrom ? row.Visit.StartAt : reportFrom;
             var actualEnd = row.Visit.ActualEndAt!.Value;
             var segmentEnd = actualEnd < reportTo ? actualEnd : reportTo;
+            var visitRuleSets = ruleSets
+                .Where(x => x.ProviderProductId == row.Visit.ProviderProductId)
+                .ToArray();
+            var visitTariffs = tariffs
+                .Where(x => x.ProviderProductId == row.Visit.ProviderProductId)
+                .ToArray();
 
             try
             {
                 var paidSegments = ParkingRuleSetPeriodSegmenter
-                    .Segment(segmentStart, segmentEnd, ruleSets)
+                    .Segment(segmentStart, segmentEnd, visitRuleSets)
                     .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                     .Where(x => x.IsPaid)
                     .ToArray();
@@ -1219,7 +1367,7 @@ internal sealed class AdministrationService(
 
                 decimal amount = 0m;
                 foreach (var paidSegment in paidSegments)
-                    amount += ParkingTariffCostCalculator.Calculate(paidSegment, tariffs).Sum(x => x.Amount);
+                    amount += ParkingTariffCostCalculator.Calculate(paidSegment, visitTariffs).Sum(x => x.Amount);
 
                 visitCosts.Add(new AdminVisitCostSummary(
                     row.Visit.Id,
@@ -1240,7 +1388,7 @@ internal sealed class AdministrationService(
                 {
                     paidDurationMinutes = (int)Math.Floor(
                         ParkingRuleSetPeriodSegmenter
-                            .Segment(segmentStart, segmentEnd, ruleSets)
+                            .Segment(segmentStart, segmentEnd, visitRuleSets)
                             .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                             .Where(x => x.IsPaid)
                             .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start))
