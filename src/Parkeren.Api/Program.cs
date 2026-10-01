@@ -1094,6 +1094,7 @@ app.MapPost("/api/visits/start", async (
         authenticated.User.Id,
         ownerUserId,
         request.VehicleId,
+        startAt,
         cancellationToken);
     if (requestContext is null)
         return Results.BadRequest(new { error = "Visit-context kon niet worden bepaald." });
