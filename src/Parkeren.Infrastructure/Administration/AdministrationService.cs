@@ -140,6 +140,7 @@ internal sealed class AdministrationService(
             return false;
 
         var settings = await dbContext.ParkingSystemSettings.SingleAsync(cancellationToken);
+        var previousMaxConcurrentVisits = settings.MaxConcurrentVisits;
         settings.SetMaxConcurrentVisits(maxConcurrentVisits);
 
         var defaults = await dbContext.DefaultParkingPolicies
@@ -161,7 +162,20 @@ internal sealed class AdministrationService(
         foreach (var policyOverride in overrides)
             policyOverride.SetMaxConcurrentVisits(maxConcurrentVisits);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "GlobalParkingCapacityChanged",
+            "ParkingSystemSettings",
+            null,
+            new
+            {
+                PreviousMaxConcurrentVisits = previousMaxConcurrentVisits,
+                MaxConcurrentVisits = maxConcurrentVisits,
+                DefaultPolicyAdjusted = defaults.MaxConcurrentVisits == maxConcurrentVisits &&
+                    previousMaxConcurrentVisits != maxConcurrentVisits,
+                AdjustedUserOverrideCount = overrides.Count
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
@@ -474,7 +488,9 @@ internal sealed class AdministrationService(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await LockCapacitySettingsAsync(cancellationToken);
 
-        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+        var user = await dbContext.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
             return new AdminUserPolicyUpdateResult(AdminUserPolicyUpdateOutcome.NotFound, 0, null);
 
         var defaults = await dbContext.DefaultParkingPolicies
@@ -538,7 +554,23 @@ internal sealed class AdministrationService(
                 maxConcurrentVisits);
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserPolicyChanged",
+            "User",
+            user.Id.ToString(),
+            new
+            {
+                user.Username,
+                MaxPaidParkingDurationMode = maxPaidParkingDurationMode.ToString(),
+                MaxPaidParkingDurationMinutes = maxPaidParkingDurationMinutes,
+                MaxVisitElapsedDurationMode = maxVisitElapsedDurationMode.ToString(),
+                MaxVisitElapsedDurationMinutes = maxVisitElapsedDurationMinutes,
+                AllowVisitExtension = allowVisitExtension,
+                AllowOpenEndedVisits = allowOpenEndedVisits,
+                MaxConcurrentVisits = maxConcurrentVisits
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminUserPolicyUpdateResult(
@@ -729,7 +761,21 @@ internal sealed class AdministrationService(
             allowOpenEndedVisits,
             maxConcurrentVisits);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "DefaultParkingPolicyChanged",
+            "DefaultParkingPolicy",
+            defaults.Id.ToString(),
+            new
+            {
+                ChangedFields = changedFields.OrderBy(x => x).Select(x => x.ToString()).ToArray(),
+                MaxPaidParkingDurationMinutes = maxPaidParkingDurationMinutes,
+                MaxVisitElapsedDurationMinutes = maxVisitElapsedDurationMinutes,
+                AllowVisitExtension = allowVisitExtension,
+                AllowOpenEndedVisits = allowOpenEndedVisits,
+                MaxConcurrentVisits = maxConcurrentVisits
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminDefaultPolicyUpdateResult(
@@ -771,7 +817,19 @@ internal sealed class AdministrationService(
             ToDuration(longVisitReminderIntervalMinutes));
         settings.SetBudgetWarningThresholdPercentages(budgetWarningThresholdPercentages);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "WarningSettingsChanged",
+            "ParkingSystemSettings",
+            null,
+            new
+            {
+                LongVisitWarningAfterMinutes = longVisitWarningAfterMinutes,
+                NotifyAdminOnLongVisit = notifyAdminOnLongVisit,
+                LongVisitReminderIntervalMinutes = longVisitReminderIntervalMinutes,
+                BudgetWarningThresholdPercentages = budgetWarningThresholdPercentages
+            },
+            cancellationToken);
 
         var currentDefaults = await dbContext.DefaultParkingPolicies.AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)
