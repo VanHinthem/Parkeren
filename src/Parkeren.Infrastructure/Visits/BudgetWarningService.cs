@@ -20,7 +20,9 @@ internal sealed class BudgetWarningService(
 
         var periods = await dbContext.ParkingBudgetPeriods
             .AsNoTracking()
-            .Where(x => x.ValidFrom < completedVisit.ActualEndAt.Value && x.ValidUntil > completedVisit.StartAt)
+            .Where(x => x.ProviderProductId == completedVisit.ProviderProductId &&
+                        x.ValidFrom < completedVisit.ActualEndAt.Value &&
+                        x.ValidUntil > completedVisit.StartAt)
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
 
@@ -31,12 +33,14 @@ internal sealed class BudgetWarningService(
         var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
             .Include(x => x.PaidWindows)
             .Include(x => x.CalendarExceptions)
+            .Where(x => x.ProviderProductId == completedVisit.ProviderProductId)
             .ToListAsync(cancellationToken);
 
         foreach (var period in periods)
         {
             var visits = await dbContext.Visits.AsNoTracking()
-                .Where(x => x.Status == VisitStatus.Completed &&
+                .Where(x => x.ProviderProductId == period.ProviderProductId &&
+                            x.Status == VisitStatus.Completed &&
                             x.ActualEndAt.HasValue &&
                             x.Id != completedVisit.Id &&
                             x.StartAt < period.ValidUntil &&
