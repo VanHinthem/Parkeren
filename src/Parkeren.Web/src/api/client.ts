@@ -35,7 +35,7 @@ export type ActiveVisit={
   desiredEndAt:string|null;
   actualEndAt:string|null;
   status:"Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
-  health:"Healthy"|"Unknown"|"Reconciling";
+  health:"Healthy"|"AttentionRequired"|"Reconciling"|"StopFailed";
 };
 export async function getActiveVisit():Promise<ActiveVisit|null>{
   const response=await apiFetch("/api/visits/active");

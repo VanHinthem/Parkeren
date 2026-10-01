@@ -20,14 +20,33 @@ function payloadValue<T>(payload:NotificationPayload,name:string):T|undefined{
   return key?payload[key] as T:undefined;
 }
 
-function notificationDetails(item:InboxNotification,isAdmin:boolean){
-  if(item.type==="ProviderContinuationAttentionRequired")
-    return "Automatisch voortzetten is niet gelukt.";
-
-  if(!item.payload)return null;
+function notificationLabel(item:InboxNotification){
+  if(item.type!=="ProviderContinuationAttentionRequired"||!item.payload)
+    return labels[item.type];
 
   try{
     const payload=JSON.parse(item.payload) as NotificationPayload;
+    return payloadValue<string>(payload,"Reason")==="ExternalStop"
+      ?"Parkeeractie extern gestopt"
+      :labels[item.type];
+  }catch{
+    return labels[item.type];
+  }
+}
+
+function notificationDetails(item:InboxNotification,isAdmin:boolean){
+  if(!item.payload)
+    return item.type==="ProviderContinuationAttentionRequired"
+      ?"Automatisch voortzetten is niet gelukt."
+      :null;
+
+  try{
+    const payload=JSON.parse(item.payload) as NotificationPayload;
+
+    if(item.type==="ProviderContinuationAttentionRequired")
+      return payloadValue<string>(payload,"Reason")==="ExternalStop"
+        ?"2Park heeft deze parkeeractie buiten de app gestopt."
+        :"Automatisch voortzetten is niet gelukt.";
 
     if(item.type==="LongVisitWarning"){
       const visitor=payloadValue<string>(payload,"Visitor");
@@ -107,7 +126,7 @@ export function NotificationsPage({userRole,onUnreadCountChanged,onNavigate}:Pro
         <button type="button" className="notification-item__body" onClick={()=>read(item)}>
           <span className="notification-item__dot" aria-hidden="true"/>
           <span>
-            <strong>{labels[item.type]}</strong>
+            <strong>{notificationLabel(item)}</strong>
             {notificationDetails(item,userRole==="Admin")&&<small>{notificationDetails(item,userRole==="Admin")}</small>}
             <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})}</time>
           </span>
