@@ -156,15 +156,14 @@ export function AdminSystemPage(){
   async function saveWarnings(){
     const warningMinutes=longWarningEnabled?minutes(longWarningHours):null;
     const reminderMinutes=reminderEnabled?minutes(reminderHours):null;
-    const values=thresholds
-      .split(",")
-      .map(value=>Number(value.trim()))
-      .filter(value=>Number.isFinite(value));
+    const thresholdParts=thresholds.split(",").map(value=>value.trim());
+    const values=thresholdParts.map(value=>Number(value));
 
     if((longWarningEnabled&&warningMinutes===null)||
        (reminderEnabled&&reminderMinutes===null)||
-       values.length===0||
-       values.some(value=>!Number.isInteger(value)||value<=0||value>100)||
+       thresholdParts.length===0||
+       thresholdParts.some(value=>value.length===0)||
+       values.some(value=>!Number.isFinite(value)||!Number.isInteger(value)||value<=0||value>100)||
        new Set(values).size!==values.length){
       setError("Controleer de waarschuwingsinstellingen en percentages.");
       return;
