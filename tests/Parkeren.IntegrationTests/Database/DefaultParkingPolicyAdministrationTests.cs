@@ -240,6 +240,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         finally
         {
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.AdminAuditEvents.Where(x => x.ActorUserId == admin.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
             var restore = await cleanup.ParkingSystemSettings.SingleAsync(ct);
             restore.SetLongVisitNotifications(originalWarningAfter, originalNotifyAdmin, originalReminder);
