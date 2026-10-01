@@ -57,9 +57,7 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
 
 function maxStartDurationMinutes(policy:AdminParkingPolicySummary|null|undefined){
   if(!policy)return null;
-  const limits=[policy.maxPaidParkingDurationMinutes,policy.maxVisitElapsedDurationMinutes]
-    .filter((value):value is number=>value!==null&&value>0);
-  return limits.length>0?Math.min(...limits):480;
+  return policy.maxVisitElapsedDurationMinutes;
 }
 
 function durationOptions(maxMinutes:number|null){
@@ -164,7 +162,8 @@ export function AdminDashboard(){
     policy===null||
     vehicles===undefined||
     vehicles.length===0||
-    durations.length===0||
+    durationMinutes<=0||
+    (maxDuration!==null&&durations.length===0)||
     capacityFull||
     userLimitReached;
 
@@ -274,9 +273,18 @@ export function AdminDashboard(){
 
               <label className="admin-dashboard__field">
                 <span>Parkeerduur</span>
-                <select value={durationMinutes} onChange={event=>setDurationMinutes(Number(event.target.value))} disabled={starting||durations.length===0}>
-                  {durations.map(minutes=><option key={minutes} value={minutes}>{formatPaidMinutes(minutes)}</option>)}
-                </select>
+                {maxDuration===null
+                  ? <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={Math.max(1,Math.round(durationMinutes/60))}
+                      onChange={event=>setDurationMinutes(Math.max(0,Number(event.target.value))*60)}
+                      disabled={starting}
+                    />
+                  : <select value={durationMinutes} onChange={event=>setDurationMinutes(Number(event.target.value))} disabled={starting||durations.length===0}>
+                      {durations.map(minutes=><option key={minutes} value={minutes}>{formatPaidMinutes(minutes)}</option>)}
+                    </select>}
               </label>
 
               {startDisabledMessage&&<p className="admin-dashboard__hint">{startDisabledMessage}</p>}
