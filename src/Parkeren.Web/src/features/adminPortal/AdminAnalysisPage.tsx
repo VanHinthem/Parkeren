@@ -1,4 +1,4 @@
-import { useEffect,useMemo,useState } from "react";
+import { Fragment,useEffect,useMemo,useState } from "react";
 import { getAdminUsageAnalysis,type AdminUsageAnalysis,type AdminUsageAnalysisGroup } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
@@ -120,7 +120,7 @@ export function AdminAnalysisPage(){
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map(group=><>
+                  {groups.map(group=><Fragment key={group.key}>
                     <tr key={group.key}>
                       <td>
                         <span className="admin-analysis__label">
