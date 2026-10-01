@@ -204,9 +204,8 @@ export function AdminParkingRulesPage(){
   }
 
   if((!products||!versions)&&!error)return <Loading label="Parkeerregels laden"/>;
-  if(!versions)return <div className="admin-rules">
-    <Alert tone="danger">{error??"Parkeerregels konden niet worden geladen."}</Alert>
-    <div className="admin-rules__actions"><Button onClick={()=>void load(true)}>Opnieuw proberen</Button></div>
+  if(!products||!versions)return <div className="admin-rules">
+    <Alert tone="danger">{error??"Parkeerregels of providerproducten konden niet worden geladen."}</Alert>
   </div>;
 
   return <div className="admin-rules">
