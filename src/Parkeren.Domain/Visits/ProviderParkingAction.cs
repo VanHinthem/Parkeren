@@ -6,15 +6,25 @@ public enum ProviderActionHealth { Healthy, Unknown, Reconciling }
 public sealed class ProviderParkingAction
 {
     private ProviderParkingAction() { }
-    public ProviderParkingAction(Guid id, Guid? visitId, DateTimeOffset plannedStartAt, DateTimeOffset plannedEndAt)
+    public ProviderParkingAction(
+        Guid id,
+        Guid? visitId,
+        DateTimeOffset plannedStartAt,
+        DateTimeOffset plannedEndAt,
+        string? providerProductId = null,
+        string? providerLocation = null)
     {
         if (plannedEndAt <= plannedStartAt) throw new ArgumentOutOfRangeException(nameof(plannedEndAt));
         Id = id; VisitId = visitId; PlannedStartAt = plannedStartAt; PlannedEndAt = plannedEndAt;
+        ProviderProductId = providerProductId;
+        ProviderLocation = providerLocation;
         State = ProviderActionState.Planned; Health = ProviderActionHealth.Healthy; CreatedAt = DateTimeOffset.UtcNow;
     }
     public Guid Id { get; private set; }
     public Guid? VisitId { get; private set; }
     public string? ProviderActionId { get; private set; }
+    public string? ProviderProductId { get; private set; }
+    public string? ProviderLocation { get; private set; }
     public DateTimeOffset PlannedStartAt { get; private set; }
     public DateTimeOffset PlannedEndAt { get; private set; }
     public DateTimeOffset? ActualStartAt { get; private set; }
