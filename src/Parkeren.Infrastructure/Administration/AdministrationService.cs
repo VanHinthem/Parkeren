@@ -232,14 +232,26 @@ internal sealed class AdministrationService(
     public async Task<bool> AssignVehicleAsync(Guid actorUserId, Guid userId, Guid vehicleId, CancellationToken cancellationToken)
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
-        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken) ||
-            !await dbContext.Vehicles.AnyAsync(x => x.Id == vehicleId, cancellationToken))
+        var user = await dbContext.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        var vehicle = await dbContext.Vehicles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == vehicleId, cancellationToken);
+        if (user is null || vehicle is null)
             return false;
 
-        if (!await dbContext.UserVehicles.AnyAsync(x => x.UserId == userId && x.VehicleId == vehicleId, cancellationToken))
-            dbContext.UserVehicles.Add(new UserVehicle(userId, vehicleId));
+        if (await dbContext.UserVehicles.AnyAsync(
+                x => x.UserId == userId && x.VehicleId == vehicleId,
+                cancellationToken))
+            return true;
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.UserVehicles.Add(new UserVehicle(userId, vehicleId));
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "VehicleAssigned",
+            "UserVehicle",
+            $"{userId}:{vehicleId}",
+            new { UserId = user.Id, user.Username, VehicleId = vehicle.Id, vehicle.LicensePlate },
+            cancellationToken);
         return true;
     }
 
@@ -251,8 +263,19 @@ internal sealed class AdministrationService(
         if (assignment is null)
             return false;
 
+        var user = await dbContext.Users.AsNoTracking()
+            .SingleAsync(x => x.Id == userId, cancellationToken);
+        var vehicle = await dbContext.Vehicles.AsNoTracking()
+            .SingleAsync(x => x.Id == vehicleId, cancellationToken);
+
         dbContext.UserVehicles.Remove(assignment);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "VehicleUnassigned",
+            "UserVehicle",
+            $"{userId}:{vehicleId}",
+            new { UserId = user.Id, user.Username, VehicleId = vehicle.Id, vehicle.LicensePlate },
+            cancellationToken);
         return true;
     }
 
