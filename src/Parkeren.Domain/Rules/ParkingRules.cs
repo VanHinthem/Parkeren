@@ -4,8 +4,11 @@ public sealed class PaidWindow
 {
     public PaidWindow(DayOfWeek day, TimeOnly start, TimeOnly end)
     {
+        if (!Enum.IsDefined(day)) throw new ArgumentOutOfRangeException(nameof(day));
         if (end <= start) throw new ArgumentException("Paid window end must be after start.");
-        Day = day; Start = start; End = end;
+        Day = day;
+        Start = start;
+        End = end;
     }
     public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid ParkingRuleSetId { get; private set; }
@@ -34,12 +37,34 @@ public sealed class ParkingRuleSet
 {
     private ParkingRuleSet() { }
 
-    public ParkingRuleSet(Guid id, DateTimeOffset validFrom, DateTimeOffset? validUntil, TimeSpan maxProviderActionDuration, IReadOnlyCollection<PaidWindow> paidWindows, IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null, bool publicHolidaysAreFree = false, ProviderCoverageContinuation continuation = ProviderCoverageContinuation.StartNewAction)
+    public ParkingRuleSet(
+        Guid id,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        TimeSpan maxProviderActionDuration,
+        IReadOnlyCollection<PaidWindow> paidWindows,
+        IReadOnlyCollection<ParkingCalendarException>? calendarExceptions = null,
+        bool publicHolidaysAreFree = false,
+        ProviderCoverageContinuation continuation = ProviderCoverageContinuation.StartNewAction)
     {
+        if (id == Guid.Empty) throw new ArgumentException("Rule set id is required.", nameof(id));
         if (validUntil.HasValue && validUntil.Value <= validFrom) throw new ArgumentException("ValidUntil must be after ValidFrom.");
         if (maxProviderActionDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxProviderActionDuration));
         if (!Enum.IsDefined(continuation)) throw new ArgumentOutOfRangeException(nameof(continuation));
-        Id=id; ValidFrom=validFrom; ValidUntil=validUntil; MaxProviderActionDuration=maxProviderActionDuration; Continuation=continuation; _paidWindows.AddRange(paidWindows); _calendarExceptions.AddRange(calendarExceptions ?? Array.Empty<ParkingCalendarException>()); PublicHolidaysAreFree=publicHolidaysAreFree;
+        ArgumentNullException.ThrowIfNull(paidWindows);
+
+        var exceptions = calendarExceptions ?? Array.Empty<ParkingCalendarException>();
+        ValidatePaidWindows(paidWindows);
+        ValidateCalendarExceptions(exceptions);
+
+        Id = id;
+        ValidFrom = validFrom;
+        ValidUntil = validUntil;
+        MaxProviderActionDuration = maxProviderActionDuration;
+        Continuation = continuation;
+        _paidWindows.AddRange(paidWindows);
+        _calendarExceptions.AddRange(exceptions);
+        PublicHolidaysAreFree = publicHolidaysAreFree;
     }
     public Guid Id { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
@@ -51,6 +76,38 @@ public sealed class ParkingRuleSet
     public IReadOnlyCollection<PaidWindow> PaidWindows => _paidWindows;
     public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions => _calendarExceptions;
     public bool PublicHolidaysAreFree { get; private set; }
+
+    public void CloseAt(DateTimeOffset validUntil)
+    {
+        if (ValidUntil.HasValue)
+            throw new InvalidOperationException("Only an open-ended parking rule set can be closed.");
+        if (validUntil <= ValidFrom)
+            throw new ArgumentOutOfRangeException(nameof(validUntil));
+
+        ValidUntil = validUntil;
+    }
+
+    private static void ValidatePaidWindows(IEnumerable<PaidWindow> paidWindows)
+    {
+        foreach (var windowsForDay in paidWindows.GroupBy(x => x.Day))
+        {
+            var ordered = windowsForDay.OrderBy(x => x.Start).ToArray();
+            for (var i = 1; i < ordered.Length; i++)
+            {
+                if (ordered[i].Start < ordered[i - 1].End)
+                    throw new ArgumentException($"Paid windows may not overlap on {windowsForDay.Key}.", nameof(paidWindows));
+            }
+        }
+    }
+
+    private static void ValidateCalendarExceptions(IEnumerable<ParkingCalendarException> calendarExceptions)
+    {
+        var duplicates = calendarExceptions
+            .GroupBy(x => x.Date)
+            .Any(x => x.Count() > 1);
+        if (duplicates)
+            throw new ArgumentException("Calendar exceptions must have unique dates.", nameof(calendarExceptions));
+    }
 }
 
 public sealed record ParkingTimeSegment(DateTimeOffset Start, DateTimeOffset End, bool IsPaid);
