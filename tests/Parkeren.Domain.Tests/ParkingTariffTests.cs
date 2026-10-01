@@ -44,4 +44,17 @@ public sealed class ParkingTariffTests
         Assert.Throws<InvalidOperationException>(() => ParkingTariffResolver.ValidateNoOverlap(tariffs));
     }
 
+    [Fact]
+    public void Open_tariff_can_be_closed_once_at_later_boundary()
+    {
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var tariff = new ParkingTariff(Guid.NewGuid(), start, null, 1m);
+        var boundary = start.AddMonths(6);
+
+        tariff.CloseAt(boundary);
+
+        Assert.Equal(boundary, tariff.ValidUntil);
+        Assert.Throws<InvalidOperationException>(() => tariff.CloseAt(boundary.AddMonths(1)));
+    }
+
 }
