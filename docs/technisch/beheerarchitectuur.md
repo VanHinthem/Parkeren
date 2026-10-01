@@ -270,7 +270,8 @@ De eerste vijf verticale slices zijn inmiddels gerealiseerd:
 - **8.3 Visit-detail & beheerhistorie** — filters, Visit-detail, provideractions/operations, policy snapshot en relevante rulesetversies;
 - **8.4 Providerstatus & saldo** — officieel providersaldo met freshness/stale-semantiek en actuele provideractions;
 - **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor;
-- **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`.
+- **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`;
+- **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -295,6 +296,22 @@ Voor 8.6 geldt daarnaast:
 - bestaande reeds geplande Long Visit scheduler-work behoudt zijn bestaande `DueAt`; nieuwe Visits en toekomstige reminderplanning gebruiken de actuele instellingen.
 
 Persistente generieke audit van beheerwijzigingen wordt in 8.12 ontsloten. De huidige policy/settings-records bewaren hun `UpdatedAt`, maar #74 blijft tot die auditlaag formeel open.
+
+Voor 8.7 geldt:
+
+- beheerroute: `/beheer/configuratie/parkeerregels`;
+- bestaande rulesetversies zijn read-only;
+- wijzigingen worden uitsluitend als een **nieuwe toekomstige versie** toegevoegd;
+- de vorige open-ended versie wordt atomisch afgesloten op `ValidFrom` van de nieuwe versie;
+- retroactieve versies (`ValidFrom <= now`) worden geweigerd;
+- rulesetversies mogen niet overlappen;
+- betaalvensters binnen dezelfde weekdag mogen niet overlappen;
+- kalenderuitzonderingen zijn uniek per datum binnen een ruleset;
+- geen betaalvensters betekent dat reguliere tijden gratis zijn;
+- `PublicHolidaysAreFree` en expliciete kalenderuitzonderingen blijven onderdeel van dezelfde versie;
+- `MaxProviderActionDuration` en `Continuation` horen bewust bij de ruleset en niet bij user policies;
+- een actieve Visit kan een toekomstige rulesetboundary passeren: parkeerregels zijn tijdsafhankelijk en de bestaande period-segmentatie past dan per periode de juiste ruleset toe;
+- er is voor 8.7 geen schemawijziging nodig: de bestaande `ParkingRuleSet`, `PaidWindow` en `ParkingCalendarException` persistence wordt hergebruikt.
 
 ## Vervolg
 
