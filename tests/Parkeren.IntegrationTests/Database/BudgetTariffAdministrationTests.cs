@@ -80,6 +80,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     {
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
         var periodFrom = new DateTimeOffset(2026, 9, 28, 0, 0, 0, localOffset).ToUniversalTime();
         var periodUntil = new DateTimeOffset(2026, 9, 29, 0, 0, 0, localOffset).ToUniversalTime();
@@ -119,6 +120,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     {
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
         var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime();
         var boundary = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset).ToUniversalTime();
@@ -165,6 +167,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     {
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
         var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime();
         var end = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset).ToUniversalTime();
@@ -194,6 +197,35 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
                 await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
             await CleanupAsync(admin.Id, [], [], ct);
         }
+    }
+
+    private async Task ResetCalculationStateAsync(CancellationToken ct)
+    {
+        await ClearVisitsAsync(ct);
+
+        await using var context = fixture.CreateDbContext();
+        await context.ParkingTariffs.ExecuteDeleteAsync(ct);
+        await context.PaidWindows.ExecuteDeleteAsync(ct);
+        await context.ParkingCalendarExceptions.ExecuteDeleteAsync(ct);
+        await context.ParkingRuleSets.ExecuteDeleteAsync(ct);
+
+        var paidWindows = Enumerable.Range((int)DayOfWeek.Monday, 6)
+            .Select(day => new PaidWindow(
+                (DayOfWeek)day,
+                new TimeOnly(9, 0),
+                new TimeOnly(20, 0)))
+            .ToArray();
+
+        context.ParkingRuleSets.Add(new ParkingRuleSet(
+            Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch,
+            validUntil: null,
+            TimeSpan.FromHours(4),
+            paidWindows,
+            publicHolidaysAreFree: true,
+            continuation: ProviderCoverageContinuation.StartNewAction));
+
+        await context.SaveChangesAsync(ct);
     }
 
     private async Task<User> CreateAdminAsync(CancellationToken ct)
