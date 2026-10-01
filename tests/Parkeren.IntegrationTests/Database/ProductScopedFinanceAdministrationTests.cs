@@ -115,6 +115,9 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
                 .Where(x => x.ParkingRuleSetId == rulesA.Id || x.ParkingRuleSetId == rulesB.Id)
                 .ExecuteDeleteAsync(ct);
             await cleanup.ParkingRuleSets.Where(x => x.Id == rulesA.Id || x.Id == rulesB.Id).ExecuteDeleteAsync(ct);
+            await cleanup.AdminAuditEvents
+                .Where(x => x.ActorUserId == admin.Id || x.ActorUserId == visitorA.Id || x.ActorUserId == visitorB.Id)
+                .ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitorA.Id || x.Id == visitorB.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicleA.Id || x.Id == vehicleB.Id).ExecuteDeleteAsync(ct);
             await cleanup.ParkingProviderProducts.Where(x => x.Id == productA.Id || x.Id == productB.Id).ExecuteDeleteAsync(ct);
