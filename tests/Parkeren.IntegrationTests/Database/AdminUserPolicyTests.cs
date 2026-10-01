@@ -33,37 +33,47 @@ public sealed class AdminUserPolicyTests(PostgreSqlFixture fixture)
             await seed.SaveChangesAsync(ct);
         }
 
-        var services = CreateServices();
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-        var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+        try
+        {
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
 
-        var result = await administration.SetUserPolicyAsync(
-            admin.Id,
-            visitor.Id,
-            PolicyDurationOverrideMode.Unlimited,
-            null,
-            PolicyDurationOverrideMode.Unlimited,
-            null,
-            allowVisitExtension: null,
-            allowOpenEndedVisits: null,
-            maxConcurrentVisits: null,
-            ct);
+            var result = await administration.SetUserPolicyAsync(
+                admin.Id,
+                visitor.Id,
+                PolicyDurationOverrideMode.Unlimited,
+                null,
+                PolicyDurationOverrideMode.Unlimited,
+                null,
+                allowVisitExtension: null,
+                allowOpenEndedVisits: null,
+                maxConcurrentVisits: null,
+                ct);
 
-        Assert.Equal(AdminUserPolicyUpdateOutcome.Updated, result.Outcome);
-        Assert.NotNull(result.Policy);
-        Assert.Null(result.Policy.Effective.MaxPaidParkingDurationMinutes);
-        Assert.Null(result.Policy.Effective.MaxVisitElapsedDurationMinutes);
-        Assert.Equal(PolicyDurationOverrideMode.Unlimited, result.Policy.Overrides.MaxPaidParkingDurationMode);
-        Assert.Equal(PolicyDurationOverrideMode.Unlimited, result.Policy.Overrides.MaxVisitElapsedDurationMode);
+            Assert.Equal(AdminUserPolicyUpdateOutcome.Updated, result.Outcome);
+            Assert.NotNull(result.Policy);
+            Assert.Null(result.Policy.Effective.MaxPaidParkingDurationMinutes);
+            Assert.Null(result.Policy.Effective.MaxVisitElapsedDurationMinutes);
+            Assert.Equal(PolicyDurationOverrideMode.Unlimited, result.Policy.Overrides.MaxPaidParkingDurationMode);
+            Assert.Equal(PolicyDurationOverrideMode.Unlimited, result.Policy.Overrides.MaxVisitElapsedDurationMode);
 
-        await using var verify = fixture.CreateDbContext();
-        var stored = await verify.UserPolicyOverrides.AsNoTracking()
-            .SingleAsync(x => x.UserId == visitor.Id, ct);
-        Assert.Equal(PolicyDurationOverrideMode.Unlimited, stored.MaxPaidParkingDurationMode);
-        Assert.Null(stored.MaxPaidParkingDuration);
-        Assert.Equal(PolicyDurationOverrideMode.Unlimited, stored.MaxVisitElapsedDurationMode);
-        Assert.Null(stored.MaxVisitElapsedDuration);
+            await using var verify = fixture.CreateDbContext();
+            var stored = await verify.UserPolicyOverrides.AsNoTracking()
+                .SingleAsync(x => x.UserId == visitor.Id, ct);
+            Assert.Equal(PolicyDurationOverrideMode.Unlimited, stored.MaxPaidParkingDurationMode);
+            Assert.Null(stored.MaxPaidParkingDuration);
+            Assert.Equal(PolicyDurationOverrideMode.Unlimited, stored.MaxVisitElapsedDurationMode);
+            Assert.Null(stored.MaxVisitElapsedDuration);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserPolicyOverrides.Where(x => x.UserId == visitor.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor.Id).ExecuteDeleteAsync(ct);
+            await cleanup.DefaultParkingPolicies.Where(x => x.Id == defaults.Id).ExecuteDeleteAsync(ct);
+        }
     }
 
     private ServiceCollection CreateServices()
