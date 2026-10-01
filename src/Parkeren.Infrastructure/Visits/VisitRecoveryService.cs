@@ -113,10 +113,7 @@ internal sealed class VisitRecoveryService(
                         mismatch = true;
 
                         if (string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
-                        {
-                            action.MarkExternallyStopped(remote.Status);
                             await discrepancyService.ResolveAsync(statusKey, observedAt, cancellationToken);
-                        }
                     }
                     else
                     {
@@ -151,6 +148,13 @@ internal sealed class VisitRecoveryService(
                     mismatch = remote is null ||
                                !string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase) ||
                                (remote.End - action.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1);
+                }
+
+                if (remote is not null &&
+                    string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase) &&
+                    action.State == ProviderActionState.Active)
+                {
+                    action.MarkExternallyStopped(remote.Status);
                 }
 
                 if (!mismatch)

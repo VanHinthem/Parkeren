@@ -1063,6 +1063,22 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapGet("/api/admin/provider/discrepancies", async (
+    bool includeResolved,
+    IProviderDiscrepancyService discrepancyService,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return Results.Ok(await discrepancyService.GetAsync(includeResolved, cancellationToken));
+});
+
 app.MapGet("/api/admin/provider/products", async (
     IProviderProductCatalogService productCatalog,
     IAuthenticationService authentication,
