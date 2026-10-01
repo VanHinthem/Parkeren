@@ -2182,8 +2182,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
         visit.Activate();
 
-        var localBoundary = TimeZoneInfo.ConvertTime(boundary, TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId));
-        var paidWindow = new PaidWindow(localBoundary.DayOfWeek, TimeOnly.MinValue, new TimeOnly(23, 59, 59));
+        var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
+        var paidWindows = Enumerable.Range(0, 8)
+            .Select(offset => TimeZoneInfo.ConvertTime(boundary.AddDays(offset), businessZone).DayOfWeek)
+            .Distinct()
+            .Select(day => new PaidWindow(day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+            .ToArray();
 
         await using (var seedContext = fixture.CreateDbContext())
         {
@@ -2192,7 +2196,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Visits.Add(visit);
             seedContext.ParkingRuleSets.AddRange(
                 new ParkingRuleSet(Guid.NewGuid(), startAt.AddDays(-1), boundary, TimeSpan.FromHours(4), Array.Empty<PaidWindow>()),
-                new ParkingRuleSet(Guid.NewGuid(), boundary, requestedEndAt.AddDays(1), TimeSpan.FromHours(4), new[] { paidWindow }));
+                new ParkingRuleSet(Guid.NewGuid(), boundary, requestedEndAt.AddDays(1), TimeSpan.FromHours(4), paidWindows));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
