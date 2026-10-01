@@ -5,6 +5,7 @@ using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Notifications;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Infrastructure.Notifications;
 using Parkeren.Infrastructure.Persistence;
 
@@ -19,6 +20,7 @@ internal sealed class VisitRecoveryService(
     IVisitEndTimeProviderAdjuster endTimeProviderAdjuster,
     IVisitEndTimeChanger endTimeChanger,
     IParkingProvider provider,
+    IProviderDiscrepancyService discrepancyService,
     NotificationInboxWriter inboxWriter,
     TimeProvider timeProvider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
@@ -61,16 +63,98 @@ internal sealed class VisitRecoveryService(
             var remoteActions = string.IsNullOrWhiteSpace(visit.ProviderProductExternalId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(visit.ProviderProductExternalId, cancellationToken);
+
             foreach (var action in actions)
             {
                 var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
-                if (remote is not null &&
-                    string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase) &&
-                    (remote.End - action.PlannedEndAt).Duration() < TimeSpan.FromMilliseconds(1))
-                    continue;
+                var productId = visit.ProviderProductId;
+                var mismatch = false;
 
-                if (remote is not null && string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
-                    action.MarkExternallyStopped(remote.Status);
+                if (productId is Guid localProductId)
+                {
+                    var missingKey = MissingProviderActionKey(localProductId, action.Id);
+                    var statusKey = ProviderActionStatusKey(localProductId, action.Id);
+                    var endKey = ProviderActionEndKey(localProductId, action.Id);
+                    var observedAt = timeProvider.GetUtcNow();
+
+                    if (remote is null)
+                    {
+                        await discrepancyService.ObserveAsync(
+                            new ProviderDiscrepancyObservation(
+                                missingKey,
+                                ProviderDiscrepancyType.MissingProviderAction,
+                                localProductId,
+                                observedAt,
+                                visit.Id,
+                                action.Id,
+                                action.ProviderActionId),
+                            cancellationToken);
+                        await discrepancyService.ResolveAsync(statusKey, observedAt, cancellationToken);
+                        await discrepancyService.ResolveAsync(endKey, observedAt, cancellationToken);
+                        mismatch = true;
+                    }
+                    else if (!string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await discrepancyService.ResolveAsync(missingKey, observedAt, cancellationToken);
+                        await discrepancyService.ResolveAsync(endKey, observedAt, cancellationToken);
+                        await discrepancyService.ObserveAsync(
+                            new ProviderDiscrepancyObservation(
+                                statusKey,
+                                ProviderDiscrepancyType.ProviderActionStatusMismatch,
+                                localProductId,
+                                observedAt,
+                                visit.Id,
+                                action.Id,
+                                remote.ProviderActionId,
+                                remote.Status,
+                                remote.Start,
+                                remote.End),
+                            cancellationToken);
+                        mismatch = true;
+
+                        if (string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+                        {
+                            action.MarkExternallyStopped(remote.Status);
+                            await discrepancyService.ResolveAsync(statusKey, observedAt, cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        await discrepancyService.ResolveAsync(missingKey, observedAt, cancellationToken);
+                        await discrepancyService.ResolveAsync(statusKey, observedAt, cancellationToken);
+
+                        if ((remote.End - action.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+                        {
+                            await discrepancyService.ObserveAsync(
+                                new ProviderDiscrepancyObservation(
+                                    endKey,
+                                    ProviderDiscrepancyType.ProviderActionEndMismatch,
+                                    localProductId,
+                                    observedAt,
+                                    visit.Id,
+                                    action.Id,
+                                    remote.ProviderActionId,
+                                    remote.Status,
+                                    remote.Start,
+                                    remote.End),
+                                cancellationToken);
+                            mismatch = true;
+                        }
+                        else
+                        {
+                            await discrepancyService.ResolveAsync(endKey, observedAt, cancellationToken);
+                        }
+                    }
+                }
+                else
+                {
+                    mismatch = remote is null ||
+                               !string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+                               (remote.End - action.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1);
+                }
+
+                if (!mismatch)
+                    continue;
 
                 await MarkAttentionRequiredAsync(visit, cancellationToken);
                 var work = await dbContext.VisitSchedulerWork
@@ -80,15 +164,99 @@ internal sealed class VisitRecoveryService(
                     .ToListAsync(cancellationToken);
                 foreach (var item in work)
                     item.Cancel();
-                logger.LogWarning("Provider action {ProviderActionId} for Visit {VisitId} changed externally; continuation blocked.",
-                    action.ProviderActionId, visitId);
+
+                logger.LogWarning(
+                    "Provider action {ProviderActionId} for Visit {VisitId} changed externally; continuation blocked.",
+                    action.ProviderActionId,
+                    visitId);
                 break;
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
+
+        await DetectExternalProviderActionsAsync(cancellationToken);
     }
+
+    private async Task DetectExternalProviderActionsAsync(CancellationToken cancellationToken)
+    {
+        var products = await dbContext.ParkingProviderProducts.AsNoTracking()
+            .Where(x => x.IsAvailable)
+            .ToListAsync(cancellationToken);
+
+        foreach (var product in products)
+        {
+            var hasUnresolvedOperations = await (
+                from operation in dbContext.ProviderOperations.AsNoTracking()
+                join visit in dbContext.Visits.AsNoTracking()
+                    on operation.VisitId equals visit.Id
+                where visit.ProviderProductId == product.Id &&
+                      (operation.Status == ProviderOperationStatus.Pending ||
+                       operation.Status == ProviderOperationStatus.InProgress ||
+                       operation.Status == ProviderOperationStatus.Unknown ||
+                       operation.Status == ProviderOperationStatus.Reconciling)
+                select operation.Id)
+                .AnyAsync(cancellationToken);
+
+            if (hasUnresolvedOperations)
+                continue;
+
+            var remoteActions = await provider.GetActionsForProductAsync(
+                product.ProviderProductId,
+                cancellationToken);
+            var localProviderActionIds = await dbContext.ProviderParkingActions.AsNoTracking()
+                .Where(x => x.ProviderProductId == product.ProviderProductId &&
+                            x.ProviderActionId != null)
+                .Select(x => x.ProviderActionId!)
+                .ToListAsync(cancellationToken);
+            var localIds = localProviderActionIds.ToHashSet(StringComparer.Ordinal);
+
+            foreach (var localProviderActionId in localIds)
+            {
+                await discrepancyService.ResolveAsync(
+                    ExternalProviderActionKey(product.Id, localProviderActionId),
+                    timeProvider.GetUtcNow(),
+                    cancellationToken);
+            }
+
+            foreach (var remote in remoteActions.Where(x => !localIds.Contains(x.ProviderActionId)))
+            {
+                var observedAt = timeProvider.GetUtcNow();
+                var key = ExternalProviderActionKey(product.Id, remote.ProviderActionId);
+
+                await discrepancyService.ObserveAsync(
+                    new ProviderDiscrepancyObservation(
+                        key,
+                        ProviderDiscrepancyType.ExternalProviderAction,
+                        product.Id,
+                        observedAt,
+                        ProviderActionId: remote.ProviderActionId,
+                        ProviderStatus: remote.Status,
+                        ProviderStartAt: remote.Start,
+                        ProviderEndAt: remote.End),
+                    cancellationToken);
+
+                if (string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(remote.Status, "completed", StringComparison.OrdinalIgnoreCase))
+                {
+                    await discrepancyService.ResolveAsync(key, observedAt, cancellationToken);
+                }
+            }
+        }
+    }
+
+    private static string MissingProviderActionKey(Guid productId, Guid actionId) =>
+        $"missing-provider-action:{productId:N}:{actionId:N}";
+
+    private static string ProviderActionStatusKey(Guid productId, Guid actionId) =>
+        $"provider-action-status:{productId:N}:{actionId:N}";
+
+    private static string ProviderActionEndKey(Guid productId, Guid actionId) =>
+        $"provider-action-end:{productId:N}:{actionId:N}";
+
+    private static string ExternalProviderActionKey(Guid productId, string providerActionId) =>
+        $"external-provider-action:{productId:N}:{providerActionId}";
 
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
