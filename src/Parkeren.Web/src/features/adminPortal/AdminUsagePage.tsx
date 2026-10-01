@@ -3,6 +3,7 @@ import {
   getAdminBudgetPeriods,
   getAdminBudgetUsage,
   getAdminCostReport,
+  getAdminProviderProducts,
   getAdminProviderStatus,
   type AdminBudgetPeriod,
   type AdminBudgetUsage,
@@ -74,10 +75,14 @@ export function AdminUsagePage(){
     setLoading(true);
     setError(undefined);
     try{
-      const[budgetPeriods,provider]=await Promise.all([
-        getAdminBudgetPeriods(),
+      const[products,provider]=await Promise.all([
+        getAdminProviderProducts(),
         getAdminProviderStatus()
       ]);
+      const defaultProduct=products.find(product=>product.isDefault);
+      const budgetPeriods=defaultProduct
+        ? await getAdminBudgetPeriods(defaultProduct.id)
+        : [];
       setPeriods(budgetPeriods);
       setProviderStatus(provider);
       setSelectedPeriodId(currentBudgetId(budgetPeriods));
@@ -147,8 +152,8 @@ export function AdminUsagePage(){
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-usage__panel">
-      <h2>Budgetgebruik</h2>
-      <p>Lokale berekening telt alleen betaalde tijd van afgeronde Visits. Het officiële 2Park-saldo blijft als aparte bron zichtbaar.</p>
+      <h2>Budgetgebruik defaultproduct</h2>
+      <p>Lokale berekening telt alleen betaalde tijd van afgeronde Visits van het huidige defaultproduct. Het officiële 2Park-saldo wordt voor datzelfde product als aparte bron getoond.</p>
 
       {periods?.length
         ? <label className="admin-usage__field">
@@ -175,7 +180,7 @@ export function AdminUsagePage(){
 
     <section className="admin-usage__panel">
       <h2>Parkeerkosten</h2>
-      <p>Selecteer een periode. Kosten worden per betaald segment berekend met de tariefversie die op dat moment geldig was.</p>
+      <p>Selecteer een periode. Kosten worden per Visit berekend met de rules en tariefversie van het providerproduct waarmee die Visit is gestart.</p>
       <div className="admin-usage__controls">
         <label className="admin-usage__field"><span>Van</span><input type="date" value={fromDate} onChange={event=>setFromDate(event.target.value)}/></label>
         <label className="admin-usage__field"><span>Tot en met</span><input type="date" value={toDate} onChange={event=>setToDate(event.target.value)}/></label>
