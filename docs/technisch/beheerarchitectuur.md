@@ -271,7 +271,8 @@ De eerste vijf verticale slices zijn inmiddels gerealiseerd:
 - **8.4 Providerstatus & saldo** — officieel providersaldo met freshness/stale-semantiek en actuele provideractions;
 - **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor;
 - **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`;
-- **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation.
+- **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation;
+- **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -312,6 +313,20 @@ Voor 8.7 geldt:
 - `MaxProviderActionDuration` en `Continuation` horen bewust bij de ruleset en niet bij user policies;
 - een actieve Visit kan een toekomstige rulesetboundary passeren: parkeerregels zijn tijdsafhankelijk en de bestaande period-segmentatie past dan per periode de juiste ruleset toe;
 - er is voor 8.7 geen schemawijziging nodig: de bestaande `ParkingRuleSet`, `PaidWindow` en `ParkingCalendarException` persistence wordt hergebruikt.
+
+Voor 8.8 geldt:
+
+- budgetperioden zijn expliciet begrensd en non-overlapping;
+- tarieven zijn non-overlapping en historisch/versioned;
+- een nieuw open-ended tarief mag de vorige open-ended versie afsluiten, maar historische tariefbetekenis wordt niet overschreven;
+- budgetgebruik is lokaal afgeleid uit betaalde segmenten van completed Visits;
+- budgetgebruik en providerbalans blijven verschillende bronnen: providerdata wordt niet automatisch met lokale data overschreven;
+- providerbalans wordt alleen numeriek met lokale resterende tijd vergeleken wanneer de provider zelf een tijdseenheid levert;
+- kostberekening gebruikt `ParkingRuleSetPeriodSegmenter`, `ParkingTimeSegmenter` en `ParkingTariffCostCalculator`;
+- rapportage markeert configuratiegaten expliciet en gebruikt nooit het huidige tarief als historische fallback;
+- `/beheer/verbruik` levert budget- en kosteninzage met drill-down naar Visit-detail;
+- het operationele dashboard toont ook het actuele lokale budget;
+- er is voor 8.8 geen schemawijziging nodig.
 
 ## Vervolg
 
