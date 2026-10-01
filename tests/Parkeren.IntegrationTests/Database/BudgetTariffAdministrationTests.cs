@@ -297,6 +297,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             await context.ParkingBudgetPeriods.Where(x => budgetIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
         if (tariffIds.Count > 0)
             await context.ParkingTariffs.Where(x => tariffIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
+        await context.AdminAuditEvents.Where(x => x.ActorUserId == adminId).ExecuteDeleteAsync(ct);
         await context.Users.Where(x => x.Id == adminId).ExecuteDeleteAsync(ct);
     }
 
