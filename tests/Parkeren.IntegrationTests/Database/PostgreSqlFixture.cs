@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Infrastructure.Persistence;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Testcontainers.PostgreSql;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -28,6 +29,23 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             TimeSpan.FromHours(8),
             allowVisitExtension: true,
             allowOpenEndedVisits: false));
+
+        var paidWindows = Enumerable.Range((int)DayOfWeek.Monday, 6)
+            .Select(day => new PaidWindow(
+                (DayOfWeek)day,
+                new TimeOnly(9, 0),
+                new TimeOnly(20, 0)))
+            .ToArray();
+
+        dbContext.ParkingRuleSets.Add(new ParkingRuleSet(
+            Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch,
+            validUntil: null,
+            TimeSpan.FromHours(4),
+            paidWindows,
+            publicHolidaysAreFree: true,
+            continuation: ProviderCoverageContinuation.StartNewAction));
+
         await dbContext.SaveChangesAsync();
     }
 
