@@ -20,6 +20,22 @@ internal sealed class ProviderDiscrepancyService(
                      x.Status == ProviderDiscrepancyStatus.Open,
                 cancellationToken);
 
+        if (discrepancy is null &&
+            observation.Type == ProviderDiscrepancyType.ExternalProviderAction)
+        {
+            var resolvedId = await dbContext.ProviderDiscrepancies
+                .AsNoTracking()
+                .Where(x => x.Key == observation.Key &&
+                            x.Type == ProviderDiscrepancyType.ExternalProviderAction &&
+                            x.Status == ProviderDiscrepancyStatus.Resolved)
+                .OrderByDescending(x => x.ResolvedAt)
+                .Select(x => x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (resolvedId != Guid.Empty)
+                return await GetSummaryAsync(resolvedId, cancellationToken);
+        }
+
         if (discrepancy is null)
         {
             discrepancy = new ProviderDiscrepancy(
