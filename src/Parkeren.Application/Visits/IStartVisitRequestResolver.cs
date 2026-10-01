@@ -10,5 +10,6 @@ public interface IStartVisitRequestResolver
         Guid actorUserId,
         Guid ownerUserId,
         Guid vehicleId,
+        DateTimeOffset startAt,
         CancellationToken cancellationToken = default);
 }
