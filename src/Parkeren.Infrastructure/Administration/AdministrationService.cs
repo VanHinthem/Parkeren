@@ -700,6 +700,7 @@ internal sealed class AdministrationService(
         var settings = await dbContext.ParkingSystemSettings.SingleAsync(cancellationToken);
         if (longVisitWarningAfterMinutes <= 0 ||
             longVisitReminderIntervalMinutes <= 0 ||
+            budgetWarningThresholdPercentages is null ||
             budgetWarningThresholdPercentages.Count == 0 ||
             budgetWarningThresholdPercentages.Any(x => x <= 0 || x > 100) ||
             budgetWarningThresholdPercentages.Distinct().Count() != budgetWarningThresholdPercentages.Count)
@@ -734,15 +735,17 @@ internal sealed class AdministrationService(
         field switch
         {
             AdminDefaultPolicyField.MaxPaidParkingDuration =>
-                policyOverride?.MaxPaidParkingDurationMode is null or PolicyDurationOverrideMode.Inherit,
+                policyOverride is null ||
+                policyOverride.MaxPaidParkingDurationMode == PolicyDurationOverrideMode.Inherit,
             AdminDefaultPolicyField.MaxVisitElapsedDuration =>
-                policyOverride?.MaxVisitElapsedDurationMode is null or PolicyDurationOverrideMode.Inherit,
+                policyOverride is null ||
+                policyOverride.MaxVisitElapsedDurationMode == PolicyDurationOverrideMode.Inherit,
             AdminDefaultPolicyField.AllowVisitExtension =>
-                policyOverride?.AllowVisitExtension is null,
+                policyOverride is null || policyOverride.AllowVisitExtension is null,
             AdminDefaultPolicyField.AllowOpenEndedVisits =>
-                policyOverride?.AllowOpenEndedVisits is null,
+                policyOverride is null || policyOverride.AllowOpenEndedVisits is null,
             AdminDefaultPolicyField.MaxConcurrentVisits =>
-                policyOverride?.MaxConcurrentVisits is null,
+                policyOverride is null || policyOverride.MaxConcurrentVisits is null,
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
 
