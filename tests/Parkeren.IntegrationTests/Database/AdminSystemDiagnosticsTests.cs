@@ -79,6 +79,7 @@ public sealed class AdminSystemDiagnosticsTests(PostgreSqlFixture fixture)
         {
             ["ConnectionStrings:Parkeren"] = fixture.ConnectionString,
             ["ParkingProvider:Type"] = "TwoParkMock",
+            ["ParkingProvider:BaseUrl"] = "http://localhost:5081",
             ["ParkingProvider:Username"] = "provider-secret",
             ["ParkingProvider:Password"] = "provider-password",
             ["WebPush:Subject"] = "mailto:test@example.invalid",
