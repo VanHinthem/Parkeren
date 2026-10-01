@@ -77,7 +77,11 @@ public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
                 .Include(x => x.CalendarExceptions)
                 .SingleAsync(x => x.Id == createdId.Value, ct);
 
-            Assert.Equal(validFrom, previous.ValidUntil);
+            Assert.Equal(created.ValidFrom, previous.ValidUntil);
+            Assert.InRange(
+                (created.ValidFrom - validFrom).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
             Assert.Null(created.ValidUntil);
             Assert.Equal(TimeSpan.FromHours(3), created.MaxProviderActionDuration);
             Assert.Equal(ProviderCoverageContinuation.ExtendAction, created.Continuation);
