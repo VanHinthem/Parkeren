@@ -38,7 +38,8 @@ public interface IParkingProvider
 {
     Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<ProviderProduct>> GetProductsAsync(CancellationToken cancellationToken = default);
+    async Task<IReadOnlyList<ProviderProduct>> GetProductsAsync(CancellationToken cancellationToken = default) =>
+        new[] { await GetProductAsync(cancellationToken) };
 
     Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default);
 
