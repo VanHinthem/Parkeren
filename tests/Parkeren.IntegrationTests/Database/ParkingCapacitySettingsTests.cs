@@ -78,8 +78,7 @@ public sealed class ParkingCapacitySettingsTests(PostgreSqlFixture fixture)
                 .Select(x => x.MaxConcurrentVisits).SingleAsync(ct));
             Assert.False(await administration.SetUserMaxConcurrentVisitsAsync(admin.Id, visitor.Id, 6, ct));
             Assert.True(await administration.SetUserMaxConcurrentVisitsAsync(admin.Id, visitor.Id, null, ct));
-            Assert.Null(await context.UserPolicyOverrides.Where(x => x.UserId == visitor.Id)
-                .Select(x => x.MaxConcurrentVisits).SingleAsync(ct));
+            Assert.False(await context.UserPolicyOverrides.AnyAsync(x => x.UserId == visitor.Id, ct));
         }
         finally
         {
