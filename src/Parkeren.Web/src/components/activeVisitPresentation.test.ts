@@ -38,9 +38,15 @@ describe("active visit presentation",()=>{
     expect(canStopActiveVisit(attentionVisit)).toBe(true);
   });
 
-  it("blocks actions while reconciliation is in progress",()=>{
+  it("blocks new actions while active reconciliation is in progress",()=>{
     const reconciling=visit({health:"Reconciling"});
     expect(canExtendActiveVisit(reconciling)).toBe(false);
     expect(canStopActiveVisit(reconciling)).toBe(false);
+  });
+
+  it("allows retrying a stop that is already reconciling",()=>{
+    const reconcilingStop=visit({status:"Stopping",health:"Reconciling"});
+    expect(canExtendActiveVisit(reconcilingStop)).toBe(false);
+    expect(canStopActiveVisit(reconcilingStop)).toBe(true);
   });
 });
