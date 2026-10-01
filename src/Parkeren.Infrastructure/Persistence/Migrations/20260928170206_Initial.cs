@@ -16,10 +16,10 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    MaxPaidParkingDuration = table.Column<TimeSpan>(type: "interval", nullable: false),
+                    MaxPaidParkingDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
                     MaxVisitElapsedDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
-                    AllowAutoExtension = table.Column<bool>(type: "boolean", nullable: false),
-                    AllowManualStop = table.Column<bool>(type: "boolean", nullable: false),
+                    AllowVisitExtension = table.Column<bool>(type: "boolean", nullable: false),
+                    AllowOpenEndedVisits = table.Column<bool>(type: "boolean", nullable: false),
                     MaxConcurrentVisits = table.Column<int>(type: "integer", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -180,10 +180,12 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    MaxPaidParkingDurationMode = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     MaxPaidParkingDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
+                    MaxVisitElapsedDurationMode = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     MaxVisitElapsedDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
-                    AllowAutoExtension = table.Column<bool>(type: "boolean", nullable: true),
-                    AllowManualStop = table.Column<bool>(type: "boolean", nullable: true),
+                    AllowVisitExtension = table.Column<bool>(type: "boolean", nullable: true),
+                    AllowOpenEndedVisits = table.Column<bool>(type: "boolean", nullable: true),
                     MaxConcurrentVisits = table.Column<int>(type: "integer", nullable: true),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -261,8 +263,8 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     Health = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
                     PolicyMaxPaidParkingDuration = table.Column<TimeSpan>(type: "interval", nullable: false),
                     PolicyMaxVisitElapsedDuration = table.Column<TimeSpan>(type: "interval", nullable: true),
-                    PolicyAllowAutoExtension = table.Column<bool>(type: "boolean", nullable: false),
-                    PolicyAllowManualStop = table.Column<bool>(type: "boolean", nullable: false),
+                    PolicyAllowVisitExtension = table.Column<bool>(type: "boolean", nullable: false),
+                    PolicyAllowOpenEndedVisits = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
                 },
