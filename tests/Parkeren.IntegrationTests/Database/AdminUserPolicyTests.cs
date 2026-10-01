@@ -70,6 +70,9 @@ public sealed class AdminUserPolicyTests(PostgreSqlFixture fixture)
         finally
         {
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.AdminAuditEvents
+                .Where(x => x.ActorUserId == admin.Id || x.ActorUserId == visitor.Id)
+                .ExecuteDeleteAsync(ct);
             await cleanup.UserPolicyOverrides.Where(x => x.UserId == visitor.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor.Id).ExecuteDeleteAsync(ct);
             await cleanup.DefaultParkingPolicies.Where(x => x.Id == defaults.Id).ExecuteDeleteAsync(ct);
