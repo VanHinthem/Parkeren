@@ -237,9 +237,9 @@ export function AdminProviderPage(){
     <section className="admin-provider__panel admin-provider__notice">
       <h2>Afwijkingen & reconciliatie</h2>
       <p>
-        2Park blijft leidend voor providerstatus en officieel saldo. Verschillen met de lokale administratie worden later als aparte discrepancy-records vastgelegd.
+        2Park blijft leidend voor providerstatus en officieel saldo. Gedetecteerde verschillen worden persistent vastgelegd en blijven na oplossing traceerbaar.
       </p>
-      <a className="admin-provider__link" href="/beheer/provider/afwijkingen">Naar afwijkingen</a>
+      <a className="admin-provider__link" href="/beheer/provider/afwijkingen">Afwijkingen bekijken</a>
     </section>
   </div>;
 }

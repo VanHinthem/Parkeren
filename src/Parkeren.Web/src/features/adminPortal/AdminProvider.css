@@ -191,3 +191,109 @@
   font-weight:700;
   vertical-align:middle;
 }
+
+
+.admin-provider__discrepancy-summary{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.65rem;
+}
+
+.admin-provider__history-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:.45rem;
+  margin-left:auto;
+  color:var(--color-text-muted);
+  font-size:.84rem;
+  cursor:pointer;
+}
+
+.admin-provider__history-toggle input{
+  width:1rem;
+  height:1rem;
+}
+
+.admin-provider__discrepancy{
+  display:grid;
+  gap:1rem;
+}
+
+.admin-provider__discrepancy-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:1rem;
+}
+
+.admin-provider__discrepancy-heading p{
+  margin:.3rem 0 0;
+  color:var(--color-text-muted);
+  font-size:.84rem;
+}
+
+.admin-provider__discrepancy-title{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.6rem;
+}
+
+.admin-provider__discrepancy-title h2{
+  margin:0;
+}
+
+.admin-provider__facts--wide{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  border-top:1px solid var(--color-border);
+}
+
+.admin-provider__facts--wide .admin-provider__fact{
+  display:block;
+  padding:.7rem .8rem;
+  border-right:1px solid var(--color-border);
+  border-bottom:1px solid var(--color-border);
+}
+
+.admin-provider__facts--wide .admin-provider__fact:nth-child(3n){
+  border-right:0;
+}
+
+.admin-provider__facts--wide .admin-provider__fact dd{
+  margin-top:.22rem;
+}
+
+@media(max-width:900px){
+  .admin-provider__facts--wide{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .admin-provider__facts--wide .admin-provider__fact:nth-child(3n){
+    border-right:1px solid var(--color-border);
+  }
+
+  .admin-provider__facts--wide .admin-provider__fact:nth-child(2n){
+    border-right:0;
+  }
+}
+
+@media(max-width:600px){
+  .admin-provider__history-toggle{
+    width:100%;
+    margin-left:0;
+  }
+
+  .admin-provider__discrepancy-heading{
+    display:grid;
+  }
+
+  .admin-provider__facts--wide{
+    grid-template-columns:1fr;
+  }
+
+  .admin-provider__facts--wide .admin-provider__fact{
+    border-right:0;
+  }
+}

@@ -154,6 +154,38 @@ export async function getAdminProviderStatus(){
   return json<AdminProviderStatus>(await apiFetch("/api/admin/provider/status"));
 }
 
+export type AdminProviderDiscrepancyType=
+  |"MissingProviderAction"
+  |"ProviderActionStatusMismatch"
+  |"ProviderActionEndMismatch"
+  |"ExternalProviderAction"
+  |"BalanceMismatch";
+export type AdminProviderDiscrepancy={
+  id:string;
+  key:string;
+  type:AdminProviderDiscrepancyType;
+  status:"Open"|"Resolved";
+  providerProductId:string;
+  providerProductName:string;
+  providerProductExternalId:string;
+  visitId:string|null;
+  providerParkingActionId:string|null;
+  localProviderActionState:"Planned"|"Starting"|"Scheduled"|"Active"|"Stopping"|"Stopped"|"Completed"|"Failed"|null;
+  localPlannedEndAt:string|null;
+  providerActionId:string|null;
+  providerStatus:string|null;
+  providerStartAt:string|null;
+  providerEndAt:string|null;
+  detectedAt:string;
+  lastObservedAt:string;
+  resolvedAt:string|null;
+};
+export async function getAdminProviderDiscrepancies(includeResolved=false){
+  return json<AdminProviderDiscrepancy[]>(await apiFetch(
+    "/api/admin/provider/discrepancies?includeResolved="+String(includeResolved)
+  ));
+}
+
 export type AdminProviderProduct={
   id:string;
   providerProductId:string;

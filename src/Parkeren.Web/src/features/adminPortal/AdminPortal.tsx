@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
+import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
@@ -163,10 +164,7 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             )
           ) : section.path === "/beheer/provider" ? (
             currentPath === "/beheer/provider/afwijkingen" ? (
-              <section className="admin-portal__panel admin-portal__placeholder">
-                <h2>Afwijkingen & reconciliatie</h2>
-                <p>Persistente discrepancies en recovery-acties worden in verticale slice 8.11 toegevoegd.</p>
-              </section>
+              <AdminProviderDiscrepanciesPage />
             ) : (
               <AdminProviderPage />
             )
