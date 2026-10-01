@@ -6,7 +6,7 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitParkingZoneLocationResolver(
     ParkerenDbContext dbContext,
-    IParkingProvider provider)
+    IServiceProvider serviceProvider)
 {
     public async Task<string?> ResolveAsync(
         Guid? parkingZoneId,
@@ -20,7 +20,11 @@ internal sealed class VisitParkingZoneLocationResolver(
                 .SingleOrDefaultAsync(cancellationToken);
         }
 
-        // Legacy Visits created before zone persistence keep working.
+        // Legacy Visits created before zone persistence keep working when a provider is available.
+        var provider = serviceProvider.GetService(typeof(IParkingProvider)) as IParkingProvider;
+        if (provider is null)
+            return null;
+
         var product = await provider.GetProductAsync(cancellationToken);
         return string.IsNullOrWhiteSpace(product.Location) ? null : product.Location;
     }
