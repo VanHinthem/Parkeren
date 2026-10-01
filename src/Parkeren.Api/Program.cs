@@ -632,6 +632,7 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
 });
 
 app.MapGet("/api/admin/budgets", async (
+    Guid? productId,
     IAdministrationService administration,
     IAuthenticationService authentication,
     HttpContext context,
@@ -641,7 +642,16 @@ app.MapGet("/api/admin/budgets", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    return Results.Ok(await administration.GetBudgetPeriodsAsync(authenticated.User.Id, cancellationToken));
+    var periods = productId.HasValue
+        ? await administration.GetBudgetPeriodsForProductAsync(
+            authenticated.User.Id,
+            productId.Value,
+            cancellationToken)
+        : await administration.GetBudgetPeriodsAsync(
+            authenticated.User.Id,
+            cancellationToken);
+
+    return Results.Ok(periods);
 });
 
 app.MapPost("/api/admin/budgets", async (
@@ -655,12 +665,20 @@ app.MapPost("/api/admin/budgets", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    var result = await administration.CreateBudgetPeriodAsync(
-        authenticated.User.Id,
-        request.ValidFrom,
-        request.ValidUntil,
-        request.MaximumPaidDurationMinutes,
-        cancellationToken);
+    var result = request.ProviderProductId.HasValue
+        ? await administration.CreateBudgetPeriodForProductAsync(
+            authenticated.User.Id,
+            request.ProviderProductId.Value,
+            request.ValidFrom,
+            request.ValidUntil,
+            request.MaximumPaidDurationMinutes,
+            cancellationToken)
+        : await administration.CreateBudgetPeriodAsync(
+            authenticated.User.Id,
+            request.ValidFrom,
+            request.ValidUntil,
+            request.MaximumPaidDurationMinutes,
+            cancellationToken);
 
     return result.Outcome switch
     {
@@ -691,6 +709,7 @@ app.MapGet("/api/admin/budgets/usage", async (
 });
 
 app.MapGet("/api/admin/tariffs", async (
+    Guid? productId,
     IAdministrationService administration,
     IAuthenticationService authentication,
     HttpContext context,
@@ -700,7 +719,16 @@ app.MapGet("/api/admin/tariffs", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    return Results.Ok(await administration.GetParkingTariffsAsync(authenticated.User.Id, cancellationToken));
+    var tariffs = productId.HasValue
+        ? await administration.GetParkingTariffsForProductAsync(
+            authenticated.User.Id,
+            productId.Value,
+            cancellationToken)
+        : await administration.GetParkingTariffsAsync(
+            authenticated.User.Id,
+            cancellationToken);
+
+    return Results.Ok(tariffs);
 });
 
 app.MapPost("/api/admin/tariffs", async (
@@ -714,13 +742,22 @@ app.MapPost("/api/admin/tariffs", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    var result = await administration.CreateParkingTariffAsync(
-        authenticated.User.Id,
-        request.ValidFrom,
-        request.ValidUntil,
-        request.Rate,
-        request.Unit,
-        cancellationToken);
+    var result = request.ProviderProductId.HasValue
+        ? await administration.CreateParkingTariffForProductAsync(
+            authenticated.User.Id,
+            request.ProviderProductId.Value,
+            request.ValidFrom,
+            request.ValidUntil,
+            request.Rate,
+            request.Unit,
+            cancellationToken)
+        : await administration.CreateParkingTariffAsync(
+            authenticated.User.Id,
+            request.ValidFrom,
+            request.ValidUntil,
+            request.Rate,
+            request.Unit,
+            cancellationToken);
 
     return result.Outcome switch
     {
@@ -1815,10 +1852,12 @@ public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayNa
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
 public sealed record AdminBudgetPeriodCreateRequest(
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     DateTimeOffset ValidUntil,
     int MaximumPaidDurationMinutes);
 public sealed record AdminParkingTariffCreateRequest(
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     DateTimeOffset? ValidUntil,
     decimal Rate,
