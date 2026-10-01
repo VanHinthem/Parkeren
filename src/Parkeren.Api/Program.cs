@@ -985,6 +985,63 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapGet("/api/admin/provider/products", async (
+    IProviderProductCatalogService productCatalog,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return Results.Ok(await productCatalog.GetProductsAsync(cancellationToken));
+});
+
+app.MapPost("/api/admin/provider/products/sync", async (
+    IProviderProductCatalogService productCatalog,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    try
+    {
+        return Results.Ok(await productCatalog.SynchronizeAsync(cancellationToken));
+    }
+    catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
+    {
+        return Results.Problem(
+            exception.Message,
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
+app.MapPut("/api/admin/provider/products/{productId:guid}/default", async (
+    Guid productId,
+    IProviderProductCatalogService productCatalog,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    return await productCatalog.SetDefaultAsync(productId, cancellationToken)
+        ? Results.NoContent()
+        : Results.BadRequest(new { error = "Alleen een beschikbaar providerproduct kan default worden gemaakt." });
+});
+
 app.MapGet("/api/admin/visits", async (
     Guid? userId,
     string? licensePlate,
