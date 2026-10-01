@@ -46,7 +46,7 @@ const sections: AdminSection[] = [
     path: "/beheer/configuratie",
     label: "Parkeerconfiguratie",
     title: "Parkeerconfiguratie",
-    subtitle: "Zones, parkeerregels, betaalvensters, uitzonderingen, tarieven en budgetten."
+    subtitle: "Productgebonden parkeerregels, betaalvensters, uitzonderingen, tarieven en budgetten."
   },
   {
     path: "/beheer/provider",
