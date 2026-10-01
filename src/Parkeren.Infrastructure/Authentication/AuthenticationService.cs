@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Domain.Users;
 using Parkeren.Infrastructure.Persistence;
@@ -10,7 +11,8 @@ namespace Parkeren.Infrastructure.Authentication;
 
 internal sealed class AuthenticationService(
     ParkerenDbContext dbContext,
-    IPasswordHasher<User> passwordHasher) : IAuthenticationService
+    IPasswordHasher<User> passwordHasher,
+    IAdminAuditWriter auditWriter) : IAuthenticationService
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(30);
 
@@ -84,7 +86,13 @@ internal sealed class AuthenticationService(
 
         user.ChangePinHash(passwordHasher.HashPassword(user, newPin));
         await RevokeSessionsAsync(userId, DateTimeOffset.UtcNow, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserPinReset",
+            "User",
+            user.Id.ToString(),
+            new { user.Username },
+            cancellationToken);
         return true;
     }
 
@@ -96,11 +104,19 @@ internal sealed class AuthenticationService(
         if (!await IsActiveAdminAsync(actorUserId, cancellationToken))
             return false;
 
-        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+        var user = await dbContext.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
             return false;
 
         await RevokeSessionsAsync(userId, DateTimeOffset.UtcNow, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserSessionsRevoked",
+            "User",
+            user.Id.ToString(),
+            new { user.Username },
+            cancellationToken);
         return true;
     }
 
