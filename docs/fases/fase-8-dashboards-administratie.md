@@ -164,7 +164,7 @@ Waar deze stories een eenvoudige PWA-weergave overlappen, geldt de mobiele imple
 Een uitgangspunt voor het volledige beheerportaal is dat backendvariabelen niet als verborgen appsettings blijven bestaan wanneer ze functioneel beheerbaar horen te zijn. De inventarisatie voor #95 omvat onder meer:
 
 - parkeerregels en betaalvensters;
-- parkeerzones + geldigheidsperioden;
+- providerproducten en productgebonden parkeerconfiguratie;
 - provider-/systeemlimieten;
 - algemene en per-user policies;
 - maximale Visit- en sessieduur;
@@ -182,9 +182,9 @@ De eerste backendinventarisatie voor #95 is afgerond.
 
 Belangrijkste conclusie: veel benodigde domeinlogica bestaat al. Default/user policies, versioned parkeerregels, betaalvensters, kalenderuitzonderingen, provider-sessieduur, continuation, tarieven, budgetberekening, Visit/provider lifecycle en recovery zijn reeds als domeinconcept aanwezig. De belangrijkste resterende werkzaamheden zijn beheergerichte application services/API's, read models en de desktop frontend.
 
-Nieuwe domeinconcepten zijn met name nodig voor:
+Nieuwe domeinconcepten voor deze fase zijn:
 
-- parkeerzones/multi-zoneconfiguratie;
+- een lokale, read-only providerproductcatalogus met defaultselectie en historische productcontext;
 - persistente discrepancies voor traceerbare reconciliation.
 
 Het beheerportaal krijgt zes hoofdgebieden:
@@ -192,7 +192,7 @@ Het beheerportaal krijgt zes hoofdgebieden:
 1. **Overzicht** — operationele status, actieve Visits, capaciteit, saldo en waarschuwingen;
 2. **Bezoeken** — actief, historie, detail, verbruik en kosten;
 3. **Gebruikers & voertuigen** — accounts, voertuigen, toewijzingen en user policies;
-4. **Parkeerconfiguratie** — zones, rulesets, betaalvensters, uitzonderingen, tarieven en budgetperioden;
+4. **Parkeerconfiguratie** — productgebonden rulesets, betaalvensters, uitzonderingen, tarieven en budgetperioden;
 5. **Provider & reconciliatie** — providerstatus/actions/operations, discrepancies en recoverycontext;
 6. **Systeem** — algemene policies/settings, notificaties, diagnostiek, scheduler/push en audit.
 
