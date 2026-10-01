@@ -9,7 +9,6 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class VisitEndTimeProviderAdjuster(
     ParkerenDbContext dbContext,
     IParkingProvider provider,
-    VisitParkingZoneLocationResolver zoneLocationResolver,
     TimeProvider timeProvider) : IVisitEndTimeProviderAdjuster
 {
     public async Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(
@@ -146,9 +145,10 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (impact == VisitEndTimeProviderImpact.CancelScheduled)
             return new(false);
 
-        var location = await zoneLocationResolver.ResolveAsync(visit.ParkingZoneId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(location))
-            throw new InvalidOperationException("Parking zone has no provider location configured.");
+        var product = await provider.GetProductAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(product.Location))
+            throw new InvalidOperationException("Parking provider product has no location configured.");
+        var location = product.Location;
 
         var existingReplacement = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.ContinueStart &&

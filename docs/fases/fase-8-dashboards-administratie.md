@@ -182,8 +182,9 @@ De eerste backendinventarisatie voor #95 is afgerond.
 
 Belangrijkste conclusie: veel benodigde domeinlogica bestaat al. Default/user policies, versioned parkeerregels, betaalvensters, kalenderuitzonderingen, provider-sessieduur, continuation, tarieven, budgetberekening, Visit/provider lifecycle en recovery zijn reeds als domeinconcept aanwezig. De belangrijkste resterende werkzaamheden zijn beheergerichte application services/API's, read models en de desktop frontend.
 
-Het `ParkingZone`-domein is in 8.10 toegevoegd. Het resterende nieuwe domeinconcept binnen Fase 8 is met name:
+Nieuwe domeinconcepten zijn met name nodig voor:
 
+- parkeerzones/multi-zoneconfiguratie;
 - persistente discrepancies voor traceerbare reconciliation.
 
 Het beheerportaal krijgt zes hoofdgebieden:
@@ -231,7 +232,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 
 ## Voortgang beheerportaal — 1 oktober 2026
 
-De beheerimplementatie staat inmiddels op **slice 8.10 in CI-validatie**:
+De beheerimplementatie staat inmiddels op **slice 8.9 in CI-validatie**:
 
 - 8.1 beheerfundament ✅
 - 8.2 operationeel dashboard ✅
@@ -241,8 +242,7 @@ De beheerimplementatie staat inmiddels op **slice 8.10 in CI-validatie**:
 - 8.6 algemene policies/settings ✅
 - 8.7 parkeerregels ✅
 - 8.8 budgetten & tarieven ✅
-- 8.9 analyse ✅
-- 8.10 zones 🚧 implementatie gereed, CI-validatie volgt
+- 8.9 analyse 🚧 implementatie gereed, CI-validatie volgt
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -373,34 +373,7 @@ Beschikbaar op `/beheer/analyse`:
 
 De analyse-readmodels introduceren geen nieuwe persistence en geen schemawijziging. Een PostgreSQL-integratietest dekt expliciet een gedeeld kenteken over twee bezoekers en gearchiveerde gebruiker/voertuig-status.
 
-### 8.10 Zones
-
-Beschikbaar op `/beheer/configuratie/zones`:
-
-- nieuw persistent `ParkingZone`-domein met naam, 2Park `ProviderLocation`, `ValidFrom`, optionele `ValidUntil` en `IsDefault`;
-- meerdere niet-default zones mogen tegelijk geldig zijn;
-- voor nieuwe Visits moet op het startmoment precies één geldige defaultzone bestaan;
-- de eerste defaultzone mag historisch worden backfilled;
-- wanneer al een defaultzone bestaat, moet een vervangende default in de toekomst ingaan;
-- een nieuwe toekomstige open default sluit de bestaande open default automatisch op dezelfde `ValidFrom`;
-- open zones kunnen expliciet op een toekomstige datum worden afgesloten;
-- zonebeheer blijft beschikbaar wanneer de provider tijdelijk niet bereikbaar is; providerstatus wordt alleen best-effort gebruikt om het eerste formulier voor te vullen.
-
-Operationele integratie:
-
-- `Visit.ParkingZoneId` legt de gekozen zone vast bij StartVisit;
-- de normale API-start retourneert 503 zolang geen geldige defaultzone is geconfigureerd;
-- de 2Park `LOCATION` voor de eerste provideractie komt uit `ParkingZone.ProviderLocation`;
-- continuation-actions en replacement-actions gebruiken dezelfde zone als de oorspronkelijke Visit;
-- een actieve Visit wisselt daardoor niet van zone wanneer later een andere defaultzone wordt gepland;
-- legacy Visits met `ParkingZoneId = null` blijven leesbaar en kunnen, waar nodig, nog terugvallen op de providerproduct-location;
-- Visit-detail toont de vastgelegde zone en provider-location.
-
-Deze slice introduceert wél een schema-uitbreiding: tabel `parking_zones` plus nullable `ParkingZoneId` op `visits`. Conform de V1-afspraak is de bestaande Initial-baseline bijgewerkt in plaats van een nieuwe migration toe te voegen. **Na groene CI moet de developmentdatabase opnieuw worden aangemaakt** voordat zones functioneel worden getest.
-
-Domain-, application- en PostgreSQL-integratietests dekken default-resolutie, overlap, zone-snapshot op Visit, toekomstige defaultversioning en de StartVisit-resolver.
-
-Na groene CI is de volgende slice: **8.11 Discrepancies & reconciliation**.
+Na groene CI is de volgende slice: **8.10 Zones**.
 
 ## Exit
 

@@ -214,43 +214,6 @@ export type AdminParkingRuleSetCreateResult={
   outcome:"Created"|"Invalid"|"MustBeFuture"|"SequenceConflict";
   version:AdminParkingRuleSetVersion|null;
 };
-export type AdminParkingZone={
-  id:string;
-  name:string;
-  providerLocation:string;
-  validFrom:string;
-  validUntil:string|null;
-  isDefault:boolean;
-};
-export type AdminParkingZoneCreateResult={
-  outcome:"Created"|"Invalid"|"DefaultOverlap";
-  zone:AdminParkingZone|null;
-};
-export type AdminParkingZoneCloseResult={
-  outcome:"Closed"|"NotFound"|"Invalid"|"AlreadyClosed";
-  zone:AdminParkingZone|null;
-};
-export async function getAdminParkingZones(){
-  return json<AdminParkingZone[]>(await apiFetch("/api/admin/zones"));
-}
-export async function createAdminParkingZone(input:{
-  name:string;
-  providerLocation:string;
-  validFrom:string;
-  validUntil:string|null;
-  isDefault:boolean;
-}){
-  const response=await apiFetch("/api/admin/zones",{method:"POST",body:JSON.stringify(input)});
-  return response.json() as Promise<AdminParkingZoneCreateResult>;
-}
-export async function closeAdminParkingZone(zoneId:string,validUntil:string){
-  const response=await apiFetch("/api/admin/zones/"+encodeURIComponent(zoneId)+"/close",{
-    method:"PUT",
-    body:JSON.stringify({validUntil})
-  });
-  return response.json() as Promise<AdminParkingZoneCloseResult>;
-}
-
 export async function getAdminParkingRuleSets(){
   return json<AdminParkingRuleSetVersion[]>(await apiFetch("/api/admin/parking-rules"));
 }
@@ -541,7 +504,6 @@ export type AdminVisitDetail={
   providerActions:AdminProviderParkingActionSummary[];
   providerOperations:AdminProviderOperationSummary[];
   endTimeChanges:AdminVisitEndTimeChangeSummary[];
-  parkingZone:AdminParkingZone|null;
   relevantRuleSets:AdminRuleSetSummary[];
 };
 export type AdminVisitFilters={

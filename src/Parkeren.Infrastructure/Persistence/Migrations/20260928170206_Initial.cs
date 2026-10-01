@@ -102,22 +102,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "parking_zones",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    ProviderLocation = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    ValidFrom = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    ValidUntil = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    IsDefault = table.Column<bool>(type: "boolean", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_parking_zones", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "users",
                 columns: table => new
                 {
@@ -271,7 +255,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     StartOperationId = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
                     VehicleId = table.Column<Guid>(type: "uuid", nullable: false),
-                    ParkingZoneId = table.Column<Guid>(type: "uuid", nullable: true),
                     StartedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
                     StartAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     DesiredEndAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -288,12 +271,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_visits", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_visits_parking_zones_ParkingZoneId",
-                        column: x => x.ParkingZoneId,
-                        principalTable: "parking_zones",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_visits_users_StartedByUserId",
                         column: x => x.StartedByUserId,
@@ -546,21 +523,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                 filter: "\"Status\" IN ('Pending', 'Claimed')");
 
             migrationBuilder.CreateIndex(
-                name: "IX_parking_zones_ProviderLocation",
-                table: "parking_zones",
-                column: "ProviderLocation");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_parking_zones_ValidFrom",
-                table: "parking_zones",
-                column: "ValidFrom");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_visits_ParkingZoneId",
-                table: "visits",
-                column: "ParkingZoneId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_visits_StartedByUserId",
                 table: "visits",
                 column: "StartedByUserId");
@@ -637,9 +599,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "visits");
-
-            migrationBuilder.DropTable(
-                name: "parking_zones");
 
             migrationBuilder.DropTable(
                 name: "users");

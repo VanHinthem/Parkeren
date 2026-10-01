@@ -7,7 +7,6 @@ using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
-using Parkeren.Domain.Zones;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Administration;
@@ -1290,167 +1289,6 @@ internal sealed class AdministrationService(
             tariff.Rate,
             tariff.Unit);
 
-    public async Task<IReadOnlyList<AdminParkingZoneSummary>> GetParkingZonesAsync(
-        Guid actorUserId,
-        CancellationToken cancellationToken)
-    {
-        await EnsureAdminAsync(actorUserId, cancellationToken);
-
-        return await dbContext.ParkingZones.AsNoTracking()
-            .OrderByDescending(x => x.ValidFrom)
-            .Select(x => new AdminParkingZoneSummary(
-                x.Id,
-                x.Name,
-                x.ProviderLocation,
-                x.ValidFrom,
-                x.ValidUntil,
-                x.IsDefault))
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<AdminParkingZoneCreateResult> CreateParkingZoneAsync(
-        Guid actorUserId,
-        string name,
-        string providerLocation,
-        DateTimeOffset validFrom,
-        DateTimeOffset? validUntil,
-        bool isDefault,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        await EnsureAdminAsync(actorUserId, cancellationToken);
-
-        ParkingZone proposed;
-        try
-        {
-            proposed = new ParkingZone(
-                Guid.NewGuid(),
-                name,
-                providerLocation,
-                validFrom,
-                validUntil,
-                isDefault);
-        }
-        catch (ArgumentException)
-        {
-            return new AdminParkingZoneCreateResult(AdminParkingZoneCreateOutcome.Invalid, null);
-        }
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        await LockCapacitySettingsAsync(cancellationToken);
-
-        var zones = await dbContext.ParkingZones
-            .OrderBy(x => x.ValidFrom)
-            .ToListAsync(cancellationToken);
-
-        if (isDefault)
-        {
-            var existingDefaults = zones.Where(x => x.IsDefault).ToArray();
-            if (existingDefaults.Length > 0 && validFrom <= now)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return new AdminParkingZoneCreateResult(AdminParkingZoneCreateOutcome.Invalid, null);
-            }
-
-            var openDefault = zones
-                .Where(x => x.IsDefault && !x.ValidUntil.HasValue)
-                .OrderByDescending(x => x.ValidFrom)
-                .FirstOrDefault();
-
-            var validationZones = zones.ToList();
-            if (openDefault is not null && validFrom > openDefault.ValidFrom)
-            {
-                validationZones.Remove(openDefault);
-                validationZones.Add(new ParkingZone(
-                    openDefault.Id,
-                    openDefault.Name,
-                    openDefault.ProviderLocation,
-                    openDefault.ValidFrom,
-                    validFrom,
-                    isDefault: true));
-            }
-
-            try
-            {
-                ParkingZoneResolver.ValidateDefaultNoOverlap(validationZones.Append(proposed));
-            }
-            catch (InvalidOperationException)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return new AdminParkingZoneCreateResult(AdminParkingZoneCreateOutcome.DefaultOverlap, null);
-            }
-
-            if (openDefault is not null && validFrom > openDefault.ValidFrom)
-                openDefault.CloseAt(validFrom);
-        }
-
-        dbContext.ParkingZones.Add(proposed);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return new AdminParkingZoneCreateResult(
-            AdminParkingZoneCreateOutcome.Created,
-            ToAdminParkingZoneSummary(proposed));
-    }
-
-    public async Task<AdminParkingZoneCloseResult> CloseParkingZoneAsync(
-        Guid actorUserId,
-        Guid zoneId,
-        DateTimeOffset validUntil,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        await EnsureAdminAsync(actorUserId, cancellationToken);
-
-        if (validUntil <= now)
-            return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.Invalid, null);
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        await LockCapacitySettingsAsync(cancellationToken);
-
-        var zone = await dbContext.ParkingZones.SingleOrDefaultAsync(
-            x => x.Id == zoneId,
-            cancellationToken);
-        if (zone is null)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.NotFound, null);
-        }
-        if (zone.ValidUntil.HasValue)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return new AdminParkingZoneCloseResult(
-                AdminParkingZoneCloseOutcome.AlreadyClosed,
-                ToAdminParkingZoneSummary(zone));
-        }
-
-        try
-        {
-            zone.CloseAt(validUntil);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.Invalid, null);
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return new AdminParkingZoneCloseResult(
-            AdminParkingZoneCloseOutcome.Closed,
-            ToAdminParkingZoneSummary(zone));
-    }
-
-    private static AdminParkingZoneSummary ToAdminParkingZoneSummary(ParkingZone zone) =>
-        new(
-            zone.Id,
-            zone.Name,
-            zone.ProviderLocation,
-            zone.ValidFrom,
-            zone.ValidUntil,
-            zone.IsDefault);
-
     public async Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
         Guid? userId,
@@ -1618,21 +1456,6 @@ internal sealed class AdministrationService(
                 x.PublicHolidaysAreFree))
             .ToArray();
 
-        AdminParkingZoneSummary? parkingZone = null;
-        if (row.Visit.ParkingZoneId is Guid parkingZoneId)
-        {
-            parkingZone = await dbContext.ParkingZones.AsNoTracking()
-                .Where(x => x.Id == parkingZoneId)
-                .Select(x => new AdminParkingZoneSummary(
-                    x.Id,
-                    x.Name,
-                    x.ProviderLocation,
-                    x.ValidFrom,
-                    x.ValidUntil,
-                    x.IsDefault))
-                .SingleOrDefaultAsync(cancellationToken);
-        }
-
         var policy = row.Visit.PolicySnapshot;
         var policySnapshot = new AdminVisitPolicySnapshotSummary(
             policy.MaxPaidParkingDuration is null ? null : (int)policy.MaxPaidParkingDuration.Value.TotalMinutes,
@@ -1646,7 +1469,6 @@ internal sealed class AdministrationService(
             providerActions,
             providerOperations,
             endTimeChanges,
-            parkingZone,
             relevantRuleSets);
     }
 

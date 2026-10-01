@@ -16,7 +16,7 @@ public sealed class StartVisitProviderReadiness(IParkingProvider provider, TimeP
             throw new ArgumentOutOfRangeException(nameof(requiredPaidDuration));
 
         var product = await provider.GetProductAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(product.Id) || string.IsNullOrWhiteSpace(product.Name))
+        if (string.IsNullOrWhiteSpace(product.Id) || string.IsNullOrWhiteSpace(product.Name) || string.IsNullOrWhiteSpace(product.Location))
             throw new InvalidOperationException("Parking provider product configuration is incomplete.");
 
         var balance = await provider.GetBalanceAsync(cancellationToken);

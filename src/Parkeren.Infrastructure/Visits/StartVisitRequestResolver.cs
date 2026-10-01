@@ -1,18 +1,18 @@
 using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
-using Parkeren.Domain.Zones;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class StartVisitRequestResolver(
-    ParkerenDbContext dbContext) : IStartVisitRequestResolver
+    ParkerenDbContext dbContext,
+    IParkingProvider parkingProvider) : IStartVisitRequestResolver
 {
     public async Task<StartVisitRequestContext?> ResolveAsync(
         Guid actorUserId,
         Guid ownerUserId,
         Guid vehicleId,
-        DateTimeOffset startAt,
         CancellationToken cancellationToken = default)
     {
         var actor = await dbContext.Users
@@ -37,21 +37,10 @@ internal sealed class StartVisitRequestResolver(
             new StartVisitOwner(owner.Id, owner.IsActive),
             new StartVisitVehicle(vehicle.Id, vehicle.IsActive, isAssigned));
 
-        var zones = await dbContext.ParkingZones.AsNoTracking()
-            .Where(x => x.IsDefault &&
-                        x.ValidFrom <= startAt &&
-                        (!x.ValidUntil.HasValue || startAt < x.ValidUntil.Value))
-            .ToListAsync(cancellationToken);
-
-        StartVisitProviderContext? providerContext = null;
-        if (zones.Count > 0)
-        {
-            var zone = ParkingZoneResolver.ResolveDefault(zones, startAt);
-            providerContext = new StartVisitProviderContext(
-                vehicle.LicensePlate,
-                zone.ProviderLocation,
-                zone.Id);
-        }
+        var product = await parkingProvider.GetProductAsync(cancellationToken);
+        var providerContext = string.IsNullOrWhiteSpace(product.Location)
+            ? null
+            : new StartVisitProviderContext(vehicle.LicensePlate, product.Location);
 
         return new StartVisitRequestContext(startContext, providerContext);
     }

@@ -6,7 +6,6 @@ import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
-import { AdminZonesPage } from "./AdminZonesPage";
 import { AdminUsagePage } from "./AdminUsagePage";
 import { AdminAnalysisPage } from "./AdminAnalysisPage";
 import "./AdminPortal.css";
@@ -150,9 +149,7 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
               <AdminUsersPage mode="users" />
             )
           ) : section.path === "/beheer/configuratie" ? (
-            currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/zones" ? (
-              <AdminZonesPage />
-            ) : currentPath === "/beheer/configuratie/parkeerregels" ? (
+            currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
               <AdminParkingRulesPage />
             ) : currentPath === "/beheer/configuratie/tarieven" ? (
               <AdminFinanceConfigPage mode="tariffs" />

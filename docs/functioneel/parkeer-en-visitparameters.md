@@ -70,28 +70,6 @@ Ook `MaxPaidParkingDuration` (wanneer niet `null`) en de toepasselijke parkeerre
 
 Het automatisch verzorgen van providerdekking is geen gebruikersrecht en staat los van het handmatig verlengen van een Visit.
 
-## Parkeerzones
-
-Een `ParkingZone` bepaalt **waar** providerdekking wordt aangevraagd. Dit staat los van zowel gebruikersbeleid als de tijdregels van een `ParkingRuleSet`.
-
-| Parameter | Type | Betekenis |
-| --- | --- | --- |
-| `Name` | `string` | Beheernaam van de zone. |
-| `ProviderLocation` | `string` | Waarde die als 2Park `LOCATION` wordt meegestuurd bij het starten van een provideractie. |
-| `ValidFrom` | `DateTimeOffset` | Vanaf welk absoluut tijdstip de zone geldig is. |
-| `ValidUntil` | `DateTimeOffset?` | Optioneel einde van de geldigheid. |
-| `IsDefault` | `bool` | Bepaalt of de zone automatisch wordt gekozen voor nieuwe Visits. |
-
-Zolang de PWA nog geen expliciete zoneselectie/geofence aanbiedt, geldt:
-
-- op het startmoment van een nieuwe Visit moet precies één geldige defaultzone bestaan;
-- de gekozen zone-id wordt als `Visit.ParkingZoneId` opgeslagen;
-- latere provideracties binnen dezelfde Visit blijven diezelfde zone/provider-location gebruiken;
-- een latere wijziging van de defaultzone verandert een reeds actieve of historische Visit dus niet;
-- legacy Visits van vóór 8.10 mogen `ParkingZoneId = null` hebben.
-
-Niet-default zones mogen gelijktijdig geldig zijn. Defaultzones mogen niet overlappen. De eerste default kan historisch worden ingevoerd; een vervangende default wordt alleen toekomstig gepland, zodat historische betekenis niet retroactief verandert.
-
 ## Parkeer- en 2Park-providerregels
 
 Deze waarden horen bij de versioned `ParkingRuleSet`, omdat ze door gemeente/parkeergebied/provider kunnen verschillen.

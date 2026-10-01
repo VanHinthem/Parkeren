@@ -16,7 +16,7 @@ public sealed record StartVisitFlowResult(
     bool IsReplay,
     bool RequiresProviderCoverageNow,
     StartVisitFlowOutcome Outcome);
-public sealed record StartVisitProviderContext(string LicensePlate, string Location, Guid? ParkingZoneId = null);
+public sealed record StartVisitProviderContext(string LicensePlate, string Location);
 
 public interface IStartVisitNotificationPublisher
 {
@@ -47,8 +47,7 @@ public sealed class StartVisitFlow(
             context,
             policy,
             ruleSets,
-            coverageEvaluationEndAt,
-            providerContext?.ParkingZoneId);
+            coverageEvaluationEndAt);
 
         if (preparation.RequiresProviderCoverageNow)
         {

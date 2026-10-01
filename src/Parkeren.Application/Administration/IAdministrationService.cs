@@ -2,7 +2,6 @@ using Parkeren.Domain.Users;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
-using Parkeren.Domain.Zones;
 
 namespace Parkeren.Application.Administration;
 
@@ -108,24 +107,6 @@ public interface IAdministrationService
         DateTimeOffset from,
         DateTimeOffset to,
         CancellationToken cancellationToken);
-    Task<IReadOnlyList<AdminParkingZoneSummary>> GetParkingZonesAsync(
-        Guid actorUserId,
-        CancellationToken cancellationToken);
-    Task<AdminParkingZoneCreateResult> CreateParkingZoneAsync(
-        Guid actorUserId,
-        string name,
-        string providerLocation,
-        DateTimeOffset validFrom,
-        DateTimeOffset? validUntil,
-        bool isDefault,
-        DateTimeOffset now,
-        CancellationToken cancellationToken);
-    Task<AdminParkingZoneCloseResult> CloseParkingZoneAsync(
-        Guid actorUserId,
-        Guid zoneId,
-        DateTimeOffset validUntil,
-        DateTimeOffset now,
-        CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -226,7 +207,6 @@ public sealed record AdminVisitDetail(
     IReadOnlyList<AdminProviderParkingActionSummary> ProviderActions,
     IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,
     IReadOnlyList<AdminVisitEndTimeChangeSummary> EndTimeChanges,
-    AdminParkingZoneSummary? ParkingZone,
     IReadOnlyList<AdminRuleSetSummary> RelevantRuleSets);
 
 public sealed record AdminParkingPolicyValues(
@@ -443,34 +423,3 @@ public sealed record AdminUsageAnalysis(
     DateTimeOffset To,
     IReadOnlyList<AdminUsageAnalysisGroup> ByUser,
     IReadOnlyList<AdminUsageAnalysisGroup> ByLicensePlate);
-
-public sealed record AdminParkingZoneSummary(
-    Guid Id,
-    string Name,
-    string ProviderLocation,
-    DateTimeOffset ValidFrom,
-    DateTimeOffset? ValidUntil,
-    bool IsDefault);
-
-public enum AdminParkingZoneCreateOutcome
-{
-    Created,
-    Invalid,
-    DefaultOverlap
-}
-
-public sealed record AdminParkingZoneCreateResult(
-    AdminParkingZoneCreateOutcome Outcome,
-    AdminParkingZoneSummary? Zone);
-
-public enum AdminParkingZoneCloseOutcome
-{
-    Closed,
-    NotFound,
-    Invalid,
-    AlreadyClosed
-}
-
-public sealed record AdminParkingZoneCloseResult(
-    AdminParkingZoneCloseOutcome Outcome,
-    AdminParkingZoneSummary? Zone);

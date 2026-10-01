@@ -5,7 +5,6 @@ using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
-using Parkeren.Domain.Zones;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -34,7 +33,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
-    public DbSet<ParkingZone> ParkingZones => Set<ParkingZone>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,17 +148,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.ParkingBudgetPeriodId, x.ThresholdPercentage }).IsUnique();
             entity.HasOne<ParkingBudgetPeriod>().WithMany().HasForeignKey(x => x.ParkingBudgetPeriodId).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<ParkingZone>(entity =>
-        {
-            entity.ToTable("parking_zones");
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
-            entity.Property(x => x.ProviderLocation).HasMaxLength(100).IsRequired();
-            entity.Property(x => x.IsDefault).IsRequired();
-            entity.HasIndex(x => x.ValidFrom);
-            entity.HasIndex(x => x.ProviderLocation);
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
@@ -280,7 +267,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.StartedByUserId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<ParkingZone>().WithMany().HasForeignKey(x => x.ParkingZoneId).OnDelete(DeleteBehavior.Restrict);
             entity.OwnsOne(x => x.PolicySnapshot, owned =>
             {
                 owned.Property(x => x.MaxPaidParkingDuration).HasColumnName("PolicyMaxPaidParkingDuration");
@@ -289,7 +275,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
                 owned.Property(x => x.AllowOpenEndedVisits).HasColumnName("PolicyAllowOpenEndedVisits");
             });
             entity.HasIndex(x => x.StartOperationId).IsUnique();
-            entity.HasIndex(x => x.ParkingZoneId);
             entity.HasIndex(x => new { x.Status, x.StartAt });
         });
 

@@ -106,7 +106,7 @@ De eerste inventarisatie voor #95 is afgerond. De backend bevat al een groot dee
 
 Twee onderdelen vragen meer dan alleen ontsluiting van bestaande code:
 
-1. **Parkeerzones** — gerealiseerd in 8.10 met een zelfstandig `ParkingZone`-domein, provider-location, geldigheidsperiode en default-zoneversioning.
+1. **Parkeerzones** — er bestaat nog geen zelfstandig `ParkingZone`-domeinmodel. De provider levert nu één product/location. Multi-zonebeheer vraagt een expliciet zoneconcept met providerlocatie en geldigheidsperiode.
 2. **Persistente discrepancies** — reconciliation bestaat technisch, maar er is nog geen duurzaam discrepancy-record waarmee gedetecteerde en opgeloste afwijkingen voor #63 traceerbaar blijven.
 
 ### Configuratie versus secrets
@@ -263,7 +263,7 @@ Voorbeelden:
 
 ## Realisatiestatus beheerportaal — 1 oktober 2026
 
-De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.10 (8.10 wacht nog op groene CI):
+De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.8:
 
 - **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
@@ -274,7 +274,6 @@ De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.10 (8.10 wac
 - **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation;
 - **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage;
 - **8.9 Analyse** — periodeaggregatie per bezoeker/kenteken met historische kosten en Visit-drill-down.
-- **8.10 Zones** — persistent ParkingZone-model, default-zoneversioning, Visit-zone snapshot en provider-location uit zoneconfiguratie.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -341,21 +340,6 @@ Voor 8.9 geldt:
 - aggregate-totalen worden niet “compleet” gemaakt wanneer historische rules/tarieven ontbreken;
 - drill-down hergebruikt het bestaande `/beheer/bezoeken/{id}` Visit-detail;
 - 8.9 introduceert geen nieuwe database-entiteiten of migration.
-
-Voor 8.10 geldt:
-
-- `ParkingZone` is een zelfstandig persistent domeinconcept;
-- velden: `Name`, `ProviderLocation`, `ValidFrom`, `ValidUntil` en `IsDefault`;
-- niet-default zones mogen overlappen; defaultzones mogen op geen enkel tijdstip overlappen;
-- zolang de PWA nog geen expliciete zoneselectie/geofence heeft, gebruikt StartVisit de geldige defaultzone;
-- `Visit.ParkingZoneId` is de immutable zonekeuze voor die Visit;
-- providerstarts, continuations en replacement-actions gebruiken de provider-location van die vastgelegde zone;
-- wijzigingen van de defaultzone veranderen actieve of historische Visits niet;
-- een eerste default mag worden backfilled, maar een opvolgende default moet toekomstig starten;
-- zone-afsluiting en defaultversioning worden onder dezelfde database advisory lock geserialiseerd;
-- legacy Visits zonder zone-id blijven ondersteund;
-- Visit-detail ontsluit zonecontext voor audit/reconciliation;
-- 8.10 wijzigt het schema: `parking_zones` + nullable `visits.ParkingZoneId`; de V1 Initial-baseline en modelsnapshot zijn bijgewerkt, waardoor een bestaande developmentdatabase moet worden gereset.
 
 ## Vervolg
 
