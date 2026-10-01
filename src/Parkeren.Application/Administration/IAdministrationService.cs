@@ -102,6 +102,11 @@ public interface IAdministrationService
         DateTimeOffset from,
         DateTimeOffset to,
         CancellationToken cancellationToken);
+    Task<AdminUsageAnalysis> GetUsageAnalysisAsync(
+        Guid actorUserId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -390,3 +395,31 @@ public sealed record AdminCostReport(
     decimal? TotalAmount,
     bool IsComplete,
     IReadOnlyList<AdminVisitCostSummary> Visits);
+
+public sealed record AdminAnalysisVisitReference(
+    Guid VisitId,
+    Guid UserId,
+    string Username,
+    string LicensePlate,
+    DateTimeOffset StartAt,
+    DateTimeOffset ActualEndAt,
+    int? PaidDurationMinutes,
+    decimal? Amount,
+    bool IsComplete);
+
+public sealed record AdminUsageAnalysisGroup(
+    string Key,
+    Guid? UserId,
+    string Label,
+    bool IsArchived,
+    int VisitCount,
+    int? PaidDurationMinutes,
+    decimal? Amount,
+    bool IsComplete,
+    IReadOnlyList<AdminAnalysisVisitReference> Visits);
+
+public sealed record AdminUsageAnalysis(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<AdminUsageAnalysisGroup> ByUser,
+    IReadOnlyList<AdminUsageAnalysisGroup> ByLicensePlate);
