@@ -1,4 +1,5 @@
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Administration;
@@ -20,6 +21,16 @@ public interface IAdministrationService
     Task<IReadOnlyList<VehicleSummary>?> GetAssignedVehiclesAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken);
     Task<AdminDashboardSummary> GetDashboardAsync(Guid actorUserId, DateTimeOffset now, CancellationToken cancellationToken);
     Task<AdminParkingPolicySummary?> GetUserParkingPolicyAsync(Guid actorUserId, Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
+        Guid actorUserId,
+        Guid? userId,
+        string? licensePlate,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        VisitStatus? status,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+    Task<AdminVisitDetail?> GetVisitDetailAsync(Guid actorUserId, Guid visitId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -49,3 +60,75 @@ public sealed record AdminParkingPolicySummary(
     bool AllowVisitExtension,
     bool AllowOpenEndedVisits,
     int MaxConcurrentVisits);
+
+public sealed record AdminVisitSummary(
+    Guid Id,
+    Guid UserId,
+    string Username,
+    Guid VehicleId,
+    string LicensePlate,
+    Guid StartedByUserId,
+    string StartedByUsername,
+    DateTimeOffset StartAt,
+    DateTimeOffset? DesiredEndAt,
+    DateTimeOffset? ActualEndAt,
+    VisitStatus Status,
+    VisitHealth Health,
+    int? PaidDurationMinutes);
+
+public sealed record AdminVisitPolicySnapshotSummary(
+    int? MaxPaidParkingDurationMinutes,
+    int? MaxVisitElapsedDurationMinutes,
+    bool AllowVisitExtension,
+    bool AllowOpenEndedVisits);
+
+public sealed record AdminProviderParkingActionSummary(
+    Guid Id,
+    string? ProviderActionId,
+    DateTimeOffset PlannedStartAt,
+    DateTimeOffset PlannedEndAt,
+    DateTimeOffset? ActualStartAt,
+    DateTimeOffset? ActualEndAt,
+    string? ProviderStatus,
+    ProviderActionState State,
+    ProviderActionHealth Health);
+
+public sealed record AdminProviderOperationSummary(
+    Guid Id,
+    Guid OperationId,
+    Guid? ProviderParkingActionId,
+    Guid? ParentOperationId,
+    ProviderOperationType Type,
+    ProviderOperationStatus Status,
+    int AttemptCount,
+    string? LastErrorCode,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? AttemptStartedAt,
+    DateTimeOffset? RequestedEndAt,
+    DateTimeOffset? CompletedAt);
+
+public sealed record AdminVisitEndTimeChangeSummary(
+    Guid Id,
+    Guid OperationId,
+    Guid ActorUserId,
+    string ActorUsername,
+    DateTimeOffset? PreviousDesiredEndAt,
+    DateTimeOffset? RequestedDesiredEndAt,
+    DateTimeOffset CreatedAt,
+    VisitEndTimeChangeResult Result);
+
+public sealed record AdminRuleSetSummary(
+    Guid Id,
+    DateTimeOffset ValidFrom,
+    DateTimeOffset? ValidUntil,
+    int MaxProviderActionDurationMinutes,
+    ProviderCoverageContinuation Continuation,
+    bool PublicHolidaysAreFree);
+
+public sealed record AdminVisitDetail(
+    AdminVisitSummary Visit,
+    AdminVisitPolicySnapshotSummary PolicySnapshot,
+    IReadOnlyList<AdminProviderParkingActionSummary> ProviderActions,
+    IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,
+    IReadOnlyList<AdminVisitEndTimeChangeSummary> EndTimeChanges,
+    IReadOnlyList<AdminRuleSetSummary> RelevantRuleSets);
