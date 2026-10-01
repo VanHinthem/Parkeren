@@ -22,13 +22,17 @@ internal sealed class AdminSystemDiagnosticsService(
             .GroupBy(_ => 1)
             .Select(group => new
             {
-                Pending = group.Count(x => x.Status == VisitSchedulerWorkStatus.Pending),
-                Claimed = group.Count(x => x.Status == VisitSchedulerWorkStatus.Claimed),
-                Completed = group.Count(x => x.Status == VisitSchedulerWorkStatus.Completed),
-                Cancelled = group.Count(x => x.Status == VisitSchedulerWorkStatus.Cancelled),
-                OldestPendingAt = group
+                PendingCount = group.Count(x => x.Status == VisitSchedulerWorkStatus.Pending),
+                ClaimedCount = group.Count(x => x.Status == VisitSchedulerWorkStatus.Claimed),
+                OverdueCount = group.Count(x =>
+                    x.Status == VisitSchedulerWorkStatus.Pending && x.DueAt <= observedAt),
+                OldestPendingDueAt = group
                     .Where(x => x.Status == VisitSchedulerWorkStatus.Pending)
                     .Select(x => (DateTimeOffset?)x.DueAt)
+                    .Min(),
+                OldestClaimedAt = group
+                    .Where(x => x.Status == VisitSchedulerWorkStatus.Claimed)
+                    .Select(x => x.ClaimedAt)
                     .Min(),
                 LastCompletedAt = group
                     .Where(x => x.Status == VisitSchedulerWorkStatus.Completed)
@@ -42,13 +46,16 @@ internal sealed class AdminSystemDiagnosticsService(
             .GroupBy(_ => 1)
             .Select(group => new
             {
-                Pending = group.Count(x => x.Status == PushDeliveryStatus.Pending),
-                Delivered = group.Count(x => x.Status == PushDeliveryStatus.Delivered),
-                Failed = group.Count(x => x.Status == PushDeliveryStatus.Failed),
-                OldestPendingAt = group
+                PendingCount = group.Count(x => x.Status == PushDeliveryStatus.Pending),
+                FailedCount = group.Count(x => x.Status == PushDeliveryStatus.Failed),
+                OldestPendingCreatedAt = group
                     .Where(x => x.Status == PushDeliveryStatus.Pending)
                     .Select(x => (DateTimeOffset?)x.CreatedAt)
                     .Min(),
+                LastAttemptAt = group
+                    .Where(x => x.LastAttemptAt != null)
+                    .Select(x => x.LastAttemptAt)
+                    .Max(),
                 LastDeliveredAt = group
                     .Where(x => x.Status == PushDeliveryStatus.Delivered)
                     .Select(x => x.DeliveredAt)
@@ -72,21 +79,18 @@ internal sealed class AdminSystemDiagnosticsService(
             new AdminConfigurationDiagnostics(
                 webPushConfigured,
                 webPushConfigured ? "Configured" : "NotConfigured"),
-            new AdminQueueDiagnostics(
-                scheduler?.Pending ?? 0,
-                scheduler?.Claimed ?? 0,
-                scheduler?.Completed ?? 0,
-                scheduler?.Cancelled ?? 0,
-                Failed: 0,
-                scheduler?.OldestPendingAt,
+            new AdminSchedulerDiagnostics(
+                scheduler?.PendingCount ?? 0,
+                scheduler?.ClaimedCount ?? 0,
+                scheduler?.OverdueCount ?? 0,
+                scheduler?.OldestPendingDueAt,
+                scheduler?.OldestClaimedAt,
                 scheduler?.LastCompletedAt),
-            new AdminQueueDiagnostics(
-                push?.Pending ?? 0,
-                Claimed: 0,
-                push?.Delivered ?? 0,
-                Cancelled: 0,
-                push?.Failed ?? 0,
-                push?.OldestPendingAt,
+            new AdminPushDeliveryDiagnostics(
+                push?.PendingCount ?? 0,
+                push?.FailedCount ?? 0,
+                push?.OldestPendingCreatedAt,
+                push?.LastAttemptAt,
                 push?.LastDeliveredAt));
     }
 }
