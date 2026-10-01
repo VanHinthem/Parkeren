@@ -130,6 +130,29 @@ export type AdminParkingPolicySummary={
   maxConcurrentVisits:number;
 };
 export async function getAdminDashboard(){return json<AdminDashboardSummary>(await apiFetch("/api/admin/dashboard"));}
+
+export type AdminProviderAction={
+  providerActionId:string;
+  licensePlate:string;
+  start:string;
+  end:string;
+  location:string;
+  status:string;
+};
+export type AdminProviderStatus={
+  product:{id:string;name:string;location:string}|null;
+  balance:{remainingBalance:number;unit:"Unknown"|"Euro"|"Minute"|"Times";retrievedAt:string}|null;
+  balanceIsStale:boolean;
+  lastSuccessfulBalanceAt:string|null;
+  lastBalanceAttemptAt:string;
+  balanceError:string|null;
+  actions:AdminProviderAction[];
+  actionsRetrievedAt:string|null;
+  actionsError:string|null;
+};
+export async function getAdminProviderStatus(){
+  return json<AdminProviderStatus>(await apiFetch("/api/admin/provider/status"));
+}
 export async function getAdminUserParkingPolicy(userId:string){
   const response=await apiFetch(`/api/admin/users/${userId}/parking-policy`);
   if(response.status===404)return null;
