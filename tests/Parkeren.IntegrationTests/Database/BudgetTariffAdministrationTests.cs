@@ -160,6 +160,42 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Cost_report_is_incomplete_when_paid_time_has_no_historical_tariff()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        var localOffset = TimeSpan.FromHours(2);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset);
+        var end = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset);
+        CompletedVisitSeed? visitSeed = null;
+
+        try
+        {
+            visitSeed = await CreateCompletedVisitAsync(start, end, ct);
+            await using var administration = CreateAdministration();
+
+            var report = await administration.Service.GetCostReportAsync(
+                admin.Id,
+                start.AddMinutes(-1),
+                end.AddMinutes(1),
+                ct);
+
+            Assert.False(report.IsComplete);
+            Assert.Null(report.TotalAmount);
+            var visit = Assert.Single(report.Visits);
+            Assert.Equal(60, visit.PaidDurationMinutes);
+            Assert.Null(visit.Amount);
+            Assert.False(visit.IsComplete);
+        }
+        finally
+        {
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, [], [], ct);
+        }
+    }
+
     private async Task<User> CreateAdminAsync(CancellationToken ct)
     {
         var suffix = Guid.NewGuid().ToString("N");
