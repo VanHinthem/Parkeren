@@ -16,7 +16,13 @@ public sealed class StartVisitProviderPreparer
         if (providerEndAt <= claim.Visit.StartAt)
             throw new ArgumentOutOfRangeException(nameof(providerEndAt));
 
-        var action = new ProviderParkingAction(Guid.NewGuid(), claim.Visit.Id, claim.Visit.StartAt, providerEndAt);
+        var action = new ProviderParkingAction(
+            Guid.NewGuid(),
+            claim.Visit.Id,
+            claim.Visit.StartAt,
+            providerEndAt,
+            claim.Visit.ProviderProductExternalId,
+            claim.Visit.ProviderLocation);
         var operation = new ProviderOperation(Guid.NewGuid(), claim.Visit.StartOperationId, claim.Visit.Id, action.Id, ProviderOperationType.Start);
         return new ProviderStartPreparation(operation, action, claim.IsReplay, true);
     }
