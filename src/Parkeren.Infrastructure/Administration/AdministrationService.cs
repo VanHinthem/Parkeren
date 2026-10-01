@@ -1101,6 +1101,11 @@ internal sealed class AdministrationService(
                 .Where(x => x.IsDefault)
                 .Select(x => (Guid?)x.Id)
                 .SingleOrDefaultAsync(cancellationToken);
+            var hasProviderProducts = await dbContext.ParkingProviderProducts.AsNoTracking()
+                .AnyAsync(cancellationToken);
+
+            if (hasProviderProducts && !defaultProductId.HasValue)
+                return null;
 
             period = await dbContext.ParkingBudgetPeriods.AsNoTracking()
                 .SingleOrDefaultAsync(
