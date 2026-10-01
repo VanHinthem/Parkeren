@@ -13,7 +13,9 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         if (preparation.Operation.Status != ProviderOperationStatus.Unknown || preparation.Action.Health != ProviderActionHealth.Unknown)
             throw new InvalidOperationException("Only an unknown provider start can be reconciled.");
 
-        var actions = await provider.GetActionsAsync(cancellationToken);
+        var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
+            ? await provider.GetActionsAsync(cancellationToken)
+            : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
         var candidates = !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId)
             ? actions.Where(x =>
                 x.ProviderActionId == preparation.Action.ProviderActionId &&
