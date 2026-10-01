@@ -189,6 +189,12 @@ export function AdminSystemPage(){
   }
 
   if(!settings&&!error)return <Loading label="Systeeminstellingen laden"/>;
+  if(!settings)return <div className="admin-system">
+    <Alert tone="danger">{error??"Systeeminstellingen konden niet worden geladen."}</Alert>
+    <div className="admin-system__actions">
+      <Button onClick={()=>void load()}>Opnieuw proberen</Button>
+    </div>
+  </div>;
 
   return <div className="admin-system">
     {error&&<Alert tone="danger">{error}</Alert>}
