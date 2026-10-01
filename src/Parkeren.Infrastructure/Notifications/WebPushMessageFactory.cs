@@ -18,7 +18,7 @@ public static class WebPushMessageFactory
             NotificationType.VisitStarted => new("Parkeren gestart", "De parkeeractie is gestart.", "/", notification.Id),
             NotificationType.VisitStopped => new("Parkeren gestopt", "De parkeeractie is gestopt.", visitUrl, notification.Id),
             NotificationType.ProviderContinuationSucceeded => new("Parkeren voortgezet", "De parkeeractie is automatisch voortgezet.", "/", notification.Id),
-            NotificationType.ProviderContinuationAttentionRequired => new("Parkeren vraagt aandacht", "De parkeeractie kon niet automatisch worden voortgezet.", visitUrl, notification.Id),
+            NotificationType.ProviderContinuationAttentionRequired => CreateProviderAttention(notification, visitUrl),
             NotificationType.LongVisitWarning => CreateLongVisit(notification, visitUrl),
             NotificationType.BudgetWarning => CreateBudgetWarning(notification, "/meldingen"),
             _ => null
@@ -33,6 +33,14 @@ public static class WebPushMessageFactory
             url = message.Url,
             notificationId = message.NotificationId
         });
+
+    private static WebPushMessage CreateProviderAttention(Notification notification, string url)
+    {
+        var reason = ReadString(notification.Payload, "Reason");
+        return string.Equals(reason, "ExternalStop", StringComparison.OrdinalIgnoreCase)
+            ? new("Parkeeractie extern gestopt", "2Park heeft deze parkeeractie buiten de app gestopt.", url, notification.Id)
+            : new("Parkeren vraagt aandacht", "De parkeeractie kon niet automatisch worden voortgezet.", url, notification.Id);
+    }
 
     private static WebPushMessage CreateLongVisit(Notification notification, string url)
     {

@@ -3109,11 +3109,14 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.AggregateId == visit.Id &&
                         x.Type == NotificationEventType.ProviderContinuationAttentionRequired)
             .ToListAsync(cancellationToken));
-        Assert.Single(await verifyContext.Notifications
+        var notification = Assert.Single(await verifyContext.Notifications
             .Where(x => x.VisitId == visit.Id &&
                         x.RecipientUserId == user.Id &&
                         x.Type == NotificationType.ProviderContinuationAttentionRequired)
             .ToListAsync(cancellationToken));
+        Assert.NotNull(notification.Payload);
+        using var notificationPayload = JsonDocument.Parse(notification.Payload);
+        Assert.Equal("ExternalStop", notificationPayload.RootElement.GetProperty("Reason").GetString());
     }
 
     [Fact]

@@ -160,7 +160,11 @@ internal sealed class VisitRecoveryService(
                 if (!mismatch)
                     continue;
 
-                await MarkAttentionRequiredAsync(visit, cancellationToken);
+                var attentionReason = remote is not null &&
+                    string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase)
+                    ? "ExternalStop"
+                    : null;
+                await MarkAttentionRequiredAsync(visit, cancellationToken, attentionReason);
                 var work = await dbContext.VisitSchedulerWork
                     .Where(x => x.VisitId == visitId &&
                         (x.Status == VisitSchedulerWorkStatus.Pending ||
@@ -599,7 +603,8 @@ internal sealed class VisitRecoveryService(
 
     private async Task MarkAttentionRequiredAsync(
         Visit visit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reason = null)
     {
         var becameAttentionRequired = visit.Health != VisitHealth.AttentionRequired;
         visit.SetHealth(VisitHealth.AttentionRequired);
@@ -623,6 +628,10 @@ internal sealed class VisitRecoveryService(
             occurredAt);
 
         dbContext.NotificationEvents.Add(notificationEvent);
+        var payload = reason is null
+            ? null
+            : System.Text.Json.JsonSerializer.Serialize(new { Reason = reason });
+
         await inboxWriter.WriteAsync(
             notificationEvent,
             NotificationType.ProviderContinuationAttentionRequired,
@@ -630,7 +639,8 @@ internal sealed class VisitRecoveryService(
             includeVisitor: true,
             includeAdmins: true,
             cancellationToken,
-            visitId: visit.Id);
+            payload,
+            visit.Id);
     }
 
     private async Task ReleaseClaimedSchedulerWorkAsync(CancellationToken cancellationToken)

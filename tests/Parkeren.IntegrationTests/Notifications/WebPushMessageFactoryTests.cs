@@ -60,6 +60,26 @@ public sealed class WebPushMessageFactoryTests
     }
 
     [Fact]
+    public void External_provider_stop_uses_specific_attention_message()
+    {
+        var visitId = Guid.NewGuid();
+        var notification = new Notification(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            NotificationType.ProviderContinuationAttentionRequired,
+            DateTimeOffset.UtcNow,
+            visitId,
+            payload: JsonSerializer.Serialize(new { Reason = "ExternalStop" }));
+
+        var message = WebPushMessageFactory.Create(notification);
+
+        Assert.NotNull(message);
+        Assert.Equal("Parkeeractie extern gestopt", message.Title);
+        Assert.Equal("2Park heeft deze parkeeractie buiten de app gestopt.", message.Body);
+        Assert.Equal($"/acties/{visitId}", message.Url);
+    }
+
+    [Fact]
     public void Long_visit_uses_license_plate_from_payload()
     {
         var notification = new Notification(
