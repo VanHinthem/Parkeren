@@ -67,6 +67,7 @@ public sealed class ParkingRuleSet
         PublicHolidaysAreFree = publicHolidaysAreFree;
     }
     public Guid Id { get; private set; }
+    public Guid? ProviderProductId { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
     public DateTimeOffset? ValidUntil { get; private set; }
     public TimeSpan MaxProviderActionDuration { get; private set; }
@@ -76,6 +77,16 @@ public sealed class ParkingRuleSet
     public IReadOnlyCollection<PaidWindow> PaidWindows => _paidWindows;
     public IReadOnlyCollection<ParkingCalendarException> CalendarExceptions => _calendarExceptions;
     public bool PublicHolidaysAreFree { get; private set; }
+
+    public void AssignProviderProduct(Guid providerProductId)
+    {
+        if (providerProductId == Guid.Empty)
+            throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
+        if (ProviderProductId.HasValue && ProviderProductId.Value != providerProductId)
+            throw new InvalidOperationException("Parking rules are already assigned to another provider product.");
+
+        ProviderProductId = providerProductId;
+    }
 
     public void CloseAt(DateTimeOffset validUntil)
     {
