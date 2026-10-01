@@ -118,6 +118,7 @@ public interface IAdministrationService
         DateTimeOffset validFrom,
         DateTimeOffset? validUntil,
         bool isDefault,
+        DateTimeOffset now,
         CancellationToken cancellationToken);
     Task<AdminParkingZoneCloseResult> CloseParkingZoneAsync(
         Guid actorUserId,
