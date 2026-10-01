@@ -149,7 +149,14 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
               <AdminProviderPage />
             )
           ) : section.path === "/beheer/systeem" ? (
-            <AdminSystemPage />
+            currentPath === "/beheer/systeem" ? (
+              <AdminSystemPage />
+            ) : (
+              <section className="admin-portal__panel admin-portal__placeholder">
+                <h2>{section.title}</h2>
+                <p>Deze systeemfunctie wordt in een volgende verticale slice toegevoegd.</p>
+              </section>
+            )
           ) : (
             <section className="admin-portal__panel admin-portal__placeholder">
               <h2>{section.title}</h2>
