@@ -1184,6 +1184,96 @@ internal sealed class AdministrationService(
             visitCosts);
     }
 
+    public async Task<AdminUsageAnalysis> GetUsageAnalysisAsync(
+        Guid actorUserId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (to <= from)
+            throw new ArgumentException("To must be after from.", nameof(to));
+
+        var report = await GetCostReportAsync(actorUserId, from, to, cancellationToken);
+        var userIds = report.Visits.Select(x => x.UserId).Distinct().ToArray();
+
+        var activeUsers = await dbContext.Users.AsNoTracking()
+            .Where(x => userIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.IsActive, cancellationToken);
+
+        var plates = report.Visits.Select(x => x.LicensePlate).Distinct().ToArray();
+        var activePlates = await dbContext.Vehicles.AsNoTracking()
+            .Where(x => plates.Contains(x.LicensePlate))
+            .GroupBy(x => x.LicensePlate)
+            .ToDictionaryAsync(
+                x => x.Key,
+                x => x.Any(vehicle => vehicle.IsActive),
+                cancellationToken);
+
+        var references = report.Visits
+            .Select(x => new AdminAnalysisVisitReference(
+                x.VisitId,
+                x.UserId,
+                x.Username,
+                x.LicensePlate,
+                x.StartAt,
+                x.ActualEndAt,
+                x.PaidDurationMinutes,
+                x.Amount,
+                x.IsComplete))
+            .ToArray();
+
+        var byUser = references
+            .GroupBy(x => new { x.UserId, x.Username })
+            .Select(group => CreateAnalysisGroup(
+                group.Key.UserId.ToString(),
+                group.Key.UserId,
+                group.Key.Username,
+                !activeUsers.GetValueOrDefault(group.Key.UserId),
+                group))
+            .OrderByDescending(x => x.PaidDurationMinutes ?? -1)
+            .ThenBy(x => x.Label)
+            .ToArray();
+
+        var byLicensePlate = references
+            .GroupBy(x => x.LicensePlate)
+            .Select(group => CreateAnalysisGroup(
+                group.Key,
+                null,
+                group.Key,
+                !activePlates.GetValueOrDefault(group.Key),
+                group))
+            .OrderByDescending(x => x.PaidDurationMinutes ?? -1)
+            .ThenBy(x => x.Label)
+            .ToArray();
+
+        return new AdminUsageAnalysis(from, to, byUser, byLicensePlate);
+    }
+
+    private static AdminUsageAnalysisGroup CreateAnalysisGroup(
+        string key,
+        Guid? userId,
+        string label,
+        bool isArchived,
+        IEnumerable<AdminAnalysisVisitReference> visits)
+    {
+        var rows = visits.OrderByDescending(x => x.StartAt).ToArray();
+        var paidDurationComplete = rows.All(x => x.PaidDurationMinutes.HasValue);
+        var amountComplete = rows.All(x => x.Amount.HasValue);
+        var complete = rows.All(x => x.IsComplete);
+
+        return new AdminUsageAnalysisGroup(
+            key,
+            userId,
+            label,
+            isArchived,
+            rows.Length,
+            paidDurationComplete ? rows.Sum(x => x.PaidDurationMinutes!.Value) : null,
+            amountComplete ? rows.Sum(x => x.Amount!.Value) : null,
+            complete,
+            rows);
+    }
+
     private static AdminBudgetPeriodSummary ToAdminBudgetPeriodSummary(ParkingBudgetPeriod period) =>
         new(
             period.Id,
