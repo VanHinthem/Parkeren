@@ -13,6 +13,7 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import { providerBalanceDiscrepancyMinutes } from "./providerBalanceComparison";
 import "./AdminUsagePage.css";
 
 function dateInput(date:Date){
@@ -59,7 +60,7 @@ function currentBudgetId(periods:AdminBudgetPeriod[]){
 export function AdminUsagePage(){
   const[periods,setPeriods]=useState<AdminBudgetPeriod[]>();
   const[selectedPeriodId,setSelectedPeriodId]=useState("");
-  const[usage,setUsage]=useState<AdminBudgetUsage|null>();
+  const[usage,setUsage]=useState<AdminBudgetUsage|null>(null);
   const[providerStatus,setProviderStatus]=useState<AdminProviderStatus>();
   const[report,setReport]=useState<AdminCostReport>();
   const[loading,setLoading]=useState(true);
@@ -134,13 +135,15 @@ export function AdminUsagePage(){
 
   if(loading)return <Loading label="Verbruik en kosten laden"/>;
 
-  const providerMinutes=providerStatus?.balance?.unit==="Minute"
-    ? Number(providerStatus.balance.remainingBalance)
-    : null;
-  const localRemaining=usage?.remainingPaidDurationMinutes??null;
-  const discrepancy=providerMinutes!==null&&localRemaining!==null
-    ? providerMinutes-localRemaining
-    : null;
+  const discrepancy=providerBalanceDiscrepancyMinutes({
+    providerUnit:providerStatus?.balance?.unit,
+    providerRemainingBalance:providerStatus?.balance?.remainingBalance,
+    providerBalanceIsStale:providerStatus?.balanceIsStale??false,
+    localRemainingPaidDurationMinutes:usage?.remainingPaidDurationMinutes??null,
+    localUsageIsComplete:usage?.isComplete??false,
+    periodValidFrom:usage?.period.validFrom,
+    periodValidUntil:usage?.period.validUntil
+  });
 
   return <div className="admin-usage">
     <nav className="admin-usage__tabs" aria-label="Bezoeken">
