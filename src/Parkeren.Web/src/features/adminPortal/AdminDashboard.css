@@ -5,7 +5,7 @@
 
 .admin-dashboard__metrics{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:1rem;
 }
 
@@ -29,6 +29,13 @@
   margin-top:.3rem;
   font-size:1.7rem;
   letter-spacing:-.03em;
+}
+
+.admin-dashboard__metric small{
+  display:block;
+  margin-top:.3rem;
+  color:var(--color-text-muted);
+  font-size:.75rem;
 }
 
 .admin-dashboard__grid{
@@ -182,6 +189,10 @@
 }
 
 @media(max-width:1050px){
+  .admin-dashboard__metrics{
+    grid-template-columns:1fr 1fr;
+  }
+
   .admin-dashboard__grid{
     grid-template-columns:1fr;
   }
