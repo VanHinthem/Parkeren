@@ -39,6 +39,42 @@ public sealed class StopVisitMissingProviderActionTests
         Assert.Equal(0, store.UnknownCalls);
     }
 
+    [Fact]
+    public async Task Unknown_stop_reconciles_known_missing_provider_action_without_sending_stop()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visitId, now.AddMinutes(-30), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("missing-provider-action", now.AddMinutes(-30), "active");
+        action.BeginStopping();
+        action.MarkUnknown();
+
+        var operation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        operation.MarkUnknown("network");
+
+        var provider = new MissingActionProvider();
+        var store = new RecordingResultStore();
+        var reconciler = new StopVisitProviderReconciler(provider, store);
+
+        var result = await reconciler.ReconcileAsync(
+            new ProviderStopPreparation(operation, action, true, false, true),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("missing", result!.Status);
+        Assert.Equal(1, provider.ReadCalls);
+        Assert.Equal(0, provider.StopCalls);
+        Assert.NotNull(store.ConfirmedAction);
+        Assert.Equal("missing", store.ConfirmedAction!.Status);
+        Assert.Equal(ProviderOperationStatus.Reconciling, operation.Status);
+        Assert.Equal(ProviderActionHealth.Reconciling, action.Health);
+        Assert.Equal(0, store.UnknownCalls);
+    }
+
     private sealed class MissingActionProvider : IParkingProvider
     {
         public int ReadCalls { get; private set; }
