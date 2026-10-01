@@ -262,6 +262,40 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.ToTable("parking_tariffs", (string)null);
                 });
 
+            modelBuilder.Entity("Parkeren.Domain.Zones.ParkingZone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProviderLocation")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("ValidFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ValidUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderLocation");
+
+                    b.HasIndex("ValidFrom");
+
+                    b.ToTable("parking_zones", (string)null);
+                });
+
             modelBuilder.Entity("Parkeren.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -534,6 +568,9 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("StartOperationId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ParkingZoneId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StartedByUserId")
                         .HasColumnType("uuid");
 
@@ -555,6 +592,8 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .HasColumnName("xmin");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ParkingZoneId");
 
                     b.HasIndex("StartOperationId")
                         .IsUnique();
@@ -738,6 +777,11 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Parkeren.Domain.Visits.Visit", b =>
                 {
+                    b.HasOne("Parkeren.Domain.Zones.ParkingZone", null)
+                        .WithMany()
+                        .HasForeignKey("ParkingZoneId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Parkeren.Domain.Users.User", null)
                         .WithMany()
                         .HasForeignKey("StartedByUserId")
