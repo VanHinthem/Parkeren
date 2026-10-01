@@ -49,15 +49,17 @@ export function AdminZonesPage(){
   async function load(prefill:boolean){
     setError(undefined);
     try{
-      const[rows,provider]=await Promise.all([
-        getAdminParkingZones(),
-        getAdminProviderStatus()
-      ]);
+      const rows=await getAdminParkingZones();
       setZones(rows);
       if(prefill&&rows.length===0){
-        setName(provider.product?.name?provider.product.name+" zone":"Oss");
-        setProviderLocation(provider.product?.location??"");
         setIsDefault(true);
+        try{
+          const provider=await getAdminProviderStatus();
+          setName(provider.product?.name?provider.product.name+" zone":"Oss");
+          setProviderLocation(provider.product?.location??"");
+        }catch{
+          setName("Oss");
+        }
       }
     }catch(e){
       setError(e instanceof Error?e.message:"Parkeerzones konden niet worden geladen.");
