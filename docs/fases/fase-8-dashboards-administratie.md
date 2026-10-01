@@ -232,7 +232,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 
 ## Voortgang beheerportaal — 1 oktober 2026
 
-De beheerimplementatie staat inmiddels op **slice 8.5 afgerond**:
+De beheerimplementatie staat inmiddels op **slice 8.8 in CI-validatie**:
 
 - 8.1 beheerfundament ✅
 - 8.2 operationeel dashboard ✅
