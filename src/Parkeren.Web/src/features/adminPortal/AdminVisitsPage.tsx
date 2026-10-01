@@ -107,6 +107,11 @@ export function AdminVisitsPage(){
   }
 
   return <div className="admin-visits">
+    <nav className="admin-visits__tabs" aria-label="Bezoeken">
+      <a className="admin-visits__tab active" href="/beheer/bezoeken">Bezoeken</a>
+      <a className="admin-visits__tab" href="/beheer/verbruik">Verbruik & kosten</a>
+    </nav>
+
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-visits__panel">
