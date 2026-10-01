@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
+import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -58,6 +59,7 @@ const sections: AdminSection[] = [
 
 function resolveSection(path: string): AdminSection {
   if (path === "/beheer" || path === "/beheer/") return sections[0];
+  if (path === "/beheer/voertuigen" || path.startsWith("/beheer/voertuigen/")) return sections[2];
   return sections.find(section => section.path !== "/beheer" && path.startsWith(section.path)) ?? sections[0];
 }
 
@@ -127,6 +129,14 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
               <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
             ) : (
               <AdminVisitsPage />
+            )
+          ) : section.path === "/beheer/gebruikers" ? (
+            currentPath === "/beheer/voertuigen" ? (
+              <AdminUsersPage mode="vehicles" />
+            ) : currentPath.startsWith("/beheer/gebruikers/") ? (
+              <AdminUserDetailPage userId={currentPath.slice("/beheer/gebruikers/".length)} />
+            ) : (
+              <AdminUsersPage mode="users" />
             )
           ) : section.path === "/beheer/provider" ? (
             currentPath === "/beheer/provider/afwijkingen" ? (
