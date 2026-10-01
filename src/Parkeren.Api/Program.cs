@@ -631,6 +631,71 @@ app.MapPost("/api/admin/users/{userId:guid}/revoke-sessions", async (
         : Results.NotFound();
 });
 
+app.MapGet("/api/admin/system/settings", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await administration.GetSystemSettingsAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPut("/api/admin/system/default-policy", async (
+    AdminDefaultPolicyUpdateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.SetDefaultParkingPolicyAsync(
+        authenticated.User.Id,
+        request.MaxPaidParkingDurationMinutes,
+        request.MaxVisitElapsedDurationMinutes,
+        request.AllowVisitExtension,
+        request.AllowOpenEndedVisits,
+        request.MaxConcurrentVisits,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminDefaultPolicyUpdateOutcome.Updated => Results.Ok(result),
+        AdminDefaultPolicyUpdateOutcome.ActiveVisitConflict => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
+app.MapPut("/api/admin/system/warnings", async (
+    AdminWarningSettingsUpdateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.SetWarningSettingsAsync(
+        authenticated.User.Id,
+        request.LongVisitWarningAfterMinutes,
+        request.NotifyAdminOnLongVisit,
+        request.LongVisitReminderIntervalMinutes,
+        request.BudgetWarningThresholdPercentages,
+        cancellationToken);
+
+    return result.Outcome == AdminWarningSettingsUpdateOutcome.Updated
+        ? Results.Ok(result)
+        : Results.BadRequest(result);
+});
+
 app.MapGet("/api/admin/dashboard", async (
     IAdministrationService administration,
     IAuthenticationService authentication,
@@ -1482,6 +1547,17 @@ public sealed record CreateUserRequest(string Username, string Pin, UserRole Rol
 public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayName);
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
+public sealed record AdminDefaultPolicyUpdateRequest(
+    int? MaxPaidParkingDurationMinutes,
+    int? MaxVisitElapsedDurationMinutes,
+    bool AllowVisitExtension,
+    bool AllowOpenEndedVisits,
+    int MaxConcurrentVisits);
+public sealed record AdminWarningSettingsUpdateRequest(
+    int? LongVisitWarningAfterMinutes,
+    bool NotifyAdminOnLongVisit,
+    int? LongVisitReminderIntervalMinutes,
+    IReadOnlyList<int> BudgetWarningThresholdPercentages);
 public sealed record AdminUserPolicyUpdateRequest(
     PolicyDurationOverrideMode MaxPaidParkingDurationMode,
     int? MaxPaidParkingDurationMinutes,
