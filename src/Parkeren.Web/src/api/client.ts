@@ -250,6 +250,7 @@ export async function getAdminParkingRuleSets(productId?:string){
 
 export type AdminBudgetPeriod={
   id:string;
+  providerProductId:string|null;
   validFrom:string;
   validUntil:string;
   maximumPaidDurationMinutes:number;
@@ -265,10 +266,12 @@ export type AdminBudgetUsage={
   isComplete:boolean;
   error:string|null;
 };
-export async function getAdminBudgetPeriods(){
-  return json<AdminBudgetPeriod[]>(await apiFetch("/api/admin/budgets"));
+export async function getAdminBudgetPeriods(productId?:string){
+  const query=productId?"?productId="+encodeURIComponent(productId):"";
+  return json<AdminBudgetPeriod[]>(await apiFetch("/api/admin/budgets"+query));
 }
 export async function createAdminBudgetPeriod(input:{
+  providerProductId:string|null;
   validFrom:string;
   validUntil:string;
   maximumPaidDurationMinutes:number;
@@ -284,6 +287,7 @@ export async function getAdminBudgetUsage(periodId?:string){
 }
 export type AdminParkingTariff={
   id:string;
+  providerProductId:string|null;
   validFrom:string;
   validUntil:string|null;
   rate:number;
@@ -293,10 +297,12 @@ export type AdminParkingTariffCreateResult={
   outcome:"Created"|"Invalid"|"Overlap";
   tariff:AdminParkingTariff|null;
 };
-export async function getAdminParkingTariffs(){
-  return json<AdminParkingTariff[]>(await apiFetch("/api/admin/tariffs"));
+export async function getAdminParkingTariffs(productId?:string){
+  const query=productId?"?productId="+encodeURIComponent(productId):"";
+  return json<AdminParkingTariff[]>(await apiFetch("/api/admin/tariffs"+query));
 }
 export async function createAdminParkingTariff(input:{
+  providerProductId:string|null;
   validFrom:string;
   validUntil:string|null;
   rate:number;
