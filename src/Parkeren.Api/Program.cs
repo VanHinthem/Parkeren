@@ -730,6 +730,26 @@ app.MapPost("/api/admin/tariffs", async (
     };
 });
 
+app.MapGet("/api/admin/analysis/usage", async (
+    DateTimeOffset from,
+    DateTimeOffset to,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    if (to <= from) return Results.BadRequest(new { error = "to moet na from liggen." });
+
+    return Results.Ok(await administration.GetUsageAnalysisAsync(
+        authenticated.User.Id,
+        from,
+        to,
+        cancellationToken));
+});
+
 app.MapGet("/api/admin/costs", async (
     DateTimeOffset from,
     DateTimeOffset to,
