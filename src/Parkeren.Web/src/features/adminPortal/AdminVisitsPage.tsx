@@ -64,7 +64,7 @@ export function AdminVisitsPage(){
   const[licensePlate,setLicensePlate]=useState("");
   const[from,setFrom]=useState("");
   const[to,setTo]=useState("");
-  const[status,setStatus]=useState<AdminVisitSummary["status"]|="">("");
+  const[status,setStatus]=useState<AdminVisitStatusFilter>("");
   const[error,setError]=useState<string>();
   const[loading,setLoading]=useState(true);
 
