@@ -35,7 +35,7 @@ describe("provider discrepancy presentation",()=>{
   it("labels all discrepancy types",()=>{
     expect(providerDiscrepancyTypeLabel("MissingProviderAction")).toBe("Actie ontbreekt bij 2Park");
     expect(providerDiscrepancyTypeLabel("ProviderActionStatusMismatch")).toBe("Providerstatus wijkt af");
-    expect(providerDiscrepancyTypeLabel("ProviderActionEndMismatch")).toBe("Eindtijd wijkt af");
+    expect(providerDiscrepancyTypeLabel("ProviderActionEndMismatch")).toBe("Eindtijd provideractie wijkt af");
     expect(providerDiscrepancyTypeLabel("ExternalProviderAction")).toBe("Externe 2Park-actie");
     expect(providerDiscrepancyTypeLabel("BalanceMismatch")).toBe("Saldo-afwijking");
   });

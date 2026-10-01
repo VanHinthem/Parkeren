@@ -197,7 +197,7 @@ export function AdminProviderPage(){
       <div className="admin-provider__toolbar">
         <div>
           <h2>Actuele provideracties</h2>
-          <p>Rechtstreeks uit het default parkeerproduct; lokale Visit-status wordt hier niet als vervanging gebruikt.</p>
+          <p>Rechtstreeks uit 2Park voor het default parkeerproduct. Start, einde en status hieronder zijn providerwaarden; de lokale Visit en lokale ProviderParkingAction kunnen daarvan afwijken.</p>
         </div>
         <Button variant="secondary" onClick={()=>void load()} disabled={loading}>
           {loading?"Vernieuwen…":"Vernieuwen"}

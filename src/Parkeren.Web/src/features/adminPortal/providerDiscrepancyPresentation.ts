@@ -4,7 +4,7 @@ export function providerDiscrepancyTypeLabel(type:AdminProviderDiscrepancy["type
   switch(type){
     case "MissingProviderAction": return "Actie ontbreekt bij 2Park";
     case "ProviderActionStatusMismatch": return "Providerstatus wijkt af";
-    case "ProviderActionEndMismatch": return "Eindtijd wijkt af";
+    case "ProviderActionEndMismatch": return "Eindtijd provideractie wijkt af";
     case "ExternalProviderAction": return "Externe 2Park-actie";
     case "BalanceMismatch": return "Saldo-afwijking";
   }

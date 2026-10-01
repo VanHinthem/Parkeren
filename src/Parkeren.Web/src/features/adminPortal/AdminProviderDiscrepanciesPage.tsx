@@ -112,9 +112,9 @@ export function AdminProviderDiscrepanciesPage(){
           <div className="admin-provider__fact"><dt>Providerproduct</dt><dd>{item.providerProductName} ({item.providerProductExternalId})</dd></div>
           <div className="admin-provider__fact"><dt>Provider action-ID</dt><dd>{item.providerActionId??"—"}</dd></div>
           <div className="admin-provider__fact"><dt>Lokale action</dt><dd>{item.providerParkingActionId??"—"}</dd></div>
-          <div className="admin-provider__fact"><dt>Lokale geplande eindtijd</dt><dd>{formatDateTime(item.localPlannedEndAt)}</dd></div>
+          <div className="admin-provider__fact"><dt>Lokale provideractie eindtijd</dt><dd>{formatDateTime(item.localPlannedEndAt)}</dd></div>
           <div className="admin-provider__fact"><dt>2Park start</dt><dd>{formatDateTime(item.providerStartAt)}</dd></div>
-          <div className="admin-provider__fact"><dt>2Park eindtijd</dt><dd>{formatDateTime(item.providerEndAt)}</dd></div>
+          <div className="admin-provider__fact"><dt>2Park provideractie eindtijd</dt><dd>{formatDateTime(item.providerEndAt)}</dd></div>
           <div className="admin-provider__fact"><dt>Eerste detectie</dt><dd>{formatDateTime(item.detectedAt)}</dd></div>
           <div className="admin-provider__fact"><dt>Laatst waargenomen</dt><dd>{formatDateTime(item.lastObservedAt)}</dd></div>
           <div className="admin-provider__fact"><dt>Opgelost</dt><dd>{formatDateTime(item.resolvedAt)}</dd></div>
