@@ -14,6 +14,7 @@ import {
   unassignVehicle,
   type AdminUserDetail,
   type AdminUserPolicyUpdate,
+  type PolicyDurationOverrideMode,
   type UserSummary,
   type VehicleSummary
 } from "../../api/client";
@@ -217,9 +218,9 @@ export function AdminUserDetailPage({userId}:{userId:string}){
   const[message,setMessage]=useState<string>();
   const[saving,setSaving]=useState(false);
 
-  const[paidOverride,setPaidOverride]=useState(false);
+  const[paidMode,setPaidMode]=useState<PolicyDurationOverrideMode>("Inherit");
   const[paidHours,setPaidHours]=useState("4");
-  const[elapsedOverride,setElapsedOverride]=useState(false);
+  const[elapsedMode,setElapsedMode]=useState<PolicyDurationOverrideMode>("Inherit");
   const[elapsedHours,setElapsedHours]=useState("8");
   const[extensionMode,setExtensionMode]=useState<BooleanOverrideMode>("default");
   const[openEndedMode,setOpenEndedMode]=useState<BooleanOverrideMode>("default");
@@ -230,9 +231,9 @@ export function AdminUserDetailPage({userId}:{userId:string}){
     const overrides=value.policy.overrides;
     const effective=value.policy.effective;
 
-    setPaidOverride(overrides.maxPaidParkingDurationMinutes!==null);
+    setPaidMode(overrides.maxPaidParkingDurationMode);
     setPaidHours(hoursValue(overrides.maxPaidParkingDurationMinutes,effective.maxPaidParkingDurationMinutes??240));
-    setElapsedOverride(overrides.maxVisitElapsedDurationMinutes!==null);
+    setElapsedMode(overrides.maxVisitElapsedDurationMode);
     setElapsedHours(hoursValue(overrides.maxVisitElapsedDurationMinutes,effective.maxVisitElapsedDurationMinutes??480));
     setExtensionMode(overrides.allowVisitExtension===null?"default":overrides.allowVisitExtension?"true":"false");
     setOpenEndedMode(overrides.allowOpenEndedVisits===null?"default":overrides.allowOpenEndedVisits?"true":"false");
@@ -274,18 +275,20 @@ export function AdminUserDetailPage({userId}:{userId:string}){
   async function savePolicy(){
     if(!detail)return;
 
-    const paidMinutes=paidOverride?hoursToMinutes(paidHours):null;
-    const elapsedMinutes=elapsedOverride?hoursToMinutes(elapsedHours):null;
+    const paidMinutes=paidMode==="Value"?hoursToMinutes(paidHours):null;
+    const elapsedMinutes=elapsedMode==="Value"?hoursToMinutes(elapsedHours):null;
     const concurrent=concurrencyOverride?Number(concurrency):null;
-    if((paidOverride&&paidMinutes===null)||
-       (elapsedOverride&&elapsedMinutes===null)||
+    if((paidMode==="Value"&&paidMinutes===null)||
+       (elapsedMode==="Value"&&elapsedMinutes===null)||
        (concurrencyOverride&&(concurrent===null||!Number.isInteger(concurrent)||concurrent<=0))){
       setError("Controleer de afwijkende policywaarden.");
       return;
     }
 
     const policy:AdminUserPolicyUpdate={
+      maxPaidParkingDurationMode:paidMode,
       maxPaidParkingDurationMinutes:paidMinutes,
+      maxVisitElapsedDurationMode:elapsedMode,
       maxVisitElapsedDurationMinutes:elapsedMinutes,
       allowVisitExtension:modeToBoolean(extensionMode),
       allowOpenEndedVisits:modeToBoolean(openEndedMode),
@@ -430,16 +433,16 @@ export function AdminUserDetailPage({userId}:{userId:string}){
             <div className="admin-user-detail__policy">
               <div className="admin-user-detail__policy-row">
                 <div className="admin-user-detail__policy-copy"><strong>Max. betaalde parkeertijd</strong><small>Standaard: {formatDuration(detail.policy.defaults.maxPaidParkingDurationMinutes)}</small></div>
-                <label className="admin-users__field"><span>Bron</span><select value={paidOverride?"override":"default"} onChange={event=>setPaidOverride(event.target.value==="override")}><option value="default">Standaard</option><option value="override">Afwijkend</option></select></label>
-                {paidOverride
+                <label className="admin-users__field"><span>Waarde</span><select value={paidMode} onChange={event=>setPaidMode(event.target.value as PolicyDurationOverrideMode)}><option value="Inherit">Standaard</option><option value="Value">Limiet</option><option value="Unlimited">Onbeperkt</option></select></label>
+                {paidMode==="Value"
                   ? <label className="admin-users__field"><span>Uren</span><input type="number" min=".25" step=".25" value={paidHours} onChange={event=>setPaidHours(event.target.value)}/></label>
                   : <div className="admin-user-detail__effective"><span>Effectief</span><strong>{formatDuration(detail.policy.effective.maxPaidParkingDurationMinutes)}</strong></div>}
               </div>
 
               <div className="admin-user-detail__policy-row">
                 <div className="admin-user-detail__policy-copy"><strong>Max. totale Visitduur</strong><small>Standaard: {formatDuration(detail.policy.defaults.maxVisitElapsedDurationMinutes)}</small></div>
-                <label className="admin-users__field"><span>Bron</span><select value={elapsedOverride?"override":"default"} onChange={event=>setElapsedOverride(event.target.value==="override")}><option value="default">Standaard</option><option value="override">Afwijkend</option></select></label>
-                {elapsedOverride
+                <label className="admin-users__field"><span>Waarde</span><select value={elapsedMode} onChange={event=>setElapsedMode(event.target.value as PolicyDurationOverrideMode)}><option value="Inherit">Standaard</option><option value="Value">Limiet</option><option value="Unlimited">Onbeperkt</option></select></label>
+                {elapsedMode==="Value"
                   ? <label className="admin-users__field"><span>Uren</span><input type="number" min=".25" step=".25" value={elapsedHours} onChange={event=>setElapsedHours(event.target.value)}/></label>
                   : <div className="admin-user-detail__effective"><span>Effectief</span><strong>{formatDuration(detail.policy.effective.maxVisitElapsedDurationMinutes)}</strong></div>}
               </div>
@@ -466,7 +469,7 @@ export function AdminUserDetailPage({userId}:{userId:string}){
             </div>
 
             <p className="admin-user-detail__warning">
-              Een veld op Standaard verwijdert de individuele override. Duur-overrides stellen in V1 een concrete limiet in; “onbeperkt” volgt via een onbeperkte standaardpolicy.
+              Voor duurvelden kan de gebruiker de standaard volgen, een eigen limiet krijgen of expliciet onbeperkt worden ingesteld.
             </p>
             <div className="admin-user-detail__policy-actions">
               <Button onClick={()=>void savePolicy()} disabled={saving}>{saving?"Opslaan…":"Policy opslaan"}</Button>
