@@ -184,8 +184,12 @@ export function AdminFinanceConfigPage({mode}:Props){
     }
   }
 
-  const loading=!products||(mode==="budgets"?budgets===undefined:tariffs===undefined);
+  const financeRows=mode==="budgets"?budgets:tariffs;
+  const loading=!products||financeRows===undefined;
   if(loading&&!error)return <Loading label={mode==="budgets"?"Budgetten laden":"Tarieven laden"}/>;
+  if(!products||financeRows===undefined)return <div className="admin-finance">
+    <Alert tone="danger">{error??"Providerproducten of financiële configuratie konden niet worden geladen."}</Alert>
+  </div>;
 
   return <div className="admin-finance">
     <nav className="admin-finance__tabs" aria-label="Parkeerconfiguratie">
