@@ -4,10 +4,11 @@ Deze pagina legt de functionele betekenis en verantwoordelijkheid vast van param
 
 ## Verantwoordelijkheden
 
-Er zijn twee verschillende niveaus:
+Er zijn drie verschillende niveaus:
 
 1. **Gebruikersbeleid / Visit-policy** bepaalt wat een gebruiker met een Visit mag en welke grenzen voor de totale Visit gelden.
-2. **Parkeer-/providerregels** bepalen wanneer parkeren betaald is en hoe de applicatie daarvoor 2Park-actions moet gebruiken.
+2. **Providerproduct** bepaalt binnen welke door 2Park geleverde productcontext een nieuwe Visit wordt uitgevoerd, inclusief externe product-id en `LOCATION`.
+3. **Parkeer-/providerregels** zijn aan dat providerproduct gekoppeld en bepalen wanneer parkeren betaald is en hoe de applicatie daarvoor 2Park-actions moet gebruiken.
 
 Een providerlimiet hoort niet in gebruikersbeleid. Andersom hoort een gebruikersrecht, zoals een Visit mogen verlengen, niet in de 2Park-regels.
 
@@ -70,9 +71,27 @@ Ook `MaxPaidParkingDuration` (wanneer niet `null`) en de toepasselijke parkeerre
 
 Het automatisch verzorgen van providerdekking is geen gebruikersrecht en staat los van het handmatig verlengen van een Visit.
 
+## 2Park-providerproduct
+
+Providerproducten worden door 2Park geleverd en lokaal read-only gesynchroniseerd. De applicatie bewaart per product onder andere de externe product-id, naam/categorie en provider-location.
+
+Voor V1:
+
+- bij de eerste synchronisatie wordt één enkel gevonden product automatisch default;
+- bij meerdere producten kiest een beheerder het defaultproduct;
+- de gewone gebruiker kiest geen product;
+- nieuwe Visits gebruiken het defaultproduct;
+- een actieve Visit blijft gedurende zijn volledige lifecycle aan het bij start vastgelegde product gekoppeld;
+- vervolgactions, stop/extend, recovery en reconciliation gebruiken dus niet opnieuw het op dat moment geldende defaultproduct;
+- als het defaultproduct bij een latere synchronisatie verdwijnt, wordt niet automatisch een ander product actief gemaakt.
+
+Een toekomstige uitbreiding kan een product per gebruiker of expliciete productkeuze toevoegen. Dat is geen onderdeel van V1.
+
+De `LOCATION` is providercontext van het product en geen zelfstandig selecteerbare parkeerzone.
+
 ## Parkeer- en 2Park-providerregels
 
-Deze waarden horen bij de versioned `ParkingRuleSet`, omdat ze door gemeente/parkeergebied/provider kunnen verschillen.
+Deze waarden horen bij de versioned `ParkingRuleSet` van een specifiek providerproduct, omdat ze per 2Park-product kunnen verschillen.
 
 | Parameter | Type | Betekenis |
 | --- | --- | --- |
@@ -131,8 +150,10 @@ Continuation               = StartNewAction
 
 De Visit mag tot 18:00 lopen. De providerregel kan daarvoor bijvoorbeeld twee aansluitende 2Park-actions nodig maken. Dat is een technisch/reglementair detail van de providerdekking en verandert de Visit zelf niet.
 
-## Policy snapshot
+## Policy- en providercontext bij een Visit
 
 Bij het starten van een Visit wordt het effectieve gebruikersbeleid als immutable snapshot bij de Visit opgeslagen. Latere wijzigingen aan defaults of user overrides mogen een reeds actieve Visit niet stilzwijgend veranderen.
 
-Parkeerregels zijn versioned en worden toegepast op basis van hun geldigheidsperiode, zodat ook een Visit die over een regelgrens loopt correct kan worden gesegmenteerd.
+Daarnaast wordt het gekozen providerproduct op de Visit vastgelegd: lokale product-id, externe provider-product-id en provider-location. Een latere wijziging van het defaultproduct verandert daarmee geen actieve of historische Visit.
+
+Parkeerregels zijn per providerproduct versioned en worden toegepast op basis van hun geldigheidsperiode, zodat ook een Visit die over een regelgrens loopt correct kan worden gesegmenteerd. Tarieven en budgetperioden zijn eveneens product-scoped.
