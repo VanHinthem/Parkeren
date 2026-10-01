@@ -197,6 +197,49 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         }
     }
 
+    [Fact]
+    public async Task Lowering_global_capacity_clamps_default_concurrency()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"admin-{suffix}", $"ADMIN-{suffix}", "hash", UserRole.Admin);
+
+        await using var seed = fixture.CreateDbContext();
+        var defaults = await seed.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct);
+        var original = Snapshot(defaults);
+        var settings = await seed.ParkingSystemSettings.SingleAsync(ct);
+        var originalGlobal = settings.MaxConcurrentVisits;
+        settings.SetMaxConcurrentVisits(5);
+        defaults.SetValues(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, false, 5);
+        seed.Users.Add(admin);
+        await seed.SaveChangesAsync(ct);
+
+        try
+        {
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+
+            Assert.True(await administration.SetGlobalMaxConcurrentVisitsAsync(admin.Id, 3, ct));
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(3, (await verify.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct)).MaxConcurrentVisits);
+            Assert.Equal(3, (await verify.ParkingSystemSettings.SingleAsync(ct)).MaxConcurrentVisits);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
+            var restoreDefaults = await cleanup.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct);
+            Restore(restoreDefaults, original);
+            (await cleanup.ParkingSystemSettings.SingleAsync(ct)).SetMaxConcurrentVisits(originalGlobal);
+            await cleanup.SaveChangesAsync(ct);
+        }
+    }
+
     private ServiceCollection CreateServices()
     {
         var configuration = new ConfigurationManager();
