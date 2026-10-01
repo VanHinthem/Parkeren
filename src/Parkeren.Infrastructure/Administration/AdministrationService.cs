@@ -1585,6 +1585,21 @@ internal sealed class AdministrationService(
                 x.PublicHolidaysAreFree))
             .ToArray();
 
+        AdminParkingZoneSummary? parkingZone = null;
+        if (row.Visit.ParkingZoneId is Guid parkingZoneId)
+        {
+            parkingZone = await dbContext.ParkingZones.AsNoTracking()
+                .Where(x => x.Id == parkingZoneId)
+                .Select(x => new AdminParkingZoneSummary(
+                    x.Id,
+                    x.Name,
+                    x.ProviderLocation,
+                    x.ValidFrom,
+                    x.ValidUntil,
+                    x.IsDefault))
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+
         var policy = row.Visit.PolicySnapshot;
         var policySnapshot = new AdminVisitPolicySnapshotSummary(
             policy.MaxPaidParkingDuration is null ? null : (int)policy.MaxPaidParkingDuration.Value.TotalMinutes,
@@ -1598,6 +1613,7 @@ internal sealed class AdministrationService(
             providerActions,
             providerOperations,
             endTimeChanges,
+            parkingZone,
             relevantRuleSets);
     }
 
