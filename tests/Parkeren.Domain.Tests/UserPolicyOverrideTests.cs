@@ -136,6 +136,28 @@ public sealed class UserPolicyOverrideTests
                 null));
     }
 
+    [Fact]
+    public void Updating_concurrency_preserves_duration_override_modes()
+    {
+        var policyOverride = new UserPolicyOverride(Guid.NewGuid());
+        policyOverride.SetOverrides(
+            PolicyDurationOverrideMode.Unlimited,
+            null,
+            PolicyDurationOverrideMode.Value,
+            TimeSpan.FromHours(6),
+            null,
+            null,
+            4);
+
+        policyOverride.SetMaxConcurrentVisits(2);
+
+        Assert.Equal(PolicyDurationOverrideMode.Unlimited, policyOverride.MaxPaidParkingDurationMode);
+        Assert.Null(policyOverride.MaxPaidParkingDuration);
+        Assert.Equal(PolicyDurationOverrideMode.Value, policyOverride.MaxVisitElapsedDurationMode);
+        Assert.Equal(TimeSpan.FromHours(6), policyOverride.MaxVisitElapsedDuration);
+        Assert.Equal(2, policyOverride.MaxConcurrentVisits);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
