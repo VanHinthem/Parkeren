@@ -154,11 +154,14 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (impact == VisitEndTimeProviderImpact.CancelScheduled)
             return new(false);
 
-        if (string.IsNullOrWhiteSpace(visit.ProviderProductExternalId) ||
-            string.IsNullOrWhiteSpace(visit.ProviderLocation))
-            throw new InvalidOperationException("Visit has no provider product context.");
         var providerProductId = visit.ProviderProductExternalId;
         var location = visit.ProviderLocation;
+        if (string.IsNullOrWhiteSpace(providerProductId) || string.IsNullOrWhiteSpace(location))
+        {
+            var legacyProduct = await provider.GetProductAsync(cancellationToken);
+            providerProductId = legacyProduct.Id;
+            location = legacyProduct.Location;
+        }
 
         var existingReplacement = existingChildren.SingleOrDefault(
             x => x.Type == ProviderOperationType.ContinueStart &&
@@ -172,7 +175,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var newActionId = Guid.NewGuid();
         await PersistReplacementAttemptAsync(
             visit.Id, newActionId, operationId, rootChange.OperationId,
-            scheduled!.PlannedStartAt, requestedEndAt, cancellationToken);
+            scheduled!.PlannedStartAt, requestedEndAt,
+            providerProductId, location, cancellationToken);
 
         try
         {
@@ -212,6 +216,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
     private async Task PersistReplacementAttemptAsync(
         Guid visitId, Guid actionId, Guid operationId, Guid parentOperationId,
         DateTimeOffset startAt, DateTimeOffset endAt,
+        string providerProductId, string providerLocation,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -224,8 +229,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
             visitId,
             startAt,
             endAt,
-            persistedVisit.ProviderProductExternalId,
-            persistedVisit.ProviderLocation);
+            providerProductId,
+            providerLocation);
         action.MarkStarting();
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visitId, actionId, ProviderOperationType.ContinueStart);
         operation.SetParentOperationId(parentOperationId);
