@@ -12,7 +12,15 @@ public sealed record StartVisitContext(StartVisitActor Actor, StartVisitOwner Ow
 
 public sealed class StartVisitPreparer
 {
-    public StartVisitPreparation Prepare(StartVisitCommand command, StartVisitContext context, EffectiveParkingPolicy policy, IEnumerable<ParkingRuleSet> ruleSets, DateTimeOffset coverageEvaluationEndAt)
+    public StartVisitPreparation Prepare(
+        StartVisitCommand command,
+        StartVisitContext context,
+        EffectiveParkingPolicy policy,
+        IEnumerable<ParkingRuleSet> ruleSets,
+        DateTimeOffset coverageEvaluationEndAt,
+        Guid? providerProductId = null,
+        string? providerProductExternalId = null,
+        string? providerLocation = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(policy);
@@ -43,7 +51,18 @@ public sealed class StartVisitPreparer
         var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
             command.StartAt, coverageEvaluationEndAt, rules);
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
-        var visit = new Visit(Guid.NewGuid(), command.OperationId, command.OwnerUserId, command.VehicleId, command.ActorUserId, command.StartAt, command.DesiredEndAt, snapshot);
+        var visit = new Visit(
+            Guid.NewGuid(),
+            command.OperationId,
+            command.OwnerUserId,
+            command.VehicleId,
+            command.ActorUserId,
+            command.StartAt,
+            command.DesiredEndAt,
+            snapshot,
+            providerProductId,
+            providerProductExternalId,
+            providerLocation);
         return new StartVisitPreparation(visit, command.OperationId, requiresProviderCoverageNow);
     }
 }
