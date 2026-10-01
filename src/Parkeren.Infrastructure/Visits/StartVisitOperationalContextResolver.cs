@@ -8,11 +8,27 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class StartVisitOperationalContextResolver(
     ParkerenDbContext dbContext) : IStartVisitOperationalContextResolver
 {
-    public async Task<StartVisitOperationalContext?> ResolveAsync(
+    public Task<StartVisitOperationalContext?> ResolveAsync(
         Guid ownerUserId,
         DateTimeOffset startAt,
         DateTimeOffset? desiredEndAt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ResolveInternalAsync(ownerUserId, null, startAt, desiredEndAt, cancellationToken);
+
+    public Task<StartVisitOperationalContext?> ResolveForProductAsync(
+        Guid ownerUserId,
+        Guid providerProductId,
+        DateTimeOffset startAt,
+        DateTimeOffset? desiredEndAt,
+        CancellationToken cancellationToken = default) =>
+        ResolveInternalAsync(ownerUserId, providerProductId, startAt, desiredEndAt, cancellationToken);
+
+    private async Task<StartVisitOperationalContext?> ResolveInternalAsync(
+        Guid ownerUserId,
+        Guid? providerProductId,
+        DateTimeOffset startAt,
+        DateTimeOffset? desiredEndAt,
+        CancellationToken cancellationToken)
     {
         var defaults = await dbContext.DefaultParkingPolicies
             .AsNoTracking()
@@ -37,7 +53,10 @@ internal sealed class StartVisitOperationalContextResolver(
             .AsNoTracking()
             .Include(x => x.PaidWindows)
             .Include(x => x.CalendarExceptions)
-            .Where(x => x.ValidFrom < evaluationEndAt && (x.ValidUntil == null || x.ValidUntil > startAt))
+            .Where(x =>
+                (providerProductId == null || x.ProviderProductId == providerProductId) &&
+                x.ValidFrom < evaluationEndAt &&
+                (x.ValidUntil == null || x.ValidUntil > startAt))
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
         if (ruleSets.Count == 0)
