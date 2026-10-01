@@ -84,7 +84,7 @@ internal sealed class ProviderProductCatalogService(
         {
             var sole = byProviderId[remoteProducts[0].Id];
             sole.SetDefault(true);
-            await AssignUnboundRuleSetsAsync(sole.Id, cancellationToken);
+            await AssignUnboundConfigurationAsync(sole.Id, cancellationToken);
             autoSelected = true;
         }
 
@@ -163,23 +163,34 @@ internal sealed class ProviderProductCatalogService(
             product.SetDefault(product.Id == selected.Id);
 
         if (!hadDefault)
-            await AssignUnboundRuleSetsAsync(selected.Id, cancellationToken);
+            await AssignUnboundConfigurationAsync(selected.Id, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
-    private async Task AssignUnboundRuleSetsAsync(
+    private async Task AssignUnboundConfigurationAsync(
         Guid providerProductId,
         CancellationToken cancellationToken)
     {
-        var unbound = await dbContext.ParkingRuleSets
+        var unboundRuleSets = await dbContext.ParkingRuleSets
             .Where(x => x.ProviderProductId == null)
             .ToListAsync(cancellationToken);
-
-        foreach (var ruleSet in unbound)
+        foreach (var ruleSet in unboundRuleSets)
             ruleSet.AssignProviderProduct(providerProductId);
+
+        var unboundTariffs = await dbContext.ParkingTariffs
+            .Where(x => x.ProviderProductId == null)
+            .ToListAsync(cancellationToken);
+        foreach (var tariff in unboundTariffs)
+            tariff.AssignProviderProduct(providerProductId);
+
+        var unboundBudgets = await dbContext.ParkingBudgetPeriods
+            .Where(x => x.ProviderProductId == null)
+            .ToListAsync(cancellationToken);
+        foreach (var budget in unboundBudgets)
+            budget.AssignProviderProduct(providerProductId);
     }
 
     private static ProviderProductSummary ToSummary(ParkingProviderProduct product) =>
