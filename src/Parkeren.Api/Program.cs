@@ -1167,6 +1167,8 @@ app.MapPost("/api/visits/start", async (
         cancellationToken);
     if (requestContext is null)
         return Results.BadRequest(new { error = "Visit-context kon niet worden bepaald." });
+    if (requestContext.ProviderContext is null || !requestContext.ProviderContext.ParkingZoneId.HasValue)
+        return Results.Problem("Er is geen geldige default parkeerzone geconfigureerd.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
     var operationalContext = await operationalContextResolver.ResolveAsync(
         ownerUserId,
