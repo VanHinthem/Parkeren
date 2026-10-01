@@ -240,7 +240,8 @@ De beheerimplementatie staat inmiddels op **slice 8.5 afgerond**:
 - 8.4 providerstatus & officieel saldo ✅
 - 8.5 gebruikers & voertuigen ✅
 - 8.6 algemene policies/settings ✅
-- 8.7 parkeerregels 🚧 implementatie gereed, CI-validatie volgt
+- 8.7 parkeerregels ✅
+- 8.8 budgetten & tarieven 🚧 implementatie gereed, CI-validatie volgt
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -319,7 +320,40 @@ Domeinvalidatie is toegevoegd voor overlappende betaalvensters en dubbele kalend
 
 Er is geen databaseschemawijziging nodig.
 
-Na groene CI is de volgende slice: **8.8 Budgetten & tarieven**.
+### 8.8 Budgetten & tarieven
+
+Configuratie:
+
+- `/beheer/configuratie/budgetten` — append-only budgetperioden met `ValidFrom`, `ValidUntil` en maximale betaalde duur;
+- budgetperioden mogen niet overlappen;
+- invoerdefault voor Oss is 1500 uur per kalenderjaar, maar de waarde is beheerbaar en niet hardcoded in enforcement;
+- `/beheer/configuratie/tarieven` — historische/versioned uurtarieven;
+- bounded historische tarieven kunnen worden backfilled;
+- een nieuwe open-ended tariefversie sluit automatisch de vorige open-ended versie op dezelfde `ValidFrom`;
+- tarieven mogen niet overlappen.
+
+Rapportage:
+
+- `/beheer/verbruik` toont lokaal gebruikt/resterend/totaal per gekozen budgetperiode;
+- het beheer-dashboard toont het actuele lokale budget naast het officiële 2Park-saldo;
+- lokaal budgetgebruik telt uitsluitend betaalde tijd van afgeronde Visits;
+- historische budgetperioden kunnen afzonderlijk worden bekeken;
+- het officiële providersaldo wordt met eigen unit/freshness getoond en blijft een aparte providerbron;
+- alleen wanneer de provider een tijdseenheid (`Minute`) retourneert wordt een lokale/provider-discrepantie in tijd berekend; een euro- of keer-saldo wordt niet kunstmatig naar uren vertaald.
+
+Kostenrapportage:
+
+- beheerder kiest een periode;
+- alleen afgeronde Visits worden als gerealiseerde kosten meegenomen;
+- gratis tijd kost €0;
+- betaalde segmenten worden eerst langs rulesetgrenzen en vervolgens langs tariefgrenzen gesplitst;
+- iedere segmentkost gebruikt de tariefversie die op dat moment geldig was;
+- totals en betaalde duur worden getoond met drill-down naar Visit-detail;
+- ontbrekende historische rules/tarieven leveren expliciet **onvolledige** rijen/totalen op; er vindt geen fallback naar huidig tarief of stilzwijgende €0-herberekening plaats.
+
+Er is geen databaseschemawijziging nodig; bestaande `ParkingBudgetPeriod` en `ParkingTariff` persistence wordt gebruikt. Domain- en integratietests dekken overlap, tariefversioning, betaalde budgettijd, tariefgrensberekening en ontbrekende historische tarieven.
+
+Na groene CI is de volgende slice: **8.9 Analyse**.
 
 ## Exit
 
