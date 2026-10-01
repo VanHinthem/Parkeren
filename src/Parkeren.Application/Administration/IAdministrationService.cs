@@ -73,6 +73,35 @@ public interface IAdministrationService
         IReadOnlyList<AdminCalendarExceptionInput> calendarExceptions,
         DateTimeOffset now,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminBudgetPeriodSummary>> GetBudgetPeriodsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken);
+    Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset validUntil,
+        int maximumPaidDurationMinutes,
+        CancellationToken cancellationToken);
+    Task<AdminBudgetUsageSummary?> GetBudgetUsageAsync(
+        Guid actorUserId,
+        Guid? budgetPeriodId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminParkingTariffSummary>> GetParkingTariffsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken);
+    Task<AdminParkingTariffCreateResult> CreateParkingTariffAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        decimal rate,
+        ParkingTariffUnit unit,
+        CancellationToken cancellationToken);
+    Task<AdminCostReport> GetCostReportAsync(
+        Guid actorUserId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -299,3 +328,65 @@ public enum AdminParkingRuleSetCreateOutcome
 public sealed record AdminParkingRuleSetCreateResult(
     AdminParkingRuleSetCreateOutcome Outcome,
     AdminParkingRuleSetVersion? Version);
+
+public sealed record AdminBudgetPeriodSummary(
+    Guid Id,
+    DateTimeOffset ValidFrom,
+    DateTimeOffset ValidUntil,
+    int MaximumPaidDurationMinutes);
+
+public enum AdminBudgetPeriodCreateOutcome
+{
+    Created,
+    Invalid,
+    Overlap
+}
+
+public sealed record AdminBudgetPeriodCreateResult(
+    AdminBudgetPeriodCreateOutcome Outcome,
+    AdminBudgetPeriodSummary? Period);
+
+public sealed record AdminBudgetUsageSummary(
+    AdminBudgetPeriodSummary Period,
+    int? UsedPaidDurationMinutes,
+    int? RemainingPaidDurationMinutes,
+    bool IsComplete,
+    string? Error);
+
+public sealed record AdminParkingTariffSummary(
+    Guid Id,
+    DateTimeOffset ValidFrom,
+    DateTimeOffset? ValidUntil,
+    decimal Rate,
+    ParkingTariffUnit Unit);
+
+public enum AdminParkingTariffCreateOutcome
+{
+    Created,
+    Invalid,
+    Overlap
+}
+
+public sealed record AdminParkingTariffCreateResult(
+    AdminParkingTariffCreateOutcome Outcome,
+    AdminParkingTariffSummary? Tariff);
+
+public sealed record AdminVisitCostSummary(
+    Guid VisitId,
+    Guid UserId,
+    string Username,
+    string LicensePlate,
+    DateTimeOffset StartAt,
+    DateTimeOffset ActualEndAt,
+    int? PaidDurationMinutes,
+    decimal? Amount,
+    bool IsComplete,
+    string? Error);
+
+public sealed record AdminCostReport(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    int? TotalPaidDurationMinutes,
+    decimal? TotalAmount,
+    bool IsComplete,
+    IReadOnlyList<AdminVisitCostSummary> Visits);
