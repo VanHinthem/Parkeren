@@ -272,7 +272,8 @@ De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.8:
 - **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor;
 - **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`;
 - **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation;
-- **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage.
+- **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage;
+- **8.9 Analyse** — periodeaggregatie per bezoeker/kenteken met historische kosten en Visit-drill-down.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -327,6 +328,18 @@ Voor 8.8 geldt:
 - `/beheer/verbruik` levert budget- en kosteninzage met drill-down naar Visit-detail;
 - het operationele dashboard toont ook het actuele lokale budget;
 - er is voor 8.8 geen schemawijziging nodig.
+
+Voor 8.9 geldt:
+
+- `/beheer/analyse` gebruikt dezelfde gerealiseerde cost/readmodel-logica als 8.8;
+- aggregatie vindt plaats op completed Visits binnen een gekozen periode;
+- bezoekersaggregatie groepeert op `Visit.UserId`, niet op voertuigbezit of `StartedByUserId`;
+- daardoor blijft een gedeeld kenteken correct toewijsbaar aan de bezoeker voor wie de Visit liep, ook wanneer een beheerder die Visit namens de bezoeker startte;
+- kentekenaggregatie bewaart de onderliggende Visit-usercontext;
+- gearchiveerde gebruikers/voertuigen blijven via de bestaande records herkenbaar en worden als gearchiveerd gemarkeerd;
+- aggregate-totalen worden niet “compleet” gemaakt wanneer historische rules/tarieven ontbreken;
+- drill-down hergebruikt het bestaande `/beheer/bezoeken/{id}` Visit-detail;
+- 8.9 introduceert geen nieuwe database-entiteiten of migration.
 
 ## Vervolg
 
