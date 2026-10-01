@@ -256,12 +256,12 @@ export function AdminDashboard(){
         <span>Lokaal jaarbudget</span>
         <strong>{budgetUsage?.isComplete
           ? formatPaidMinutes(budgetUsage.remainingPaidDurationMinutes)
-          : budgetUsage===null
+          : budgetUsage==null
             ?"Niet ingesteld"
             :"Onvolledig"}</strong>
         <small>{budgetUsage?.isComplete
           ? `${formatPaidMinutes(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatPaidMinutes(budgetUsage.period.maximumPaidDurationMinutes)}`
-          : budgetUsage===null
+          : budgetUsage==null
             ?"Configureer een budgetperiode"
             :"Historische parkeerregels dekken de periode niet volledig"}</small>
       </section>
