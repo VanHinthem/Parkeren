@@ -4,6 +4,7 @@ import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
+import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -138,6 +139,15 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
               <AdminUserDetailPage userId={currentPath.slice("/beheer/gebruikers/".length)} />
             ) : (
               <AdminUsersPage mode="users" />
+            )
+          ) : section.path === "/beheer/configuratie" ? (
+            currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
+              <AdminParkingRulesPage />
+            ) : (
+              <section className="admin-portal__panel admin-portal__placeholder">
+                <h2>{section.title}</h2>
+                <p>Deze configuratiefunctie wordt in een volgende verticale slice toegevoegd.</p>
+              </section>
             )
           ) : section.path === "/beheer/provider" ? (
             currentPath === "/beheer/provider/afwijkingen" ? (
