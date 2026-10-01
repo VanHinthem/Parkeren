@@ -189,6 +189,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         finally
         {
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.AdminAuditEvents.Where(x => x.ActorUserId == admin.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
             var restoreDefaults = await cleanup.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct);
             Restore(restoreDefaults, original);
@@ -311,6 +312,9 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
     {
         await ClearVisitsAsync(cancellationToken);
         await using var cleanup = fixture.CreateDbContext();
+        await cleanup.AdminAuditEvents
+            .Where(x => x.ActorUserId == adminId || x.ActorUserId == visitorId)
+            .ExecuteDeleteAsync(cancellationToken);
         await cleanup.UserPolicyOverrides.Where(x => x.UserId == visitorId || x.UserId == adminId).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Users.Where(x => x.Id == adminId || x.Id == visitorId).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Vehicles.Where(x => x.Id == vehicleId).ExecuteDeleteAsync(cancellationToken);
