@@ -92,7 +92,9 @@ internal sealed class AdministrationService(
         var result = await SetUserPolicyAsync(
             actorUserId,
             userId,
+            current?.MaxPaidParkingDurationMode ?? PolicyDurationOverrideMode.Inherit,
             ToMinutes(current?.MaxPaidParkingDuration),
+            current?.MaxVisitElapsedDurationMode ?? PolicyDurationOverrideMode.Inherit,
             ToMinutes(current?.MaxVisitElapsedDuration),
             current?.AllowVisitExtension,
             current?.AllowOpenEndedVisits,
@@ -387,7 +389,9 @@ internal sealed class AdministrationService(
     public async Task<AdminUserPolicyUpdateResult> SetUserPolicyAsync(
         Guid actorUserId,
         Guid userId,
+        PolicyDurationOverrideMode maxPaidParkingDurationMode,
         int? maxPaidParkingDurationMinutes,
+        PolicyDurationOverrideMode maxVisitElapsedDurationMode,
         int? maxVisitElapsedDurationMinutes,
         bool? allowVisitExtension,
         bool? allowOpenEndedVisits,
@@ -396,8 +400,8 @@ internal sealed class AdministrationService(
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
 
-        if (maxPaidParkingDurationMinutes <= 0 ||
-            maxVisitElapsedDurationMinutes <= 0 ||
+        if (!IsValidDurationOverride(maxPaidParkingDurationMode, maxPaidParkingDurationMinutes) ||
+            !IsValidDurationOverride(maxVisitElapsedDurationMode, maxVisitElapsedDurationMinutes) ||
             maxConcurrentVisits <= 0)
             return new AdminUserPolicyUpdateResult(AdminUserPolicyUpdateOutcome.Invalid, 0, null);
 
@@ -419,12 +423,17 @@ internal sealed class AdministrationService(
         var policyOverride = await dbContext.UserPolicyOverrides
             .SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
         var currentEffective = ParkingPolicyResolver.Resolve(defaults, policyOverride);
-        var proposedEffective = new EffectiveParkingPolicy(
-            maxPaidParkingDurationMinutes is null ? defaults.MaxPaidParkingDuration : TimeSpan.FromMinutes(maxPaidParkingDurationMinutes.Value),
-            maxVisitElapsedDurationMinutes is null ? defaults.MaxVisitElapsedDuration : TimeSpan.FromMinutes(maxVisitElapsedDurationMinutes.Value),
-            allowVisitExtension ?? defaults.AllowVisitExtension,
-            allowOpenEndedVisits ?? defaults.AllowOpenEndedVisits,
-            maxConcurrentVisits ?? defaults.MaxConcurrentVisits);
+
+        var proposedOverride = new UserPolicyOverride(userId);
+        proposedOverride.SetOverrides(
+            maxPaidParkingDurationMode,
+            ToDuration(maxPaidParkingDurationMinutes),
+            maxVisitElapsedDurationMode,
+            ToDuration(maxVisitElapsedDurationMinutes),
+            allowVisitExtension,
+            allowOpenEndedVisits,
+            maxConcurrentVisits);
+        var proposedEffective = ParkingPolicyResolver.Resolve(defaults, proposedOverride);
 
         var activeVisitCount = await dbContext.Visits
             .CountAsync(
@@ -441,17 +450,11 @@ internal sealed class AdministrationService(
                 CreatePolicyDetail(defaults, policyOverride, globalLimit));
         }
 
-        var hasAnyOverride =
-            maxPaidParkingDurationMinutes is not null ||
-            maxVisitElapsedDurationMinutes is not null ||
-            allowVisitExtension is not null ||
-            allowOpenEndedVisits is not null ||
-            maxConcurrentVisits is not null;
-
-        if (!hasAnyOverride)
+        if (!proposedOverride.HasAnyOverride)
         {
             if (policyOverride is not null)
                 dbContext.UserPolicyOverrides.Remove(policyOverride);
+            policyOverride = null;
         }
         else
         {
@@ -460,8 +463,10 @@ internal sealed class AdministrationService(
                 dbContext.UserPolicyOverrides.Add(policyOverride);
 
             policyOverride.SetOverrides(
-                maxPaidParkingDurationMinutes is null ? null : TimeSpan.FromMinutes(maxPaidParkingDurationMinutes.Value),
-                maxVisitElapsedDurationMinutes is null ? null : TimeSpan.FromMinutes(maxVisitElapsedDurationMinutes.Value),
+                maxPaidParkingDurationMode,
+                ToDuration(maxPaidParkingDurationMinutes),
+                maxVisitElapsedDurationMode,
+                ToDuration(maxVisitElapsedDurationMinutes),
                 allowVisitExtension,
                 allowOpenEndedVisits,
                 maxConcurrentVisits);
@@ -473,7 +478,7 @@ internal sealed class AdministrationService(
         return new AdminUserPolicyUpdateResult(
             AdminUserPolicyUpdateOutcome.Updated,
             activeVisitCount,
-            CreatePolicyDetail(defaults, policyOverride is not null && hasAnyOverride ? policyOverride : null, globalLimit));
+            CreatePolicyDetail(defaults, policyOverride, globalLimit));
     }
 
     private static AdminUserPolicyDetail CreatePolicyDetail(
@@ -490,7 +495,9 @@ internal sealed class AdministrationService(
                 defaults.AllowOpenEndedVisits,
                 defaults.MaxConcurrentVisits),
             new AdminParkingPolicyOverrideValues(
+                policyOverride?.MaxPaidParkingDurationMode ?? PolicyDurationOverrideMode.Inherit,
                 ToMinutes(policyOverride?.MaxPaidParkingDuration),
+                policyOverride?.MaxVisitElapsedDurationMode ?? PolicyDurationOverrideMode.Inherit,
                 ToMinutes(policyOverride?.MaxVisitElapsedDuration),
                 policyOverride?.AllowVisitExtension,
                 policyOverride?.AllowOpenEndedVisits,
@@ -506,6 +513,18 @@ internal sealed class AdministrationService(
 
     private static int? ToMinutes(TimeSpan? value) =>
         value is null ? null : (int)value.Value.TotalMinutes;
+
+    private static TimeSpan? ToDuration(int? minutes) =>
+        minutes is null ? null : TimeSpan.FromMinutes(minutes.Value);
+
+    private static bool IsValidDurationOverride(PolicyDurationOverrideMode mode, int? minutes) =>
+        mode switch
+        {
+            PolicyDurationOverrideMode.Inherit => minutes is null,
+            PolicyDurationOverrideMode.Unlimited => minutes is null,
+            PolicyDurationOverrideMode.Value => minutes is > 0,
+            _ => false
+        };
 
     public async Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
