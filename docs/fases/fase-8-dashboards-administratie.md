@@ -232,7 +232,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 
 ## Voortgang beheerportaal — 1 oktober 2026
 
-De beheerimplementatie staat inmiddels op **slice 8.8 in CI-validatie**:
+De beheerimplementatie staat inmiddels op **slice 8.9 in CI-validatie**:
 
 - 8.1 beheerfundament ✅
 - 8.2 operationeel dashboard ✅
@@ -241,7 +241,8 @@ De beheerimplementatie staat inmiddels op **slice 8.8 in CI-validatie**:
 - 8.5 gebruikers & voertuigen ✅
 - 8.6 algemene policies/settings ✅
 - 8.7 parkeerregels ✅
-- 8.8 budgetten & tarieven 🚧 implementatie gereed, CI-validatie volgt
+- 8.8 budgetten & tarieven ✅
+- 8.9 analyse 🚧 implementatie gereed, CI-validatie volgt
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -353,7 +354,26 @@ Kostenrapportage:
 
 Er is geen databaseschemawijziging nodig; bestaande `ParkingBudgetPeriod` en `ParkingTariff` persistence wordt gebruikt. Domain- en integratietests dekken overlap, tariefversioning, betaalde budgettijd, tariefgrensberekening en ontbrekende historische tarieven.
 
-Na groene CI is de volgende slice: **8.9 Analyse**.
+### 8.9 Analyse
+
+Beschikbaar op `/beheer/analyse`:
+
+- gekozen periode analyseren;
+- aggregatie per bezoeker;
+- aggregatie per kenteken;
+- minimaal aantal Visits, betaalde parkeerduur en berekende kosten;
+- gratis tijd telt niet mee als betaalde duur;
+- dezelfde historische ruleset-/tariefberekening als 8.8 wordt hergebruikt;
+- onvolledige historische configuratie blijft expliciet zichtbaar als onvolledig;
+- gedeelde kentekens worden per Visit aan `Visit.UserId` gekoppeld, zodat gebruik per bezoeker gescheiden blijft;
+- per kenteken blijven de onderliggende bezoekernamen zichtbaar;
+- inactieve gebruikers en voertuigen worden als **Gearchiveerd** gemarkeerd in historische analyses;
+- elke aggregatie kan worden uitgeklapt naar de onderliggende Visits;
+- vanuit iedere Visitregel kan direct naar het bestaande Visit-detail worden genavigeerd.
+
+De analyse-readmodels introduceren geen nieuwe persistence en geen schemawijziging. Een PostgreSQL-integratietest dekt expliciet een gedeeld kenteken over twee bezoekers en gearchiveerde gebruiker/voertuig-status.
+
+Na groene CI is de volgende slice: **8.10 Zones**.
 
 ## Exit
 
