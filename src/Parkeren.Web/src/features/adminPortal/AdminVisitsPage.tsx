@@ -16,6 +16,8 @@ import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminVisits.css";
 
+type AdminVisitStatus=AdminVisitSummary["status"];
+
 function formatDateTime(value:string|null){
   return value
     ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
@@ -133,7 +135,7 @@ export function AdminVisitsPage(){
 
         <label className="admin-visits__field">
           <span>Status</span>
-          <select value={status} onChange={event=>setStatus(event.target.value as AdminVisitSummary["status"]|"")}>
+          <select value={status} onChange={event=>setStatus(event.target.value as AdminVisitStatus|"")}>
             <option value="">Alle statussen</option>
             <option value="Starting">Wordt gestart</option>
             <option value="Active">Actief</option>
