@@ -147,7 +147,7 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
             DateTimeOffset.UnixEpoch,
             validUntil: null,
             rate: 2m,
-            ParkingTariffUnit.Hour));
+            unit: ParkingTariffUnit.Hour));
 
         await context.SaveChangesAsync(ct);
     }
