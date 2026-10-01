@@ -164,7 +164,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.CategoryName).HasMaxLength(200);
             entity.Property(x => x.Location).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.ProviderProductId).IsUnique();
-            entity.HasIndex(x => x.IsDefault).HasFilter("\"IsDefault\" = TRUE");
+            entity.HasIndex(x => x.IsDefault).IsUnique().HasFilter("\"IsDefault\" = TRUE");
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
@@ -282,6 +282,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ProviderProductExternalId).HasMaxLength(200);
+            entity.Property(x => x.ProviderLocation).HasMaxLength(100);
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
