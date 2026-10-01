@@ -43,7 +43,7 @@ export async function getActiveVisit():Promise<ActiveVisit|null>{
   return json<ActiveVisit>(response);
 }
 
-export type ParkingPolicy={maxPaidParkingDurationMinutes:number;maxVisitElapsedDurationMinutes:number|null;allowAutoExtension:boolean;allowManualStop:boolean};
+export type ParkingPolicy={maxPaidParkingDurationMinutes:number|null;maxVisitElapsedDurationMinutes:number|null;allowVisitExtension:boolean;allowOpenEndedVisits:boolean};
 export async function getParkingPolicy():Promise<ParkingPolicy>{
   return json<ParkingPolicy>(await apiFetch("/api/visits/policy"));
 }
@@ -166,8 +166,11 @@ export type AdminParkingPolicyValues={
   allowOpenEndedVisits:boolean;
   maxConcurrentVisits:number;
 };
+export type PolicyDurationOverrideMode="Inherit"|"Value"|"Unlimited";
 export type AdminParkingPolicyOverrideValues={
+  maxPaidParkingDurationMode:PolicyDurationOverrideMode;
   maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMode:PolicyDurationOverrideMode;
   maxVisitElapsedDurationMinutes:number|null;
   allowVisitExtension:boolean|null;
   allowOpenEndedVisits:boolean|null;
@@ -186,7 +189,9 @@ export type AdminUserDetail={
   activeVisitCount:number;
 };
 export type AdminUserPolicyUpdate={
+  maxPaidParkingDurationMode:PolicyDurationOverrideMode;
   maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMode:PolicyDurationOverrideMode;
   maxVisitElapsedDurationMinutes:number|null;
   allowVisitExtension:boolean|null;
   allowOpenEndedVisits:boolean|null;
