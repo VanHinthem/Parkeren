@@ -59,16 +59,16 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("AllowAutoExtension")
+                    b.Property<bool>("AllowVisitExtension")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("AllowManualStop")
+                    b.Property<bool>("AllowOpenEndedVisits")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MaxConcurrentVisits")
                         .HasColumnType("integer");
 
-                    b.Property<TimeSpan>("MaxPaidParkingDuration")
+                    b.Property<TimeSpan?>("MaxPaidParkingDuration")
                         .HasColumnType("interval");
 
                     b.Property<TimeSpan?>("MaxVisitElapsedDuration")
@@ -104,10 +104,20 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool?>("AllowAutoExtension")
+                    b.Property<string>("MaxPaidParkingDurationMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("MaxVisitElapsedDurationMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool?>("AllowVisitExtension")
                         .HasColumnType("boolean");
 
-                    b.Property<bool?>("AllowManualStop")
+                    b.Property<bool?>("AllowOpenEndedVisits")
                         .HasColumnType("boolean");
 
                     b.Property<int?>("MaxConcurrentVisits")
@@ -751,13 +761,13 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                             b1.Property<Guid>("VisitId")
                                 .HasColumnType("uuid");
 
-                            b1.Property<bool>("AllowAutoExtension")
+                            b1.Property<bool>("AllowVisitExtension")
                                 .HasColumnType("boolean")
-                                .HasColumnName("PolicyAllowAutoExtension");
+                                .HasColumnName("PolicyAllowVisitExtension");
 
-                            b1.Property<bool>("AllowManualStop")
+                            b1.Property<bool>("AllowOpenEndedVisits")
                                 .HasColumnType("boolean")
-                                .HasColumnName("PolicyAllowManualStop");
+                                .HasColumnName("PolicyAllowOpenEndedVisits");
 
                             b1.Property<TimeSpan>("MaxPaidParkingDuration")
                                 .HasColumnType("interval")
