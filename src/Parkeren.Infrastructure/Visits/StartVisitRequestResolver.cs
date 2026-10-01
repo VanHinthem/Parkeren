@@ -7,7 +7,7 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class StartVisitRequestResolver(
     ParkerenDbContext dbContext,
-    IParkingProvider parkingProvider) : IStartVisitRequestResolver
+    IProviderProductCatalogService productCatalog) : IStartVisitRequestResolver
 {
     public async Task<StartVisitRequestContext?> ResolveAsync(
         Guid actorUserId,
@@ -37,10 +37,20 @@ internal sealed class StartVisitRequestResolver(
             new StartVisitOwner(owner.Id, owner.IsActive),
             new StartVisitVehicle(vehicle.Id, vehicle.IsActive, isAssigned));
 
-        var product = await parkingProvider.GetProductAsync(cancellationToken);
-        var providerContext = string.IsNullOrWhiteSpace(product.Location)
-            ? null
-            : new StartVisitProviderContext(vehicle.LicensePlate, product.Location);
+        StartVisitProviderContext? providerContext = null;
+        try
+        {
+            var product = await productCatalog.ResolveDefaultForStartAsync(cancellationToken);
+            providerContext = new StartVisitProviderContext(
+                vehicle.LicensePlate,
+                product.Location,
+                product.Id,
+                product.ProviderProductId);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
+        {
+            // The API boundary turns missing/unavailable provider product context into 503.
+        }
 
         return new StartVisitRequestContext(startContext, providerContext);
     }
