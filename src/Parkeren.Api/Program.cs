@@ -770,6 +770,75 @@ app.MapGet("/api/admin/costs", async (
         cancellationToken));
 });
 
+app.MapGet("/api/admin/zones", async (
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await administration.GetParkingZonesAsync(authenticated.User.Id, cancellationToken));
+});
+
+app.MapPost("/api/admin/zones", async (
+    AdminParkingZoneCreateRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.CreateParkingZoneAsync(
+        authenticated.User.Id,
+        request.Name,
+        request.ProviderLocation,
+        request.ValidFrom,
+        request.ValidUntil,
+        request.IsDefault,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminParkingZoneCreateOutcome.Created => Results.Ok(result),
+        AdminParkingZoneCreateOutcome.DefaultOverlap => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
+app.MapPut("/api/admin/zones/{zoneId:guid}/close", async (
+    Guid zoneId,
+    AdminParkingZoneCloseRequest request,
+    IAdministrationService administration,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    var result = await administration.CloseParkingZoneAsync(
+        authenticated.User.Id,
+        zoneId,
+        request.ValidUntil,
+        DateTimeOffset.UtcNow,
+        cancellationToken);
+
+    return result.Outcome switch
+    {
+        AdminParkingZoneCloseOutcome.Closed => Results.Ok(result),
+        AdminParkingZoneCloseOutcome.NotFound => Results.NotFound(),
+        AdminParkingZoneCloseOutcome.AlreadyClosed => Results.Conflict(result),
+        _ => Results.BadRequest(result)
+    };
+});
+
 app.MapGet("/api/admin/parking-rules", async (
     IAdministrationService administration,
     IAuthenticationService authentication,
@@ -1739,6 +1808,14 @@ public sealed record AdminParkingTariffCreateRequest(
     DateTimeOffset? ValidUntil,
     decimal Rate,
     ParkingTariffUnit Unit);
+public sealed record AdminParkingZoneCreateRequest(
+    string Name,
+    string ProviderLocation,
+    DateTimeOffset ValidFrom,
+    DateTimeOffset? ValidUntil,
+    bool IsDefault);
+public sealed record AdminParkingZoneCloseRequest(
+    DateTimeOffset ValidUntil);
 public sealed record AdminParkingRuleSetCreateRequest(
     DateTimeOffset ValidFrom,
     int MaxProviderActionDurationMinutes,
