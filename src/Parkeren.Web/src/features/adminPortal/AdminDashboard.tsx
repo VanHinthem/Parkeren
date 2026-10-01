@@ -1,6 +1,7 @@
 import { useEffect,useMemo,useState } from "react";
 import {
   getAdminDashboard,
+  getAdminProviderStatus,
   getAdminUserParkingPolicy,
   getAssignedVehicles,
   getUsers,
@@ -8,6 +9,7 @@ import {
   stopVisit,
   type AdminDashboardSummary,
   type AdminParkingPolicySummary,
+  type AdminProviderStatus,
   type UserSummary,
   type VehicleSummary
 } from "../../api/client";
@@ -42,6 +44,17 @@ function statusLabel(status:AdminDashboardSummary["activeVisits"][number]["statu
   }
 }
 
+function formatProviderBalance(status:AdminProviderStatus|undefined){
+  const balance=status?.balance;
+  if(!balance)return "Niet beschikbaar";
+  switch(balance.unit){
+    case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
+    case "Minute": return `${balance.remainingBalance} min`;
+    case "Times": return `${balance.remainingBalance} keer`;
+    default: return String(balance.remainingBalance);
+  }
+}
+
 function maxStartDurationMinutes(policy:AdminParkingPolicySummary|null|undefined){
   if(!policy)return null;
   const limits=[policy.maxPaidParkingDurationMinutes,policy.maxVisitElapsedDurationMinutes]
@@ -59,6 +72,7 @@ function durationOptions(maxMinutes:number|null){
 
 export function AdminDashboard(){
   const[dashboard,setDashboard]=useState<AdminDashboardSummary>();
+  const[providerStatus,setProviderStatus]=useState<AdminProviderStatus>();
   const[users,setUsers]=useState<UserSummary[]>([]);
   const[selectedUserId,setSelectedUserId]=useState("");
   const[vehicles,setVehicles]=useState<VehicleSummary[]>();
@@ -81,8 +95,9 @@ export function AdminDashboard(){
     setLoading(true);
     setError(undefined);
     try{
-      const[result,userList]=await Promise.all([getAdminDashboard(),getUsers()]);
+      const[result,userList,provider]=await Promise.all([getAdminDashboard(),getUsers(),getAdminProviderStatus()]);
       setDashboard(result);
+      setProviderStatus(provider);
       const visitors=userList.filter(user=>user.role==="Visitor"&&user.isActive);
       setUsers(visitors);
       setSelectedUserId(current=>visitors.some(user=>user.id===current)?current:(visitors[0]?.id??""));
@@ -217,6 +232,17 @@ export function AdminDashboard(){
       <section className="admin-dashboard__metric">
         <span>Aandacht vereist</span>
         <strong>{attentionCount}</strong>
+      </section>
+      <section className="admin-dashboard__metric">
+        <span>Officieel 2Park-saldo</span>
+        <strong>{formatProviderBalance(providerStatus)}</strong>
+        <small>
+          {providerStatus?.balanceIsStale
+            ?"Verouderde laatst bekende waarde"
+            : providerStatus?.balance
+              ?"Actueel volgens provider"
+              :"Niet beschikbaar"}
+        </small>
       </section>
     </div>
 
