@@ -132,8 +132,9 @@ export function AdminUsagePage(){
   const providerMinutes=providerStatus?.balance?.unit==="Minute"
     ? Number(providerStatus.balance.remainingBalance)
     : null;
-  const discrepancy=providerMinutes!==null&&usage?.remainingPaidDurationMinutes!==null&&usage?.remainingPaidDurationMinutes!==undefined
-    ? providerMinutes-usage.remainingPaidDurationMinutes
+  const localRemaining=usage?.remainingPaidDurationMinutes??null;
+  const discrepancy=providerMinutes!==null&&localRemaining!==null
+    ? providerMinutes-localRemaining
     : null;
 
   return <div className="admin-usage">
