@@ -136,14 +136,16 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Rate).HasPrecision(18, 4);
             entity.Property(x => x.Unit).HasConversion<int>();
-            entity.HasIndex(x => x.ValidFrom);
+            entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.ProviderProductId, x.ValidFrom });
         });
 
         modelBuilder.Entity<ParkingBudgetPeriod>(entity =>
         {
             entity.ToTable("parking_budget_periods");
             entity.HasKey(x => x.Id);
-            entity.HasIndex(x => x.ValidFrom);
+            entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.ProviderProductId, x.ValidFrom });
         });
 
         modelBuilder.Entity<ParkingBudgetWarningState>(entity =>
