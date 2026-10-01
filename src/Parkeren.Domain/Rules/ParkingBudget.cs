@@ -14,9 +14,19 @@ public sealed class ParkingBudgetPeriod
     }
 
     public Guid Id { get; private set; }
+    public Guid? ProviderProductId { get; private set; }
     public DateTimeOffset ValidFrom { get; private set; }
     public DateTimeOffset ValidUntil { get; private set; }
     public TimeSpan MaximumPaidDuration { get; private set; }
+    public void AssignProviderProduct(Guid providerProductId)
+    {
+        if (providerProductId == Guid.Empty)
+            throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
+        if (ProviderProductId.HasValue && ProviderProductId.Value != providerProductId)
+            throw new InvalidOperationException("Parking budget period is already assigned to another provider product.");
+
+        ProviderProductId = providerProductId;
+    }
 }
 
 public sealed record ParkingBudgetUsage(
