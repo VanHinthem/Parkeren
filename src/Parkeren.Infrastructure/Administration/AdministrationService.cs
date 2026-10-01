@@ -1357,18 +1357,31 @@ internal sealed class AdministrationService(
                 .OrderByDescending(x => x.ValidFrom)
                 .FirstOrDefault();
 
+            var validationZones = zones.ToList();
             if (openDefault is not null && validFrom > openDefault.ValidFrom)
-                openDefault.CloseAt(validFrom);
+            {
+                validationZones.Remove(openDefault);
+                validationZones.Add(new ParkingZone(
+                    openDefault.Id,
+                    openDefault.Name,
+                    openDefault.ProviderLocation,
+                    openDefault.ValidFrom,
+                    validFrom,
+                    isDefault: true));
+            }
 
             try
             {
-                ParkingZoneResolver.ValidateDefaultNoOverlap(zones.Append(proposed));
+                ParkingZoneResolver.ValidateDefaultNoOverlap(validationZones.Append(proposed));
             }
             catch (InvalidOperationException)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return new AdminParkingZoneCreateResult(AdminParkingZoneCreateOutcome.DefaultOverlap, null);
             }
+
+            if (openDefault is not null && validFrom > openDefault.ValidFrom)
+                openDefault.CloseAt(validFrom);
         }
 
         dbContext.ParkingZones.Add(proposed);
@@ -1392,15 +1405,24 @@ internal sealed class AdministrationService(
         if (validUntil <= now)
             return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.Invalid, null);
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+
         var zone = await dbContext.ParkingZones.SingleOrDefaultAsync(
             x => x.Id == zoneId,
             cancellationToken);
         if (zone is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
             return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.NotFound, null);
+        }
         if (zone.ValidUntil.HasValue)
+        {
+            await transaction.RollbackAsync(cancellationToken);
             return new AdminParkingZoneCloseResult(
                 AdminParkingZoneCloseOutcome.AlreadyClosed,
                 ToAdminParkingZoneSummary(zone));
+        }
 
         try
         {
@@ -1408,10 +1430,13 @@ internal sealed class AdministrationService(
         }
         catch (ArgumentOutOfRangeException)
         {
+            await transaction.RollbackAsync(cancellationToken);
             return new AdminParkingZoneCloseResult(AdminParkingZoneCloseOutcome.Invalid, null);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
         return new AdminParkingZoneCloseResult(
             AdminParkingZoneCloseOutcome.Closed,
             ToAdminParkingZoneSummary(zone));
