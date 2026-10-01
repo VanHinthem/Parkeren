@@ -402,9 +402,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
         visit.Activate();
 
-        var paidWindows = Enumerable.Range(0, 7)
-            .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
-            .ToArray();
+        var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
+        var localPaidStart = TimeZoneInfo.ConvertTime(nextPaidStart, businessZone);
+        var localPaidEnd = TimeZoneInfo.ConvertTime(nextPaidEnd, businessZone);
+        var paidWindows = new[]
+        {
+            new PaidWindow(
+                localPaidStart.DayOfWeek,
+                TimeOnly.FromDateTime(localPaidStart.DateTime),
+                TimeOnly.FromDateTime(localPaidEnd.DateTime))
+        };
         var budgetPeriod = new ParkingBudgetPeriod(
             Guid.NewGuid(), startAt.AddDays(-1), startAt.AddDays(1), TimeSpan.FromHours(1));
 
