@@ -105,6 +105,67 @@ public sealed class ParkingZoneAdministrationTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Existing_default_zone_cannot_be_replaced_retroactively()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using (var reset = fixture.CreateDbContext())
+            await reset.ParkingZones.ExecuteDeleteAsync(ct);
+
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"zone-retro-admin-{suffix}", $"ZONE-RETRO-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var now = DateTimeOffset.UtcNow;
+        Guid? existingId = null;
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(admin);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            await using var provider = CreateServices().BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+
+            var existing = await administration.CreateParkingZoneAsync(
+                admin.Id,
+                "Bestaand",
+                "OSS_CURRENT",
+                now.AddDays(-30),
+                null,
+                true,
+                now,
+                ct);
+            Assert.Equal(AdminParkingZoneCreateOutcome.Created, existing.Outcome);
+            existingId = existing.Zone!.Id;
+
+            var rejected = await administration.CreateParkingZoneAsync(
+                admin.Id,
+                "Retroactief",
+                "OSS_RETRO",
+                now.AddDays(-1),
+                null,
+                true,
+                now,
+                ct);
+
+            Assert.Equal(AdminParkingZoneCreateOutcome.Invalid, rejected.Outcome);
+
+            await using var verify = fixture.CreateDbContext();
+            var persisted = await verify.ParkingZones.SingleAsync(x => x.Id == existingId.Value, ct);
+            Assert.Null(persisted.ValidUntil);
+            Assert.False(await verify.ParkingZones.AnyAsync(x => x.ProviderLocation == "OSS_RETRO", ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
+            await cleanup.ParkingZones.ExecuteDeleteAsync(ct);
+        }
+    }
+
     private ServiceCollection CreateServices()
     {
         var configuration = new ConfigurationManager();
