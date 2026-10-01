@@ -833,7 +833,7 @@ app.MapPut("/api/admin/zones/{zoneId:guid}/close", async (
     return result.Outcome switch
     {
         AdminParkingZoneCloseOutcome.Closed => Results.Ok(result),
-        AdminParkingZoneCloseOutcome.NotFound => Results.NotFound(),
+        AdminParkingZoneCloseOutcome.NotFound => Results.NotFound(result),
         AdminParkingZoneCloseOutcome.AlreadyClosed => Results.Conflict(result),
         _ => Results.BadRequest(result)
     };
