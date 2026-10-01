@@ -20,6 +20,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<UserPolicyOverride> UserPolicyOverrides => Set<UserPolicyOverride>();
     public DbSet<ParkingRuleSet> ParkingRuleSets => Set<ParkingRuleSet>();
     public DbSet<ParkingBudgetPeriod> ParkingBudgetPeriods => Set<ParkingBudgetPeriod>();
+    public DbSet<ParkingTariff> ParkingTariffs => Set<ParkingTariff>();
     public DbSet<PaidWindow> PaidWindows => Set<PaidWindow>();
     public DbSet<ParkingCalendarException> ParkingCalendarExceptions => Set<ParkingCalendarException>();
     public DbSet<Visit> Visits => Set<Visit>();
