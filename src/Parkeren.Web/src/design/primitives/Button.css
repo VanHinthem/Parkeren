@@ -1,0 +1,13 @@
+.button {
+  min-height: 3rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-weight: 700;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.button:active { transform: scale(.985); }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+.button--primary { background: var(--color-primary); color: white; }
+.button--danger { background: var(--color-danger-soft); color: var(--color-danger); }
+.button--secondary { background: var(--color-surface-muted); color: var(--color-text); }

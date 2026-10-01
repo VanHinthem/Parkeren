@@ -1,0 +1,2 @@
+import { Icon } from "../design/icons/Icon"; import "./CapacityIndicator.css";
+export function CapacityIndicator({used,total}:{used:number;total:number}){const n=Math.min(Math.max(used,0),total);return <div className="capacity"><div className="capacity__heading"><Icon name="car"/><strong>Bezetting parkeerplaatsen</strong><span>{n} / {total}</span></div><div className="capacity__slots" aria-label={`${n} van ${total} plaatsen in gebruik`}>{Array.from({length:total},(_,i)=><i key={i} className={i<n?"used":""}/>)}</div></div>}
