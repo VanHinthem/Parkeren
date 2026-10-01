@@ -770,6 +770,105 @@ internal sealed class AdministrationService(
             settings.BudgetWarningThresholdPercentages,
             settings.UpdatedAt);
 
+    public async Task<IReadOnlyList<AdminParkingRuleSetVersion>> GetParkingRuleSetsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .OrderByDescending(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        return ruleSets.Select(ToAdminParkingRuleSetVersion).ToArray();
+    }
+
+    public async Task<AdminParkingRuleSetCreateResult> CreateParkingRuleSetVersionAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        int maxProviderActionDurationMinutes,
+        ProviderCoverageContinuation continuation,
+        bool publicHolidaysAreFree,
+        IReadOnlyList<AdminPaidWindowInput> paidWindows,
+        IReadOnlyList<AdminCalendarExceptionInput> calendarExceptions,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        if (validFrom <= now)
+            return new AdminParkingRuleSetCreateResult(AdminParkingRuleSetCreateOutcome.MustBeFuture, null);
+        if (maxProviderActionDurationMinutes <= 0 ||
+            paidWindows is null ||
+            calendarExceptions is null ||
+            !Enum.IsDefined(continuation))
+            return new AdminParkingRuleSetCreateResult(AdminParkingRuleSetCreateOutcome.Invalid, null);
+
+        ParkingRuleSet proposed;
+        try
+        {
+            proposed = new ParkingRuleSet(
+                Guid.NewGuid(),
+                validFrom,
+                validUntil: null,
+                TimeSpan.FromMinutes(maxProviderActionDurationMinutes),
+                paidWindows.Select(x => new PaidWindow(x.Day, x.Start, x.End)).ToArray(),
+                calendarExceptions.Select(x => new ParkingCalendarException(x.Date, x.IsPaid)).ToArray(),
+                publicHolidaysAreFree,
+                continuation);
+        }
+        catch (ArgumentException)
+        {
+            return new AdminParkingRuleSetCreateResult(AdminParkingRuleSetCreateOutcome.Invalid, null);
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+
+        var latest = await dbContext.ParkingRuleSets
+            .OrderByDescending(x => x.ValidFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latest is not null)
+        {
+            if (latest.ValidUntil.HasValue || validFrom <= latest.ValidFrom)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AdminParkingRuleSetCreateResult(AdminParkingRuleSetCreateOutcome.SequenceConflict, null);
+            }
+
+            latest.CloseAt(validFrom);
+        }
+
+        dbContext.ParkingRuleSets.Add(proposed);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new AdminParkingRuleSetCreateResult(
+            AdminParkingRuleSetCreateOutcome.Created,
+            ToAdminParkingRuleSetVersion(proposed));
+    }
+
+    private static AdminParkingRuleSetVersion ToAdminParkingRuleSetVersion(ParkingRuleSet ruleSet) =>
+        new(
+            ruleSet.Id,
+            ruleSet.ValidFrom,
+            ruleSet.ValidUntil,
+            (int)ruleSet.MaxProviderActionDuration.TotalMinutes,
+            ruleSet.Continuation,
+            ruleSet.PublicHolidaysAreFree,
+            ruleSet.PaidWindows
+                .OrderBy(x => x.Day)
+                .ThenBy(x => x.Start)
+                .Select(x => new AdminPaidWindowSummary(x.Id, x.Day, x.Start, x.End))
+                .ToArray(),
+            ruleSet.CalendarExceptions
+                .OrderBy(x => x.Date)
+                .Select(x => new AdminCalendarExceptionSummary(x.Id, x.Date, x.IsPaid))
+                .ToArray());
+
     public async Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
         Guid? userId,
