@@ -115,6 +115,14 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("user_policy_overrides");
             entity.HasKey(x => x.UserId);
+            entity.Property(x => x.MaxPaidParkingDurationMode)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            entity.Property(x => x.MaxVisitElapsedDurationMode)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
             entity.HasOne<User>().WithOne().HasForeignKey<UserPolicyOverride>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<ParkingTariff>(entity =>
