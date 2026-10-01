@@ -27,7 +27,8 @@ export function activeVisitHealthMessage(health:ActiveVisit["health"]){
 }
 
 export function canStopActiveVisit(visit:ActiveVisit){
-  return visit.status==="Active"&&visit.health!=="Reconciling";
+  return (visit.status==="Active"&&visit.health!=="Reconciling")||
+    (visit.status==="Stopping"&&visit.health==="Reconciling");
 }
 
 export function canExtendActiveVisit(visit:ActiveVisit){
