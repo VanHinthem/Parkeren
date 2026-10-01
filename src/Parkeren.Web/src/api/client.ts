@@ -71,10 +71,10 @@ async function visitError(response:Response,fallback:string):Promise<Error>{
 }
 
 export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
-export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string):Promise<StartVisitResult>{
+export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string,ownerUserId?:string):Promise<StartVisitResult>{
   const response=await apiFetch("/api/visits/start",{
     method:"POST",
-    body:JSON.stringify({operationId,vehicleId,desiredEndAt})
+    body:JSON.stringify({operationId,vehicleId,desiredEndAt,ownerUserId:ownerUserId??null})
   });
   if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gestart");
   const result=await response.json() as {visit:ActiveVisit};
@@ -109,6 +109,32 @@ export async function changeVisitEndTime(
 
 export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
 export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
+export type AdminActiveVisitSummary={
+  id:string;
+  userId:string;
+  username:string;
+  vehicleId:string;
+  licensePlate:string;
+  startAt:string;
+  desiredEndAt:string|null;
+  status:ActiveVisit["status"];
+  health:ActiveVisit["health"];
+  paidDurationMinutes:number|null;
+};
+export type AdminDashboardSummary={used:number;total:number;activeVisits:AdminActiveVisitSummary[]};
+export type AdminParkingPolicySummary={
+  maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMinutes:number|null;
+  allowVisitExtension:boolean;
+  allowOpenEndedVisits:boolean;
+  maxConcurrentVisits:number;
+};
+export async function getAdminDashboard(){return json<AdminDashboardSummary>(await apiFetch("/api/admin/dashboard"));}
+export async function getAdminUserParkingPolicy(userId:string){
+  const response=await apiFetch(`/api/admin/users/${userId}/parking-policy`);
+  if(response.status===404)return null;
+  return json<AdminParkingPolicySummary>(response);
+}
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
