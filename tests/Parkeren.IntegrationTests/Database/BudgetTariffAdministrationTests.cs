@@ -81,16 +81,16 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
-        var periodFrom = new DateTimeOffset(2026, 9, 28, 0, 0, 0, localOffset);
-        var periodUntil = periodFrom.AddDays(1);
+        var periodFrom = new DateTimeOffset(2026, 9, 28, 0, 0, 0, localOffset).ToUniversalTime();
+        var periodUntil = new DateTimeOffset(2026, 9, 29, 0, 0, 0, localOffset).ToUniversalTime();
         Guid? budgetId = null;
         CompletedVisitSeed? visitSeed = null;
 
         try
         {
             visitSeed = await CreateCompletedVisitAsync(
-                new DateTimeOffset(2026, 9, 28, 8, 0, 0, localOffset),
-                new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset),
+                new DateTimeOffset(2026, 9, 28, 8, 0, 0, localOffset).ToUniversalTime(),
+                new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime(),
                 ct);
             await using var administration = CreateAdministration();
             var budget = await administration.Service.CreateBudgetPeriodAsync(
@@ -120,9 +120,9 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
-        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset);
-        var boundary = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset);
-        var end = new DateTimeOffset(2026, 9, 28, 12, 0, 0, localOffset);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime();
+        var boundary = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset).ToUniversalTime();
+        var end = new DateTimeOffset(2026, 9, 28, 12, 0, 0, localOffset).ToUniversalTime();
         var tariffIds = new List<Guid>();
         CompletedVisitSeed? visitSeed = null;
 
@@ -166,8 +166,8 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var admin = await CreateAdminAsync(ct);
         var localOffset = TimeSpan.FromHours(2);
-        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset);
-        var end = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime();
+        var end = new DateTimeOffset(2026, 9, 28, 11, 0, 0, localOffset).ToUniversalTime();
         CompletedVisitSeed? visitSeed = null;
 
         try
