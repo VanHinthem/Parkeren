@@ -199,6 +199,8 @@ public sealed record AdminVisitPolicySnapshotSummary(
 public sealed record AdminProviderParkingActionSummary(
     Guid Id,
     string? ProviderActionId,
+    string? ProviderProductId,
+    string? ProviderLocation,
     DateTimeOffset PlannedStartAt,
     DateTimeOffset PlannedEndAt,
     DateTimeOffset? ActualStartAt,
@@ -241,6 +243,9 @@ public sealed record AdminRuleSetSummary(
 
 public sealed record AdminVisitDetail(
     AdminVisitSummary Visit,
+    string? ProviderProductName,
+    string? ProviderProductExternalId,
+    string? ProviderLocation,
     AdminVisitPolicySnapshotSummary PolicySnapshot,
     IReadOnlyList<AdminProviderParkingActionSummary> ProviderActions,
     IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,

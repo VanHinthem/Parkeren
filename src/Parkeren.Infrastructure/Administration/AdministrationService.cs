@@ -1648,12 +1648,21 @@ internal sealed class AdministrationService(
             now,
             ruleSets);
 
+        var providerProductName = row.Visit.ProviderProductId is Guid providerProductId
+            ? await dbContext.ParkingProviderProducts.AsNoTracking()
+                .Where(x => x.Id == providerProductId)
+                .Select(x => x.Name)
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
+
         var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
             .Where(x => x.VisitId == visitId)
             .OrderBy(x => x.PlannedStartAt)
             .Select(x => new AdminProviderParkingActionSummary(
                 x.Id,
                 x.ProviderActionId,
+                x.ProviderProductId,
+                x.ProviderLocation,
                 x.PlannedStartAt,
                 x.PlannedEndAt,
                 x.ActualStartAt,
@@ -1716,6 +1725,9 @@ internal sealed class AdministrationService(
 
         return new AdminVisitDetail(
             visitSummary,
+            providerProductName,
+            row.Visit.ProviderProductExternalId,
+            row.Visit.ProviderLocation,
             policySnapshot,
             providerActions,
             providerOperations,

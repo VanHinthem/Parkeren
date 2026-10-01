@@ -200,6 +200,10 @@ export function AdminVisitsPage(){
 }
 
 function booleanLabel(value:boolean){return value?"Ja":"Nee";}
+function providerProductLabel(name:string|null,id:string|null){
+  if(name&&id)return `${name} (${id})`;
+  return name??id??"—";
+}
 
 export function AdminVisitDetailPage({visitId}:{visitId:string}){
   const[detail,setDetail]=useState<AdminVisitDetail|null|undefined>();
@@ -266,6 +270,8 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
               <div className="admin-visit-detail__fact"><dt>Gepland tot</dt><dd>{detail.visit.desiredEndAt?formatDateTime(detail.visit.desiredEndAt):"Handmatig stoppen"}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Werkelijk einde</dt><dd>{formatDateTime(detail.visit.actualEndAt)}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Betaalde tijd</dt><dd>{formatMinutes(detail.visit.paidDurationMinutes)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Providerproduct</dt><dd>{providerProductLabel(detail.providerProductName,detail.providerProductExternalId)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Providerlocatie</dt><dd>{detail.providerLocation??"—"}</dd></div>
             </dl>
           </section>
 
@@ -293,6 +299,8 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>Gepland: {formatDateTime(action.plannedStartAt)} – {formatDateTime(action.plannedEndAt)}</span>
                       <span>Werkelijk: {formatDateTime(action.actualStartAt)} – {formatDateTime(action.actualEndAt)}</span>
                       <span>Providerstatus: {action.providerStatus??"—"}</span>
+                      <span>Product: {action.providerProductId??"—"}</span>
+                      <span>Locatie: {action.providerLocation??"—"}</span>
                     </div>
                   </div>)}
                 </div>}

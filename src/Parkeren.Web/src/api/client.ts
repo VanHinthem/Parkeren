@@ -489,6 +489,8 @@ export type AdminVisitSummary={
 export type AdminProviderParkingActionSummary={
   id:string;
   providerActionId:string|null;
+  providerProductId:string|null;
+  providerLocation:string|null;
   plannedStartAt:string;
   plannedEndAt:string;
   actualStartAt:string|null;
@@ -531,6 +533,9 @@ export type AdminRuleSetSummary={
 };
 export type AdminVisitDetail={
   visit:AdminVisitSummary;
+  providerProductName:string|null;
+  providerProductExternalId:string|null;
+  providerLocation:string|null;
   policySnapshot:{
     maxPaidParkingDurationMinutes:number|null;
     maxVisitElapsedDurationMinutes:number|null;
