@@ -23,7 +23,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
 
         try
         {
-            var administration = await CreateAdministrationAsync();
+            await using var administration = CreateAdministration();
             var first = await administration.Service.CreateBudgetPeriodAsync(
                 admin.Id, from, from.AddYears(1), 1500 * 60, ct);
             Assert.Equal(AdminBudgetPeriodCreateOutcome.Created, first.Outcome);
@@ -36,7 +36,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         }
         finally
         {
-            await CleanupAsync(admin.Id, null, createdId is null ? [] : [createdId.Value], [], ct);
+            await CleanupAsync(admin.Id, createdId is null ? [] : [createdId.Value], [], ct);
         }
     }
 
@@ -51,7 +51,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
 
         try
         {
-            var administration = await CreateAdministrationAsync();
+            await using var administration = CreateAdministration();
             var first = await administration.Service.CreateParkingTariffAsync(
                 admin.Id, firstFrom, null, 1m, ParkingTariffUnit.Hour, ct);
             Assert.Equal(AdminParkingTariffCreateOutcome.Created, first.Outcome);
@@ -71,7 +71,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         }
         finally
         {
-            await CleanupAsync(admin.Id, null, [], tariffIds, ct);
+            await CleanupAsync(admin.Id, [], tariffIds, ct);
         }
     }
 
@@ -84,17 +84,17 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         var periodFrom = new DateTimeOffset(2026, 9, 28, 0, 0, 0, localOffset);
         var periodUntil = periodFrom.AddDays(1);
         Guid? budgetId = null;
-        Guid? vehicleId = null;
+        CompletedVisitSeed? visitSeed = null;
 
         try
         {
-            var visitor = await CreateCompletedVisitAsync(
+            visitSeed = await CreateCompletedVisitAsync(
                 new DateTimeOffset(2026, 9, 28, 8, 0, 0, localOffset),
                 new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset),
                 ct);
             vehicleId = visitor.VehicleId;
 
-            var administration = await CreateAdministrationAsync();
+            await using var administration = CreateAdministration();
             var budget = await administration.Service.CreateBudgetPeriodAsync(
                 admin.Id, periodFrom, periodUntil, 10 * 60, ct);
             Assert.Equal(AdminBudgetPeriodCreateOutcome.Created, budget.Outcome);
@@ -107,14 +107,12 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             Assert.Equal(60, usage.UsedPaidDurationMinutes);
             Assert.Equal(540, usage.RemainingPaidDurationMinutes);
 
-            await CleanupVisitorAsync(visitor.UserId, visitor.VehicleId, ct);
-            vehicleId = null;
         }
         finally
         {
-            if (vehicleId.HasValue)
-                await ClearVisitsAsync(ct);
-            await CleanupAsync(admin.Id, null, budgetId is null ? [] : [budgetId.Value], [], ct);
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, budgetId is null ? [] : [budgetId.Value], [], ct);
         }
     }
 
@@ -134,7 +132,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         {
             visitSeed = await CreateCompletedVisitAsync(start, end, ct);
 
-            var administration = await CreateAdministrationAsync();
+            await using var administration = CreateAdministration();
             var first = await administration.Service.CreateParkingTariffAsync(
                 admin.Id, start.AddHours(-1), boundary, 1m, ParkingTariffUnit.Hour, ct);
             Assert.Equal(AdminParkingTariffCreateOutcome.Created, first.Outcome);
@@ -160,7 +158,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         {
             if (visitSeed is not null)
                 await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
-            await CleanupAsync(admin.Id, null, [], tariffIds, ct);
+            await CleanupAsync(admin.Id, [], tariffIds, ct);
         }
     }
 
@@ -224,7 +222,6 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
 
     private async Task CleanupAsync(
         Guid adminId,
-        Guid? visitorId,
         IReadOnlyCollection<Guid> budgetIds,
         IReadOnlyCollection<Guid> tariffIds,
         CancellationToken ct)
@@ -234,10 +231,10 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             await context.ParkingBudgetPeriods.Where(x => budgetIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
         if (tariffIds.Count > 0)
             await context.ParkingTariffs.Where(x => tariffIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
-        await context.Users.Where(x => x.Id == adminId || (visitorId.HasValue && x.Id == visitorId.Value)).ExecuteDeleteAsync(ct);
+        await context.Users.Where(x => x.Id == adminId).ExecuteDeleteAsync(ct);
     }
 
-    private async Task<AdministrationScope> CreateAdministrationAsync()
+    private AdministrationScope CreateAdministration()
     {
         var configuration = new ConfigurationManager();
         configuration.AddInMemoryCollection(new Dictionary<string, string?>
