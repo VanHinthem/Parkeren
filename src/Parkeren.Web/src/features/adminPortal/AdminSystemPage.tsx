@@ -272,6 +272,9 @@ export function AdminSystemPage(){
             <label className="admin-system__check"><input type="checkbox" checked={reminderEnabled} onChange={event=>setReminderEnabled(event.target.checked)}/> Herinnering inschakelen</label>
             <label className="admin-system__field"><span>Iedere aantal uren</span><input type="number" min=".25" step=".25" value={reminderHours} onChange={event=>setReminderHours(event.target.value)} disabled={!reminderEnabled}/></label>
           </div>
+          <div className="admin-system__actions">
+            <Button onClick={()=>void saveWarnings()} disabled={savingWarnings}>{savingWarnings?"Opslaan…":"Waarschuwingen opslaan"}</Button>
+          </div>
         </div>
       </section>
 
