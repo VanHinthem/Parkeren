@@ -1,7 +1,4 @@
-using Microsoft.Extensions.Configuration;
 using System.Globalization;
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Parkeren.Application.ParkingProvider;
@@ -19,36 +16,109 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         ?? throw new InvalidOperationException("ParkingProvider:Email is not configured.");
     private readonly string password = configuration["ParkingProvider:Password"]
         ?? throw new InvalidOperationException("ParkingProvider:Password is not configured.");
-    private string? productId = configuration["ParkingProvider:ProductId"];
-    private string? location = configuration["ParkingProvider:Location"];
+    private readonly string? configuredProductId = configuration["ParkingProvider:ProductId"];
     private bool authenticated;
 
     public async Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
-        var data = await PostAsync("get_categories.json", new Dictionary<string, string> { ["locale"] = Locale }, cancellationToken);
+        using var data = await GetCategoriesDocumentAsync(cancellationToken);
         var result = new List<ProviderCategory>();
+
         foreach (var category in data.RootElement.GetProperty("data").GetProperty("categories").EnumerateArray())
         {
             var id = category.TryGetProperty("cty_id", out var idElement) ? idElement.ToString() : string.Empty;
             var name = category.TryGetProperty("cty_name", out var nameElement) ? nameElement.GetString() ?? id : id;
             result.Add(new ProviderCategory(id, name));
         }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<ProviderProduct>> GetProductsAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        using var data = await GetCategoriesDocumentAsync(cancellationToken);
+        var result = new List<ProviderProduct>();
+
+        foreach (var category in data.RootElement.GetProperty("data").GetProperty("categories").EnumerateArray())
+        {
+            var categoryId = category.TryGetProperty("cty_id", out var categoryIdElement)
+                ? categoryIdElement.ToString()
+                : null;
+            var categoryName = category.TryGetProperty("cty_name", out var categoryNameElement)
+                ? categoryNameElement.GetString()
+                : null;
+
+            if (!category.TryGetProperty("cty_products", out var products))
+                continue;
+
+            foreach (var product in products.EnumerateArray())
+            {
+                var id = product.TryGetProperty("pdt_id", out var idElement)
+                    ? idElement.ToString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(id) || IsBlocked(product))
+                    continue;
+
+                var name = product.TryGetProperty("pdt_name", out var nameElement)
+                    ? nameElement.GetString()
+                    : null;
+                name = string.IsNullOrWhiteSpace(name) ? id : name;
+
+                var location = ExtractLocation(product);
+                if (string.IsNullOrWhiteSpace(location))
+                    location = await DiscoverLocationAsync(id, cancellationToken);
+                if (string.IsNullOrWhiteSpace(location))
+                    throw new InvalidOperationException($"2Park product '{id}' has no usable LOCATION.");
+
+                result.Add(new ProviderProduct(
+                    id,
+                    name,
+                    location,
+                    categoryId,
+                    categoryName));
+            }
+        }
+
         return result;
     }
 
     public async Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
-        return new ProviderProduct(productId ?? string.Empty, "2Park", location ?? string.Empty);
+        var products = await GetProductsAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(configuredProductId))
+        {
+            return products.SingleOrDefault(x => string.Equals(x.Id, configuredProductId, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"Configured 2Park product '{configuredProductId}' was not returned by the provider.");
+        }
+
+        return products.Count switch
+        {
+            1 => products[0],
+            0 => throw new InvalidOperationException("No usable 2Park product was found for this account."),
+            _ => throw new InvalidOperationException("Multiple 2Park products are available; an explicit product selection is required.")
+        };
     }
 
     public async Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default)
     {
+        var product = await GetProductAsync(cancellationToken);
+        return await GetBalanceForProductAsync(product.Id, cancellationToken);
+    }
+
+    public async Task<ProviderBalance> GetBalanceForProductAsync(
+        string productId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(productId))
+            throw new ArgumentException("Product id is required.", nameof(productId));
+
         await EnsureAuthenticatedAsync(cancellationToken);
         using var data = await PostAsync("get_balance.json", new Dictionary<string, string>
         {
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = productId,
             ["locale"] = Locale
         }, cancellationToken);
 
@@ -58,10 +128,21 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
     public async Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default)
     {
+        var product = await GetProductAsync(cancellationToken);
+        return await GetActionsForProductAsync(product.Id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProviderParkingAction>> GetActionsForProductAsync(
+        string productId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(productId))
+            throw new ArgumentException("Product id is required.", nameof(productId));
+
         await EnsureAuthenticatedAsync(cancellationToken);
         using var data = await PostAsync("get_category_product_details.json", new Dictionary<string, string>
         {
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = productId,
             ["locale"] = Locale
         }, cancellationToken);
 
@@ -93,7 +174,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                     : memberPlate;
                 var actionLocation = parameters.TryGetValue("LOCATION", out var locationRaw)
                     ? locationRaw
-                    : location ?? string.Empty;
+                    : string.Empty;
                 var state = action.TryGetProperty("atn_state", out var stateElement)
                     ? stateElement.GetString() ?? "unknown"
                     : "unknown";
@@ -104,7 +185,8 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                     ParseProviderTime(startRaw),
                     ParseProviderTime(endRaw),
                     actionLocation,
-                    state.ToLowerInvariant()));
+                    state.ToLowerInvariant(),
+                    productId));
             }
         }
 
@@ -116,6 +198,10 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         CancellationToken cancellationToken = default)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
+
+        var selectedProductId = request.ProductId;
+        if (string.IsNullOrWhiteSpace(selectedProductId))
+            selectedProductId = (await GetProductAsync(cancellationToken)).Id;
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -133,12 +219,12 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
         using var data = await PostAsync("start_action.json", new Dictionary<string, string>
         {
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = selectedProductId,
             ["locale"] = Locale,
             ["data"] = payload
         }, cancellationToken);
 
-        var actions = await GetActionsAsync(cancellationToken);
+        var actions = await GetActionsForProductAsync(selectedProductId, cancellationToken);
         var match = actions
             .Where(x => string.Equals(x.LicensePlate, NormalizePlate(request.LicensePlate), StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(x => x.Start)
@@ -155,16 +241,27 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         DateTimeOffset newEnd,
         CancellationToken cancellationToken = default)
     {
+        var product = await GetProductAsync(cancellationToken);
+        return await ExtendActionForProductAsync(product.Id, providerActionId, newEnd, cancellationToken);
+    }
+
+    public async Task<ProviderParkingAction> ExtendActionForProductAsync(
+        string productId,
+        string providerActionId,
+        DateTimeOffset newEnd,
+        CancellationToken cancellationToken = default)
+    {
         await EnsureAuthenticatedAsync(cancellationToken);
         using var data = await PostAsync("extend_action.json", new Dictionary<string, string>
         {
             ["action_id"] = providerActionId,
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = productId,
             ["locale"] = Locale,
             ["VALID_UNTIL"] = FormatProviderTime(newEnd)
         }, cancellationToken);
 
-        var action = (await GetActionsAsync(cancellationToken)).SingleOrDefault(x => x.ProviderActionId == providerActionId);
+        var action = (await GetActionsForProductAsync(productId, cancellationToken))
+            .SingleOrDefault(x => x.ProviderActionId == providerActionId);
         if (action is null)
             throw new InvalidOperationException("2Park extension was accepted but the action could not be verified by read-back.");
         return action;
@@ -175,11 +272,12 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         DateTimeOffset newEnd,
         CancellationToken cancellationToken = default)
     {
+        var product = await GetProductAsync(cancellationToken);
         await EnsureAuthenticatedAsync(cancellationToken);
         using var data = await PostAsync("extend_action.json", new Dictionary<string, string>
         {
             ["action_id"] = providerActionId,
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = product.Id,
             ["locale"] = Locale,
             ["VALID_UNTIL"] = FormatProviderTime(newEnd)
         }, cancellationToken);
@@ -189,11 +287,20 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
     public async Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default)
     {
+        var product = await GetProductAsync(cancellationToken);
+        await StopActionForProductAsync(product.Id, providerActionId, cancellationToken);
+    }
+
+    public async Task StopActionForProductAsync(
+        string productId,
+        string providerActionId,
+        CancellationToken cancellationToken = default)
+    {
         await EnsureAuthenticatedAsync(cancellationToken);
         using var data = await PostAsync("stop_action.json", new Dictionary<string, string>
         {
             ["action_id"] = providerActionId,
-            ["product_id"] = productId ?? string.Empty,
+            ["product_id"] = productId,
             ["locale"] = Locale
         }, cancellationToken);
     }
@@ -211,33 +318,38 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         }, cancellationToken, allowReauthenticate: false);
 
         authenticated = true;
-        if (string.IsNullOrWhiteSpace(productId) || string.IsNullOrWhiteSpace(location))
-            await DiscoverProductAsync(cancellationToken);
     }
 
-    private async Task DiscoverProductAsync(CancellationToken cancellationToken)
+    private Task<JsonDocument> GetCategoriesDocumentAsync(CancellationToken cancellationToken) =>
+        PostAsync("get_categories.json", new Dictionary<string, string> { ["locale"] = Locale }, cancellationToken);
+
+    private async Task<string?> DiscoverLocationAsync(string productId, CancellationToken cancellationToken)
     {
-        using var categories = await PostAsync("get_categories.json", new Dictionary<string, string> { ["locale"] = Locale }, cancellationToken);
-        foreach (var category in categories.RootElement.GetProperty("data").GetProperty("categories").EnumerateArray())
+        try
         {
-            if (!category.TryGetProperty("cty_products", out var products))
-                continue;
-
-            foreach (var product in products.EnumerateArray())
+            using var data = await PostAsync("get_product_locations.json", new Dictionary<string, string>
             {
-                var id = product.TryGetProperty("pdt_id", out var idElement) ? idElement.ToString() : null;
-                var blocked = product.TryGetProperty("pdt_is_blocked", out var blockedElement)
-                    && string.Equals(blockedElement.GetString(), "true", StringComparison.OrdinalIgnoreCase);
-                if (string.IsNullOrWhiteSpace(id) || blocked)
-                    continue;
+                ["locale"] = Locale,
+                ["product_id"] = productId,
+                ["location"] = string.Empty
+            }, cancellationToken);
 
-                productId = id;
-                location ??= ExtractLocation(product);
-                return;
+            if (!data.RootElement.GetProperty("data").TryGetProperty("locations", out var locations))
+                return null;
+
+            foreach (var location in locations.EnumerateArray())
+            {
+                var parameters = ReadParameters(location, "ltn_parameters");
+                if (parameters.TryGetValue("LOCATION", out var value) && !string.IsNullOrWhiteSpace(value))
+                    return value;
             }
         }
+        catch (InvalidOperationException)
+        {
+            // Some 2Park products already expose LOCATION directly in get_categories.
+        }
 
-        throw new InvalidOperationException("No usable 2Park product was found for this account.");
+        return null;
     }
 
     private async Task<JsonDocument> PostAsync(
@@ -278,6 +390,20 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         throw new InvalidOperationException($"2Park request failed: {minor ?? "UNKNOWN"} {message}".Trim());
     }
 
+    private static bool IsBlocked(JsonElement product)
+    {
+        if (!product.TryGetProperty("pdt_is_blocked", out var blockedElement))
+            return false;
+
+        return blockedElement.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => string.Equals(blockedElement.GetString(), "true", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+    }
+
     private static Dictionary<string, string> ReadParameters(JsonElement element, string propertyName)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -294,6 +420,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             if (!string.IsNullOrWhiteSpace(label) && value is not null)
                 result[label] = value;
         }
+
         return result;
     }
 
