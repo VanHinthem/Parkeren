@@ -141,7 +141,7 @@ export function AdminParkingRulesPage(){
         validFrom:startAt.toISOString(),
         maxProviderActionDurationMinutes:Math.round(hours*60),
         continuation,
-        publicHolidaysAreFree,
+        publicHolidaysAreFree:publicHolidaysFree,
         paidWindows:windows.map(window=>({
           day:window.day,
           start:`${window.start}:00`,
