@@ -5,6 +5,7 @@ using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
+using Parkeren.Domain.ParkingProvider;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -33,6 +34,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
+    public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -94,6 +96,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("parking_rule_sets"); entity.HasKey(x => x.Id);
             entity.Property(x => x.Continuation).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.ProviderProductId, x.ValidFrom });
             entity.HasMany(x => x.PaidWindows).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.CalendarExceptions).WithOne().HasForeignKey(x => x.ParkingRuleSetId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -148,6 +152,19 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.ParkingBudgetPeriodId, x.ThresholdPercentage }).IsUnique();
             entity.HasOne<ParkingBudgetPeriod>().WithMany().HasForeignKey(x => x.ParkingBudgetPeriodId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ParkingProviderProduct>(entity =>
+        {
+            entity.ToTable("parking_provider_products");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProviderProductId).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.CategoryId).HasMaxLength(100);
+            entity.Property(x => x.CategoryName).HasMaxLength(200);
+            entity.Property(x => x.Location).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.ProviderProductId).IsUnique();
+            entity.HasIndex(x => x.IsDefault).HasFilter("\"IsDefault\" = TRUE");
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
