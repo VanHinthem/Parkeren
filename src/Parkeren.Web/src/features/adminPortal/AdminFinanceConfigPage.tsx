@@ -4,8 +4,10 @@ import {
   createAdminParkingTariff,
   getAdminBudgetPeriods,
   getAdminParkingTariffs,
+  getAdminProviderProducts,
   type AdminBudgetPeriod,
-  type AdminParkingTariff
+  type AdminParkingTariff,
+  type AdminProviderProduct
 } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
@@ -42,6 +44,8 @@ function defaultBudgetDates(){
 }
 
 export function AdminFinanceConfigPage({mode}:Props){
+  const[products,setProducts]=useState<AdminProviderProduct[]>();
+  const[selectedProductId,setSelectedProductId]=useState<string>();
   const[budgets,setBudgets]=useState<AdminBudgetPeriod[]>();
   const[tariffs,setTariffs]=useState<AdminParkingTariff[]>();
   const[error,setError]=useState<string>();
@@ -57,19 +61,50 @@ export function AdminFinanceConfigPage({mode}:Props){
   const[tariffUntil,setTariffUntil]=useState("");
   const[tariffRate,setTariffRate]=useState("");
 
-  async function load(){
+  async function load(productId:string){
     setError(undefined);
     try{
-      if(mode==="budgets")setBudgets(await getAdminBudgetPeriods());
-      else setTariffs(await getAdminParkingTariffs());
+      if(mode==="budgets")setBudgets(await getAdminBudgetPeriods(productId));
+      else setTariffs(await getAdminParkingTariffs(productId));
     }catch(e){
       setError(e instanceof Error?e.message:"Configuratie kon niet worden geladen.");
     }
   }
 
-  useEffect(()=>{void load();},[mode]);
+  useEffect(()=>{
+    void (async()=>{
+      try{
+        const rows=await getAdminProviderProducts();
+        setProducts(rows);
+        const selected=rows.find(product=>product.isDefault)?.id
+          ?? rows.find(product=>product.isAvailable)?.id
+          ?? rows[0]?.id;
+        setSelectedProductId(selected);
+        if(!selected){
+          setBudgets([]);
+          setTariffs([]);
+        }
+      }catch(e){
+        setError(e instanceof Error?e.message:"Providerproducten konden niet worden geladen.");
+      }
+    })();
+  },[]);
+
+  useEffect(()=>{
+    if(selectedProductId)void load(selectedProductId);
+  },[mode,selectedProductId]);
 
   async function saveBudget(){
+    const selectedProduct=products?.find(product=>product.id===selectedProductId);
+    if(!selectedProductId||!selectedProduct){
+      setError("Selecteer eerst een 2Park-product.");
+      return;
+    }
+    if(!selectedProduct.isAvailable){
+      setError("Dit providerproduct is niet meer beschikbaar; historische configuratie blijft alleen-lezen.");
+      return;
+    }
+
     const from=new Date(budgetFrom+"T00:00:00");
     const until=new Date(budgetUntil+"T00:00:00");
     const hours=Number(budgetHours);
@@ -83,13 +118,14 @@ export function AdminFinanceConfigPage({mode}:Props){
     setMessage(undefined);
     try{
       const result=await createAdminBudgetPeriod({
+        providerProductId:selectedProductId,
         validFrom:from.toISOString(),
         validUntil:until.toISOString(),
         maximumPaidDurationMinutes:Math.round(hours*60)
       });
       if(result.outcome==="Created"){
         setMessage("Budgetperiode is toegevoegd.");
-        await load();
+        await load(selectedProductId);
       }else if(result.outcome==="Overlap"){
         setError("Deze budgetperiode overlapt met een bestaande periode.");
       }else{
@@ -103,6 +139,16 @@ export function AdminFinanceConfigPage({mode}:Props){
   }
 
   async function saveTariff(){
+    const selectedProduct=products?.find(product=>product.id===selectedProductId);
+    if(!selectedProductId||!selectedProduct){
+      setError("Selecteer eerst een 2Park-product.");
+      return;
+    }
+    if(!selectedProduct.isAvailable){
+      setError("Dit providerproduct is niet meer beschikbaar; historische configuratie blijft alleen-lezen.");
+      return;
+    }
+
     const from=new Date(tariffFrom);
     const until=tariffUntil?new Date(tariffUntil):null;
     const rate=Number(tariffRate.replace(",","."));
@@ -116,6 +162,7 @@ export function AdminFinanceConfigPage({mode}:Props){
     setMessage(undefined);
     try{
       const result=await createAdminParkingTariff({
+        providerProductId:selectedProductId,
         validFrom:from.toISOString(),
         validUntil:until?until.toISOString():null,
         rate,
@@ -124,7 +171,7 @@ export function AdminFinanceConfigPage({mode}:Props){
       if(result.outcome==="Created"){
         setMessage("Tariefversie is toegevoegd.");
         setTariffRate("");
-        await load();
+        await load(selectedProductId);
       }else if(result.outcome==="Overlap"){
         setError("Deze tariefversie overlapt met een bestaande versie.");
       }else{
@@ -137,12 +184,12 @@ export function AdminFinanceConfigPage({mode}:Props){
     }
   }
 
-  const loading=mode==="budgets"?budgets===undefined:tariffs===undefined;
+  const loading=!products||(mode==="budgets"?budgets===undefined:tariffs===undefined);
   if(loading&&!error)return <Loading label={mode==="budgets"?"Budgetten laden":"Tarieven laden"}/>;
 
   return <div className="admin-finance">
     <nav className="admin-finance__tabs" aria-label="Parkeerconfiguratie">
-      <a className="admin-finance__tab" href="/beheer/configuratie/zones">Zones</a>
+      <a className="admin-finance__tab" href="/beheer/provider">Providerproducten</a>
       <a className="admin-finance__tab" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
       <a className={"admin-finance__tab "+(mode==="tariffs"?"active":"")} href="/beheer/configuratie/tarieven">Tarieven</a>
       <a className={"admin-finance__tab "+(mode==="budgets"?"active":"")} href="/beheer/configuratie/budgetten">Budgetten</a>
@@ -150,6 +197,26 @@ export function AdminFinanceConfigPage({mode}:Props){
 
     {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}
+
+    <section className="admin-finance__panel">
+      <h2>2Park-product</h2>
+      {products.length===0
+        ? <p>Er zijn nog geen providerproducten gesynchroniseerd. Synchroniseer ze eerst onder <a href="/beheer/provider">Provider & reconciliatie</a>.</p>
+        : <div className="admin-finance__grid">
+            <label className="admin-finance__field">
+              <span>Configuratie voor</span>
+              <select value={selectedProductId??""} onChange={event=>setSelectedProductId(event.target.value)}>
+                {products.map(product=><option key={product.id} value={product.id}>
+                  {product.name}{product.isDefault?" · default":""}{product.isAvailable?"":" · niet beschikbaar"}
+                </option>)}
+              </select>
+            </label>
+            {selectedProductId&&<div className="admin-finance__field">
+              <span>Provider-location</span>
+              <strong>{products.find(product=>product.id===selectedProductId)?.location??"—"}</strong>
+            </div>}
+          </div>}
+    </section>
 
     {mode==="budgets"?<>
       <section className="admin-finance__panel">
@@ -161,7 +228,7 @@ export function AdminFinanceConfigPage({mode}:Props){
             <label className="admin-finance__field"><span>Tot</span><input type="date" value={budgetUntil} onChange={event=>setBudgetUntil(event.target.value)}/></label>
             <label className="admin-finance__field"><span>Max. betaalde uren</span><input type="number" min="0.25" step="0.25" value={budgetHours} onChange={event=>setBudgetHours(event.target.value)}/></label>
           </div>
-          <div className="admin-finance__actions"><Button onClick={()=>void saveBudget()} disabled={saving}>{saving?"Opslaan…":"Budgetperiode toevoegen"}</Button></div>
+          <div className="admin-finance__actions"><Button onClick={()=>void saveBudget()} disabled={saving||!products.find(product=>product.id===selectedProductId)?.isAvailable}>{saving?"Opslaan…":"Budgetperiode toevoegen"}</Button></div>
         </div>
       </section>
 
@@ -182,7 +249,7 @@ export function AdminFinanceConfigPage({mode}:Props){
             <label className="admin-finance__field"><span>Geldig tot (optioneel)</span><input type="datetime-local" value={tariffUntil} onChange={event=>setTariffUntil(event.target.value)}/></label>
             <label className="admin-finance__field"><span>Tarief per uur (€)</span><input type="text" inputMode="decimal" value={tariffRate} onChange={event=>setTariffRate(event.target.value)} placeholder="bijv. 0,35"/></label>
           </div>
-          <div className="admin-finance__actions"><Button onClick={()=>void saveTariff()} disabled={saving}>{saving?"Opslaan…":"Tariefversie toevoegen"}</Button></div>
+          <div className="admin-finance__actions"><Button onClick={()=>void saveTariff()} disabled={saving||!products.find(product=>product.id===selectedProductId)?.isAvailable}>{saving?"Opslaan…":"Tariefversie toevoegen"}</Button></div>
         </div>
       </section>
 
