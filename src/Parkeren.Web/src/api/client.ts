@@ -179,6 +179,54 @@ export type AdminDefaultPolicyUpdateResult={
 export async function getAdminSystemSettings(){
   return json<AdminSystemSettings>(await apiFetch("/api/admin/system/settings"));
 }
+
+export type DayOfWeekName="Sunday"|"Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday";
+export type AdminPaidWindow={
+  id:string;
+  day:DayOfWeekName;
+  start:string;
+  end:string;
+};
+export type AdminCalendarException={
+  id:string;
+  date:string;
+  isPaid:boolean;
+};
+export type AdminParkingRuleSetVersion={
+  id:string;
+  validFrom:string;
+  validUntil:string|null;
+  maxProviderActionDurationMinutes:number;
+  continuation:"ExtendAction"|"StartNewAction";
+  publicHolidaysAreFree:boolean;
+  paidWindows:AdminPaidWindow[];
+  calendarExceptions:AdminCalendarException[];
+};
+export type AdminParkingRuleSetCreateInput={
+  validFrom:string;
+  maxProviderActionDurationMinutes:number;
+  continuation:"ExtendAction"|"StartNewAction";
+  publicHolidaysAreFree:boolean;
+  paidWindows:Array<{day:DayOfWeekName;start:string;end:string}>;
+  calendarExceptions:Array<{date:string;isPaid:boolean}>;
+};
+export type AdminParkingRuleSetCreateResult={
+  outcome:"Created"|"Invalid"|"MustBeFuture"|"SequenceConflict";
+  version:AdminParkingRuleSetVersion|null;
+};
+export async function getAdminParkingRuleSets(){
+  return json<AdminParkingRuleSetVersion[]>(await apiFetch("/api/admin/parking-rules"));
+}
+export async function createAdminParkingRuleSetVersion(input:AdminParkingRuleSetCreateInput){
+  const response=await apiFetch("/api/admin/parking-rules",{
+    method:"POST",
+    body:JSON.stringify(input)
+  });
+  const result=await response.json() as AdminParkingRuleSetCreateResult;
+  if(response.status===409)return result;
+  if(!response.ok)return result;
+  return result;
+}
 export async function setAdminDefaultPolicy(policy:AdminParkingPolicyValues){
   const response=await apiFetch("/api/admin/system/default-policy",{
     method:"PUT",
