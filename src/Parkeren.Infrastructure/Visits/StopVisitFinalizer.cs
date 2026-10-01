@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 using Parkeren.Infrastructure.Notifications;
@@ -70,6 +71,22 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, Notificati
         }
 
         visit.Complete(actualEndAt);
+
+        var discrepancies = await dbContext.ProviderDiscrepancies
+            .Where(x => x.VisitId == visit.Id &&
+                        x.Status == ProviderDiscrepancyStatus.Open &&
+                        (x.Type == ProviderDiscrepancyType.MissingProviderAction ||
+                         x.Type == ProviderDiscrepancyType.ProviderActionStatusMismatch ||
+                         x.Type == ProviderDiscrepancyType.ProviderActionEndMismatch))
+            .ToListAsync(cancellationToken);
+        foreach (var discrepancy in discrepancies)
+        {
+            var resolvedAt = actualEndAt < discrepancy.LastObservedAt
+                ? discrepancy.LastObservedAt
+                : actualEndAt;
+            discrepancy.Resolve(resolvedAt);
+        }
+
         var notificationEvent = new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt);
         dbContext.NotificationEvents.Add(notificationEvent);
         await inboxWriter.WriteAsync(notificationEvent, NotificationType.VisitStopped, visit.UserId, includeVisitor: true, includeAdmins: false, cancellationToken);

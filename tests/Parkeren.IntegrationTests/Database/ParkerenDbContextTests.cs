@@ -10,6 +10,7 @@ using Parkeren.Application.Visits;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Notifications;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
@@ -298,12 +299,31 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, startAt.AddHours(1), snapshot);
         visit.Activate();
+        var discrepancyProduct = new ParkingProviderProduct(
+            Guid.NewGuid(),
+            $"finalizer-{Guid.NewGuid():N}",
+            "Finalizer discrepancy product",
+            null,
+            null,
+            "TEST",
+            startAt);
+        var discrepancy = new ProviderDiscrepancy(
+            Guid.NewGuid(),
+            $"provider-action-end:finalizer:{visit.Id:N}",
+            ProviderDiscrepancyType.ProviderActionEndMismatch,
+            discrepancyProduct.Id,
+            startAt.AddMinutes(1),
+            visitId: visit.Id,
+            providerStatus: "active",
+            providerEndAt: startAt.AddHours(2));
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
+            seedContext.ParkingProviderProducts.Add(discrepancyProduct);
+            seedContext.ProviderDiscrepancies.Add(discrepancy);
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -345,11 +365,22 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
         Assert.NotNull(operation.CompletedAt);
         Assert.False(await verifyContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, cancellationToken));
+        var persistedDiscrepancy = await verifyContext.ProviderDiscrepancies
+            .SingleAsync(x => x.Id == discrepancy.Id, cancellationToken);
+        Assert.Equal(ProviderDiscrepancyStatus.Resolved, persistedDiscrepancy.Status);
+        Assert.NotNull(persistedDiscrepancy.ResolvedAt);
         Assert.Single(await verifyContext.NotificationEvents
             .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
             .ToListAsync(cancellationToken));
     }
 
+
+        await verifyContext.ProviderDiscrepancies
+            .Where(x => x.Id == discrepancy.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        await verifyContext.ParkingProviderProducts
+            .Where(x => x.Id == discrepancyProduct.Id)
+            .ExecuteDeleteAsync(cancellationToken);
 
     [Fact]
     public async Task Completed_visit_creates_budget_warning_for_active_admin_only()
@@ -4662,6 +4693,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await context.VisitSchedulerWork.ExecuteDeleteAsync(cancellationToken);
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
+        await context.ProviderDiscrepancies.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.Notifications.ExecuteDeleteAsync(cancellationToken);
         await context.NotificationEvents.ExecuteDeleteAsync(cancellationToken);
