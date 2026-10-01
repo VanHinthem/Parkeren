@@ -6,6 +6,7 @@ using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Domain.ParkingProvider;
+using Parkeren.Domain.Administration;
 
 namespace Parkeren.Infrastructure.Persistence;
 
@@ -36,6 +37,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
     public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
     public DbSet<ProviderDiscrepancy> ProviderDiscrepancies => Set<ProviderDiscrepancy>();
+    public DbSet<AdminAuditEvent> AdminAuditEvents => Set<AdminAuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -168,6 +170,19 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Location).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.ProviderProductId).IsUnique();
             entity.HasIndex(x => x.IsDefault).IsUnique().HasFilter("\"IsDefault\" = TRUE");
+        });
+
+        modelBuilder.Entity<AdminAuditEvent>(entity =>
+        {
+            entity.ToTable("admin_audit_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Action).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.TargetType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.TargetId).HasMaxLength(200);
+            entity.Property(x => x.ContextJson).HasColumnType("jsonb");
+            entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => new { x.ActorUserId, x.CreatedAt });
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ProviderDiscrepancy>(entity =>
