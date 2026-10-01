@@ -1,0 +1,26 @@
+.admin-zones{display:grid;gap:1rem}
+.admin-zones__tabs{display:flex;gap:.45rem;flex-wrap:wrap}
+.admin-zones__tab{display:inline-flex;align-items:center;min-height:2.45rem;padding:0 .8rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface);color:var(--color-text);font-size:.82rem;font-weight:650;text-decoration:none}
+.admin-zones__tab.active{border-color:var(--color-primary);color:var(--color-primary)}
+.admin-zones__panel,.admin-zones__item{padding:1.15rem 1.25rem;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-card)}
+.admin-zones__panel h2,.admin-zones__item h3{margin:0}
+.admin-zones__panel>p{margin:.35rem 0 1rem;color:var(--color-text-muted);line-height:1.5}
+.admin-zones__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.admin-zones__field{display:grid;gap:.35rem;font-size:.8rem;font-weight:650}
+.admin-zones__field input{min-height:2.65rem;width:100%;padding:0 .7rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface);color:var(--color-text)}
+.admin-zones__check{display:flex;align-items:center;gap:.55rem;min-height:2.65rem;font-size:.84rem;font-weight:650}
+.admin-zones__check input{width:1rem;height:1rem}
+.admin-zones__actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.85rem}
+.admin-zones__items{display:grid;gap:.65rem}
+.admin-zones__item-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}
+.admin-zones__copy{display:grid;gap:.2rem}
+.admin-zones__copy small{color:var(--color-text-muted)}
+.admin-zones__badges{display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end}
+.admin-zones__badge{display:inline-flex;padding:.32rem .52rem;border-radius:999px;background:var(--color-surface-muted);font-size:.72rem;font-weight:700}
+.admin-zones__facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;margin-top:.8rem}
+.admin-zones__fact{padding:.65rem .7rem;border-radius:var(--radius-sm);background:var(--color-surface-muted)}
+.admin-zones__fact span{display:block;color:var(--color-text-muted);font-size:.68rem;text-transform:uppercase}
+.admin-zones__fact strong{display:block;margin-top:.2rem;font-size:.82rem}
+.admin-zones__close{display:grid;grid-template-columns:minmax(12rem,18rem) auto;gap:.55rem;align-items:end;margin-top:.8rem}
+.admin-zones__empty{margin:0;color:var(--color-text-muted)}
+@media(max-width:800px){.admin-zones__grid,.admin-zones__facts,.admin-zones__close{grid-template-columns:1fr}}
