@@ -58,7 +58,13 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
                  x.Status == ProviderOperationStatus.Reconciling), cancellationToken))
             throw new InvalidOperationException("Initial provider coverage is not safe to start.");
 
-        var nextAction = new ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, endAt);
+        var nextAction = new ProviderParkingAction(
+            Guid.NewGuid(),
+            visit.Id,
+            startAt,
+            endAt,
+            persistedVisit.ProviderProductExternalId,
+            persistedVisit.ProviderLocation);
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visit.Id, nextAction.Id,
             ProviderOperationType.ContinueStart);
         nextAction.MarkStarting();
@@ -141,7 +147,12 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
             throw new InvalidOperationException("A later provider action already exists for this Visit.");
 
         var nextAction = new ProviderParkingAction(
-            Guid.NewGuid(), persistedVisit.Id, previous.PlannedEndAt.AddSeconds(1), newEndAt);
+            Guid.NewGuid(),
+            persistedVisit.Id,
+            previous.PlannedEndAt.AddSeconds(1),
+            newEndAt,
+            persistedVisit.ProviderProductExternalId,
+            persistedVisit.ProviderLocation);
         var operation = new ProviderOperation(
             Guid.NewGuid(), operationId, persistedVisit.Id, nextAction.Id,
             ProviderOperationType.ContinueStart);
