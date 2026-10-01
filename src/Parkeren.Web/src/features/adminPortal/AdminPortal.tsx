@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { AdminDashboard } from "./AdminDashboard";
 import "./AdminPortal.css";
 
 type Props = {
@@ -118,22 +119,7 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           </header>
 
           {section.path === "/beheer" ? (
-            <div className="admin-portal__foundation">
-              <section className="admin-portal__panel">
-                <h2>Beheeromgeving</h2>
-                <p>
-                  De desktop beheer-shell, routing en autorisatiebasis zijn actief. Operationele
-                  dashboarddata wordt in de volgende verticale slice toegevoegd.
-                </p>
-              </section>
-              <section className="admin-portal__panel">
-                <h2>Snelbeheer blijft apart</h2>
-                <p>
-                  Mobiele operationele beheeracties blijven beschikbaar via Snelbeheer in de PWA.
-                  Uitgebreid beheer wordt vanaf hier opgebouwd.
-                </p>
-              </section>
-            </div>
+            <AdminDashboard />
           ) : (
             <section className="admin-portal__panel admin-portal__placeholder">
               <h2>{section.title}</h2>
