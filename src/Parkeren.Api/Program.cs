@@ -683,7 +683,9 @@ app.MapPut("/api/admin/users/{userId:guid}/policy", async (
     var result = await administration.SetUserPolicyAsync(
         authenticated.User.Id,
         userId,
+        request.MaxPaidParkingDurationMode,
         request.MaxPaidParkingDurationMinutes,
+        request.MaxVisitElapsedDurationMode,
         request.MaxVisitElapsedDurationMinutes,
         request.AllowVisitExtension,
         request.AllowOpenEndedVisits,
@@ -1481,7 +1483,9 @@ public sealed record CreateVehicleRequest(string LicensePlate, string? DisplayNa
 public sealed record SetActiveRequest(bool IsActive);
 public sealed record SetMaxConcurrentVisitsRequest(int? MaxConcurrentVisits);
 public sealed record AdminUserPolicyUpdateRequest(
+    PolicyDurationOverrideMode MaxPaidParkingDurationMode,
     int? MaxPaidParkingDurationMinutes,
+    PolicyDurationOverrideMode MaxVisitElapsedDurationMode,
     int? MaxVisitElapsedDurationMinutes,
     bool? AllowVisitExtension,
     bool? AllowOpenEndedVisits,
