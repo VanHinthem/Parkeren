@@ -28,6 +28,16 @@ public sealed class ParkingTariff
     public DateTimeOffset? ValidUntil { get; private set; }
     public decimal Rate { get; private set; }
     public ParkingTariffUnit Unit { get; private set; }
+
+    public void CloseAt(DateTimeOffset validUntil)
+    {
+        if (ValidUntil.HasValue)
+            throw new InvalidOperationException("Only an open-ended parking tariff can be closed.");
+        if (validUntil <= ValidFrom)
+            throw new ArgumentOutOfRangeException(nameof(validUntil));
+
+        ValidUntil = validUntil;
+    }
 }
 
 public static class ParkingTariffResolver
