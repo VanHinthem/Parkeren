@@ -146,7 +146,7 @@ export function AdminAnalysisPage(){
                         </div>
                       </td>
                     </tr>}
-                  </>)}
+                  </Fragment>)}
                 </tbody>
               </table>
             </div>}
