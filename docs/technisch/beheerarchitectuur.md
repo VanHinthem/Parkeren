@@ -280,7 +280,7 @@ Voor user policy overrides geldt in 8.5:
 - gebruiker/voertuig deactiveren wordt eveneens geblokkeerd zolang een relevante actieve Visit bestaat;
 - de bestaande Visit-policy snapshot blijft leidend voor historie.
 
-V1 gebruikt de bestaande nullable overridekolommen. Daardoor betekent `null` voor duurvelden **geen override / inherit default**. Een expliciete per-user override naar “onbeperkt” terwijl de default begrensd is, vraagt later een afzonderlijke representatie/schemawijziging en wordt tijdens de huidige migratievrije V1-ontwikkeling niet geïntroduceerd.
+Duur-overrides gebruiken expliciet `PolicyDurationOverrideMode` met drie toestanden: `Inherit`, `Value` en `Unlimited`. Daardoor kan een gebruiker de default volgen, een concrete eigen limiet krijgen of expliciet onbeperkt worden ingesteld, ook wanneer de default begrensd is. De nullable effectieve duur blijft uitsluitend betekenen: **geen effectieve limiet**.
 
 ## Vervolg
 
