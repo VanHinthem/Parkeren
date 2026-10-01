@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Administration;
+using Parkeren.Application.Visits;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Policies;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
@@ -11,7 +13,8 @@ namespace Parkeren.Infrastructure.Administration;
 
 internal sealed class AdministrationService(
     ParkerenDbContext dbContext,
-    IPasswordHasher<User> passwordHasher) : IAdministrationService
+    IPasswordHasher<User> passwordHasher,
+    IStartVisitOperationalContextResolver operationalContextResolver) : IAdministrationService
 {
     public async Task<IReadOnlyList<UserSummary>> GetUsersAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
@@ -246,6 +249,108 @@ internal sealed class AdministrationService(
             .OrderBy(x => x.LicensePlate)
             .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.IsActive))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<AdminDashboardSummary> GetDashboardAsync(
+        Guid actorUserId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        var active = await (
+            from visit in dbContext.Visits.AsNoTracking()
+            join user in dbContext.Users.AsNoTracking() on visit.UserId equals user.Id
+            join vehicle in dbContext.Vehicles.AsNoTracking() on visit.VehicleId equals vehicle.Id
+            where visit.Status == VisitStatus.Starting ||
+                  visit.Status == VisitStatus.Active ||
+                  visit.Status == VisitStatus.Stopping
+            orderby visit.StartAt
+            select new
+            {
+                Visit = visit,
+                user.Username,
+                vehicle.LicensePlate
+            })
+            .ToListAsync(cancellationToken);
+
+        var total = await dbContext.ParkingSystemSettings.AsNoTracking()
+            .Select(x => x.MaxConcurrentVisits)
+            .SingleAsync(cancellationToken);
+
+        if (active.Count == 0)
+            return new AdminDashboardSummary(0, total, Array.Empty<AdminActiveVisitSummary>());
+
+        var firstStart = active.Min(x => x.Visit.StartAt);
+        var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x => x.ValidFrom < now && (x.ValidUntil == null || x.ValidUntil > firstStart))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        var visits = active.Select(x =>
+        {
+            int? paidDurationMinutes = null;
+            try
+            {
+                paidDurationMinutes = (int)Math.Floor(
+                    ParkingRuleSetPaidTimeCalculator
+                        .Calculate(x.Visit.StartAt, now, ruleSets)
+                        .TotalMinutes);
+            }
+            catch (InvalidOperationException)
+            {
+                // Keep the operational dashboard available when historical rule coverage is incomplete.
+            }
+
+            return new AdminActiveVisitSummary(
+                x.Visit.Id,
+                x.Visit.UserId,
+                x.Username,
+                x.Visit.VehicleId,
+                x.LicensePlate,
+                x.Visit.StartAt,
+                x.Visit.DesiredEndAt,
+                x.Visit.Status,
+                x.Visit.Health,
+                paidDurationMinutes);
+        }).ToArray();
+
+        return new AdminDashboardSummary(visits.Length, total, visits);
+    }
+
+    public async Task<AdminParkingPolicySummary?> GetUserParkingPolicyAsync(
+        Guid actorUserId,
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        var isActiveVisitor = await dbContext.Users.AsNoTracking()
+            .AnyAsync(x => x.Id == userId && x.IsActive && x.Role == UserRole.Visitor, cancellationToken);
+        if (!isActiveVisitor)
+            return null;
+
+        var context = await operationalContextResolver.ResolveAsync(
+            userId,
+            now,
+            desiredEndAt: null,
+            cancellationToken);
+        if (context is null)
+            return null;
+
+        return new AdminParkingPolicySummary(
+            context.Policy.MaxPaidParkingDuration is null
+                ? null
+                : (int)context.Policy.MaxPaidParkingDuration.Value.TotalMinutes,
+            context.Policy.MaxVisitElapsedDuration is null
+                ? null
+                : (int)context.Policy.MaxVisitElapsedDuration.Value.TotalMinutes,
+            context.Policy.AllowVisitExtension,
+            context.Policy.AllowOpenEndedVisits,
+            context.Policy.MaxConcurrentVisits);
     }
 
     private async Task EnsureAdminAsync(Guid actorUserId, CancellationToken cancellationToken)
