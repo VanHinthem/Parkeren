@@ -5,6 +5,8 @@ import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
+import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
+import { AdminUsagePage } from "./AdminUsagePage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -127,7 +129,9 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           {section.path === "/beheer" ? (
             <AdminDashboard />
           ) : section.path === "/beheer/bezoeken" ? (
-            currentPath.startsWith("/beheer/bezoeken/") ? (
+            currentPath === "/beheer/verbruik" ? (
+              <AdminUsagePage />
+            ) : currentPath.startsWith("/beheer/bezoeken/") ? (
               <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
             ) : (
               <AdminVisitsPage />
@@ -143,6 +147,10 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           ) : section.path === "/beheer/configuratie" ? (
             currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
               <AdminParkingRulesPage />
+            ) : currentPath === "/beheer/configuratie/tarieven" ? (
+              <AdminFinanceConfigPage mode="tariffs" />
+            ) : currentPath === "/beheer/configuratie/budgetten" ? (
+              <AdminFinanceConfigPage mode="budgets" />
             ) : (
               <section className="admin-portal__panel admin-portal__placeholder">
                 <h2>{section.title}</h2>
