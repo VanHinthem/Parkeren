@@ -4,7 +4,11 @@ using ProviderAction = Parkeren.Application.ParkingProvider.ProviderParkingActio
 
 namespace Parkeren.Application.Visits;
 
-public sealed record ProviderStartRequest(string LicensePlate, string Location, DateTimeOffset EndAt);
+public sealed record ProviderStartRequest(
+    string LicensePlate,
+    string Location,
+    DateTimeOffset EndAt,
+    string? ProductId = null);
 public sealed record ProviderStartExecution(ProviderStartPreparation Preparation, ProviderAction? ProviderAction, bool RequiresReconciliation, bool DefinitiveFailure = false);
 
 public interface IProviderStartMutationGuard
@@ -67,7 +71,8 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
                     preparation.Action.ActualStartAt ?? preparation.Action.PlannedStartAt,
                     preparation.Action.ActualEndAt ?? preparation.Action.PlannedEndAt,
                     request.Location,
-                    preparation.Action.ProviderStatus ?? "active"),
+                    preparation.Action.ProviderStatus ?? "active",
+                    request.ProductId),
                 false);
         }
         if (preparation.Operation.Status != ProviderOperationStatus.InProgress || preparation.Action.State != ProviderActionState.Starting)
@@ -84,12 +89,19 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
                 return new(preparation, null, true);
 
             var action = await provider.StartActionAsync(
-                new ProviderParkingActionRequest(request.LicensePlate, preparation.Action.PlannedStartAt, preparation.Action.PlannedEndAt, request.Location),
+                new ProviderParkingActionRequest(
+                    request.LicensePlate,
+                    preparation.Action.PlannedStartAt,
+                    preparation.Action.PlannedEndAt,
+                    request.Location,
+                    request.ProductId),
                 cancellationToken);
 
             await resultStore.RecordResponseAsync(preparation, action, cancellationToken);
 
-            var actions = await provider.GetActionsAsync(cancellationToken);
+            var actions = string.IsNullOrWhiteSpace(request.ProductId)
+                ? await provider.GetActionsAsync(cancellationToken)
+                : await provider.GetActionsForProductAsync(request.ProductId, cancellationToken);
             var confirmed = actions.SingleOrDefault(x =>
                 x.ProviderActionId == action.ProviderActionId &&
                 string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
