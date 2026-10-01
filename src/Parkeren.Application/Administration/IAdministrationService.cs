@@ -21,6 +21,16 @@ public interface IAdministrationService
     Task<IReadOnlyList<VehicleSummary>?> GetAssignedVehiclesAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken);
     Task<AdminDashboardSummary> GetDashboardAsync(Guid actorUserId, DateTimeOffset now, CancellationToken cancellationToken);
     Task<AdminParkingPolicySummary?> GetUserParkingPolicyAsync(Guid actorUserId, Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task<AdminUserDetail?> GetUserDetailAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken);
+    Task<AdminUserPolicyUpdateResult> SetUserPolicyAsync(
+        Guid actorUserId,
+        Guid userId,
+        int? maxPaidParkingDurationMinutes,
+        int? maxVisitElapsedDurationMinutes,
+        bool? allowVisitExtension,
+        bool? allowOpenEndedVisits,
+        int? maxConcurrentVisits,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
         Guid? userId,
@@ -132,3 +142,42 @@ public sealed record AdminVisitDetail(
     IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,
     IReadOnlyList<AdminVisitEndTimeChangeSummary> EndTimeChanges,
     IReadOnlyList<AdminRuleSetSummary> RelevantRuleSets);
+
+public sealed record AdminParkingPolicyValues(
+    int? MaxPaidParkingDurationMinutes,
+    int? MaxVisitElapsedDurationMinutes,
+    bool AllowVisitExtension,
+    bool AllowOpenEndedVisits,
+    int MaxConcurrentVisits);
+
+public sealed record AdminParkingPolicyOverrideValues(
+    int? MaxPaidParkingDurationMinutes,
+    int? MaxVisitElapsedDurationMinutes,
+    bool? AllowVisitExtension,
+    bool? AllowOpenEndedVisits,
+    int? MaxConcurrentVisits);
+
+public sealed record AdminUserPolicyDetail(
+    AdminParkingPolicyValues Defaults,
+    AdminParkingPolicyOverrideValues Overrides,
+    AdminParkingPolicyValues Effective,
+    int GlobalMaxConcurrentVisits);
+
+public sealed record AdminUserDetail(
+    UserSummary User,
+    IReadOnlyList<VehicleSummary> AssignedVehicles,
+    AdminUserPolicyDetail Policy,
+    int ActiveVisitCount);
+
+public enum AdminUserPolicyUpdateOutcome
+{
+    Updated,
+    NotFound,
+    Invalid,
+    ActiveVisitConflict
+}
+
+public sealed record AdminUserPolicyUpdateResult(
+    AdminUserPolicyUpdateOutcome Outcome,
+    int ActiveVisitCount,
+    AdminUserPolicyDetail? Policy);
