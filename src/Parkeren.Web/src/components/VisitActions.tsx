@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../design/icons/Icon";
+import { Dialog } from "../design/primitives/Dialog";
 import "./VisitActions.css";
 
 type Props={
@@ -72,37 +73,54 @@ export function VisitActions({
     {!allowExtension&&extensionDisabledMessage?<p className="visit-actions__error" role="status">{extensionDisabledMessage}</p>:null}
     {error?<p className="visit-actions__error" role="alert">{error}</p>:null}
 
-    {showExtend?<div className="visit-confirm" role="dialog" aria-modal="true" aria-label="Parkeeractie verlengen">
-      <strong>Parkeeractie verlengen</strong>
-      <label className="visit-confirm__field">
-        <span>Extra tijd{maxExtensionHours===null?" (uren)":""}</span>
-        {extensionControl}
-      </label>
-      <div className="visit-confirm__actions">
-        <button type="button" onClick={()=>setShowExtend(false)} disabled={extending}>Annuleren</button>
-        <button
-          type="button"
-          onClick={()=>{
-            const hours=Number(extendHours);
-            if(!Number.isInteger(hours)||hours<1||(maxExtensionHours!==null&&hours>maxExtensionHours))
-              return;
-            setShowExtend(false);
-            onExtend?.(hours);
-          }}
-          disabled={extending||stopping||!allowExtension}
-        >
-          Verlengen
-        </button>
+    <Dialog
+      open={showExtend}
+      title="Parkeeractie verlengen"
+      onClose={()=>{if(!extending)setShowExtend(false);}}
+    >
+      <div className="visit-confirm__body">
+        <label className="visit-confirm__field">
+          <span>Extra tijd{maxExtensionHours===null?" (uren)":""}</span>
+          {extensionControl}
+        </label>
+        <div className="visit-confirm__actions">
+          <button type="button" onClick={()=>setShowExtend(false)} disabled={extending}>Annuleren</button>
+          <button
+            type="button"
+            onClick={()=>{
+              const hours=Number(extendHours);
+              if(!Number.isInteger(hours)||hours<1||(maxExtensionHours!==null&&hours>maxExtensionHours))
+                return;
+              setShowExtend(false);
+              onExtend?.(hours);
+            }}
+            disabled={extending||stopping||!allowExtension}
+          >
+            Verlengen
+          </button>
+        </div>
       </div>
-    </div>:null}
+    </Dialog>
 
-    {confirmStop?<div className="visit-confirm" role="dialog" aria-modal="true" aria-label="Parkeeractie stoppen">
-      <strong>Parkeeractie stoppen?</strong>
-      <p>Weet je zeker dat je deze parkeeractie wilt stoppen?</p>
-      <div className="visit-confirm__actions">
-        <button type="button" onClick={()=>setConfirmStop(false)} disabled={stopping}>Annuleren</button>
-        <button type="button" className="visit-confirm__stop" onClick={()=>{setConfirmStop(false);onStop?.();}} disabled={stopping||extending||!allowManualStop}>Stop parkeren</button>
+    <Dialog
+      open={confirmStop}
+      title="Parkeeractie stoppen?"
+      onClose={()=>{if(!stopping)setConfirmStop(false);}}
+    >
+      <div className="visit-confirm__body">
+        <p>Weet je zeker dat je deze parkeeractie wilt stoppen?</p>
+        <div className="visit-confirm__actions">
+          <button type="button" onClick={()=>setConfirmStop(false)} disabled={stopping}>Annuleren</button>
+          <button
+            type="button"
+            className="visit-confirm__stop"
+            onClick={()=>{setConfirmStop(false);onStop?.();}}
+            disabled={stopping||extending||!allowManualStop}
+          >
+            Stop parkeren
+          </button>
+        </div>
       </div>
-    </div>:null}
+    </Dialog>
   </>;
 }
