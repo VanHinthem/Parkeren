@@ -86,39 +86,20 @@ internal sealed class AdministrationService(
     public async Task<bool> SetUserMaxConcurrentVisitsAsync(
         Guid actorUserId, Guid userId, int? maxConcurrentVisits, CancellationToken cancellationToken)
     {
-        await EnsureAdminAsync(actorUserId, cancellationToken);
-        if (maxConcurrentVisits <= 0)
-            return false;
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        await LockCapacitySettingsAsync(cancellationToken);
-        var globalLimit = await dbContext.ParkingSystemSettings
-            .Select(x => x.MaxConcurrentVisits)
-            .SingleAsync(cancellationToken);
-        if (maxConcurrentVisits > globalLimit)
-            return false;
-
-        if (!await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken))
-            return false;
-
-        var policyOverride = await dbContext.UserPolicyOverrides
+        var current = await dbContext.UserPolicyOverrides.AsNoTracking()
             .SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
-        if (policyOverride is null)
-        {
-            if (maxConcurrentVisits is null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-                return true;
-            }
 
-            policyOverride = new UserPolicyOverride(userId);
-            dbContext.UserPolicyOverrides.Add(policyOverride);
-        }
+        var result = await SetUserPolicyAsync(
+            actorUserId,
+            userId,
+            ToMinutes(current?.MaxPaidParkingDuration),
+            ToMinutes(current?.MaxVisitElapsedDuration),
+            current?.AllowVisitExtension,
+            current?.AllowOpenEndedVisits,
+            maxConcurrentVisits,
+            cancellationToken);
 
-        policyOverride.SetMaxConcurrentVisits(maxConcurrentVisits);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
+        return result.Outcome == AdminUserPolicyUpdateOutcome.Updated;
     }
 
     public async Task<int> GetGlobalMaxConcurrentVisitsAsync(Guid actorUserId, CancellationToken cancellationToken)
