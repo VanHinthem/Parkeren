@@ -146,6 +146,7 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
                 null,
                 cancellationToken)).EnsureSuccessStatusCode();
             await RunProviderCheckAsync(parkingProvider, cancellationToken);
+            await RunProviderCheckAsync(parkingProvider, cancellationToken);
 
             await using var resolved = fixture.CreateDbContext();
             var persisted = Assert.Single(await resolved.ProviderDiscrepancies.AsNoTracking()
