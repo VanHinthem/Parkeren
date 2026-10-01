@@ -38,7 +38,7 @@ public static class WebPushMessageFactory
     {
         var reason = ReadString(notification.Payload, "Reason");
         return string.Equals(reason, "ExternalStop", StringComparison.OrdinalIgnoreCase)
-            ? new("Parkeeractie extern gestopt", "2Park heeft deze parkeeractie buiten de app gestopt.", url, notification.Id)
+            ? new("Parkeeractie extern gestopt", "2Park heeft deze parkeeractie buiten de app gestopt.", "/", notification.Id)
             : new("Parkeren vraagt aandacht", "De parkeeractie kon niet automatisch worden voortgezet.", url, notification.Id);
     }
 

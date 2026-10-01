@@ -70,6 +70,14 @@ function notificationDetails(item:InboxNotification,isAdmin:boolean){
 }
 
 function notificationTarget(item:InboxNotification){
+  if(item.type==="ProviderContinuationAttentionRequired"&&item.payload){
+    try{
+      const payload=JSON.parse(item.payload) as NotificationPayload;
+      if(payloadValue<string>(payload,"Reason")==="ExternalStop")
+        return "/";
+    }catch{}
+  }
+
   switch(item.type){
     case "VisitStarted":
     case "ProviderContinuationSucceeded":

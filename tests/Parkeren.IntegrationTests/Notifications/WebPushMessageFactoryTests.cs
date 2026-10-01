@@ -76,7 +76,7 @@ public sealed class WebPushMessageFactoryTests
         Assert.NotNull(message);
         Assert.Equal("Parkeeractie extern gestopt", message.Title);
         Assert.Equal("2Park heeft deze parkeeractie buiten de app gestopt.", message.Body);
-        Assert.Equal($"/acties/{visitId}", message.Url);
+        Assert.Equal("/", message.Url);
     }
 
     [Fact]
