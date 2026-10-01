@@ -1202,13 +1202,13 @@ internal sealed class AdministrationService(
             .ToDictionaryAsync(x => x.Id, x => x.IsActive, cancellationToken);
 
         var plates = report.Visits.Select(x => x.LicensePlate).Distinct().ToArray();
-        var activePlates = await dbContext.Vehicles.AsNoTracking()
+        var plateStates = await dbContext.Vehicles.AsNoTracking()
             .Where(x => plates.Contains(x.LicensePlate))
+            .Select(x => new { x.LicensePlate, x.IsActive })
+            .ToListAsync(cancellationToken);
+        var activePlates = plateStates
             .GroupBy(x => x.LicensePlate)
-            .ToDictionaryAsync(
-                x => x.Key,
-                x => x.Any(vehicle => vehicle.IsActive),
-                cancellationToken);
+            .ToDictionary(x => x.Key, x => x.Any(vehicle => vehicle.IsActive));
 
         var references = report.Visits
             .Select(x => new AdminAnalysisVisitReference(
