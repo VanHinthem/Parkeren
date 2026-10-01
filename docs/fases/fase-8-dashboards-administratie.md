@@ -217,7 +217,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 | **8.7 Parkeerregels** | versioned rulesets, betaalvensters, kalenderuitzonderingen, provider-actionduur en continuation | #95 |
 | **8.8 Budgetten & tarieven** | budgetperioden, tarieven, lokaal gebruik en kostenberekening | #59, #60 |
 | **8.9 Analyse** | aggregatie per gebruiker/kenteken met drill-down naar Visits | #62 |
-| **8.10 Zones** | nieuw ParkingZone-domein en multi-zonebeheer | #95 |
+| **8.10 Providerproducten** | 2Park-productcatalogus, defaultproduct, product-scoped regels/tarieven/budgetten en Visit-productsnapshot | #95 |
 | **8.11 Discrepancies & reconciliation** | persistent discrepancy-model, detectie, historie en herstelcontext | #63 |
 | **8.12 Systeem & diagnostiek** | scheduler-, pushdelivery-, health-, audit- en infrastructuurstatus | #95 |
 
@@ -232,7 +232,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 
 ## Voortgang beheerportaal — 1 oktober 2026
 
-De beheerimplementatie staat inmiddels op **slice 8.9 in CI-validatie**:
+De beheerimplementatie staat inmiddels op **slice 8.10 in CI-validatie**:
 
 - 8.1 beheerfundament ✅
 - 8.2 operationeel dashboard ✅
@@ -242,7 +242,8 @@ De beheerimplementatie staat inmiddels op **slice 8.9 in CI-validatie**:
 - 8.6 algemene policies/settings ✅
 - 8.7 parkeerregels ✅
 - 8.8 budgetten & tarieven ✅
-- 8.9 analyse 🚧 implementatie gereed, CI-validatie volgt
+- 8.9 analyse ✅
+- 8.10 providerproducten 🚧 implementatie gereed, CI-validatie volgt
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -373,7 +374,43 @@ Beschikbaar op `/beheer/analyse`:
 
 De analyse-readmodels introduceren geen nieuwe persistence en geen schemawijziging. Een PostgreSQL-integratietest dekt expliciet een gedeeld kenteken over twee bezoekers en gearchiveerde gebruiker/voertuig-status.
 
-Na groene CI is de volgende slice: **8.10 Zones**.
+### 8.10 Providerproducten
+
+2Park-producten vormen de providercontext voor parkeren. Een product wordt door 2Park geleverd en bevat onder andere de externe product-id, naam/categorie en `LOCATION`. Deze providergegevens zijn in Parkeren read-only.
+
+Synchronisatie en defaultselectie:
+
+- `/beheer/provider` toont de lokaal vastgelegde 2Park-productcatalogus;
+- **Producten synchroniseren** haalt de actuele producten opnieuw bij 2Park op;
+- synchronisatie doet een upsert op de externe provider-product-id;
+- producten die niet meer door 2Park worden teruggegeven blijven voor historie bestaan en worden als niet beschikbaar gemarkeerd;
+- bij de allereerste synchronisatie wordt precies één gevonden product automatisch default;
+- wanneer meerdere producten bestaan wordt niet stilzwijgend een product gekozen;
+- een beheerder kan één beschikbaar product expliciet als default aanwijzen;
+- wanneer een bestaand defaultproduct later niet meer beschikbaar is, wordt niet automatisch naar een ander product overgeschakeld.
+
+Nieuwe Visits gebruiken voor V1 altijd het defaultproduct. De gewone gebruiker ziet of kiest geen product. Een toekomstige uitbreiding kan eventueel een product per gebruiker of expliciete productkeuze toevoegen zonder het huidige model te wijzigen.
+
+Historische en operationele binding:
+
+- de gekozen lokale product-id, externe provider-product-id en provider-location worden bij StartVisit op de Visit vastgelegd;
+- iedere `ProviderParkingAction` bewaart eveneens de gebruikte externe product-id en location;
+- starts, continuations, stop/extend, recovery en reconciliation blijven daardoor bij het product waarmee de Visit is begonnen;
+- wijzigen van het defaultproduct verandert een reeds actieve of historische Visit niet.
+
+Product-scoped configuratie:
+
+- `ParkingRuleSet`, `ParkingTariff` en `ParkingBudgetPeriod` zijn aan een providerproduct te koppelen;
+- `/beheer/configuratie/parkeerregels`, `/tarieven` en `/budgetten` gebruiken een expliciete productcontext;
+- dezelfde tijdsperioden mogen bij verschillende producten overlappen;
+- overlapvalidatie geldt uitsluitend binnen hetzelfde product;
+- budgetwaarschuwingen, betaalde-duurberekening en kostberekening gebruiken alleen configuratie van het Visit-product;
+- het budget op dashboard/verbruik hoort bij het huidige defaultproduct en wordt alleen met providerdata van datzelfde defaultproduct vergeleken;
+- bij de eerste defaulttoewijzing wordt eventuele nog ongebonden V1-configuratie aan dat product gekoppeld.
+
+De schemawijzigingen worden conform de bestaande V1-afspraak nog niet als nieuwe migration geconsolideerd. Een bestaande developmentdatabase moet na deze slice worden gereset voordat functioneel wordt getest.
+
+Na groene CI is de volgende slice: **8.11 Discrepancies & reconciliation**.
 
 ## Exit
 
