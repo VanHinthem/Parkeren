@@ -79,9 +79,9 @@ De eerste inventarisatie voor #95 is afgerond. De backend bevat al een groot dee
 | PIN/sessies | authentication + `UserSession` | ja | eventueel sessie-inzicht |
 | Voertuigen/toewijzingen | `Vehicle`, `UserVehicle` | ja | uitgebreid detail |
 | Globale capaciteit | `ParkingSystemSettings.MaxConcurrentVisits` | ja | opnemen in systeeminstellingen |
-| Per-user capaciteit | `UserPolicyOverride.MaxConcurrentVisits` | ja | opnemen in volledige policy-editor |
-| Default Visit-policy | `DefaultParkingPolicy` | nee | beheer-use-case en API |
-| Overige user policies | modelvelden bestaan | deels | setters, service en API |
+| Per-user capaciteit | `UserPolicyOverride.MaxConcurrentVisits` | ja | volledige policy-editor gerealiseerd in 8.5 |
+| Default Visit-policy | `DefaultParkingPolicy` | nee | beheer-use-case en API in 8.6 |
+| Overige user policies | `UserPolicyOverride` | ja, 8.5 | per-veld override + terug naar standaard |
 | Parkeerregels | `ParkingRuleSet` | nee | versiebeheer en beheer-API |
 | Betaalvensters | `PaidWindow` | nee | beheer via ruleset |
 | Kalenderuitzonderingen | `ParkingCalendarException` | nee | beheer via ruleset |
@@ -260,6 +260,27 @@ Voorbeelden:
 - globale capaciteit blijft wijzigingen blokkeren wanneer actieve Visits bestaan en verlaagt te hoge user overrides;
 - parkeerregels en tarieven worden tijdsgebonden/versioned beheerd;
 - provider/reconciliationdata wordt niet rechtstreeks gemuteerd.
+
+## Realisatiestatus beheerportaal — 1 oktober 2026
+
+De eerste vijf verticale slices zijn inmiddels gerealiseerd:
+
+- **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
+- **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
+- **8.3 Visit-detail & beheerhistorie** — filters, Visit-detail, provideractions/operations, policy snapshot en relevante rulesetversies;
+- **8.4 Providerstatus & saldo** — officieel providersaldo met freshness/stale-semantiek en actuele provideractions;
+- **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor.
+
+Voor user policy overrides geldt in 8.5:
+
+- ieder bestaand overrideveld kan afzonderlijk afwijken of teruggezet worden naar de default;
+- de UI toont standaardwaarde en effectieve waarde;
+- `MaxConcurrentVisits` blijft begrensd door de globale capaciteit;
+- een effectieve policywijziging wordt server-side geblokkeerd wanneer de gebruiker een actieve Visit heeft;
+- gebruiker/voertuig deactiveren wordt eveneens geblokkeerd zolang een relevante actieve Visit bestaat;
+- de bestaande Visit-policy snapshot blijft leidend voor historie.
+
+V1 gebruikt de bestaande nullable overridekolommen. Daardoor betekent `null` voor duurvelden **geen override / inherit default**. Een expliciete per-user override naar “onbeperkt” terwijl de default begrensd is, vraagt later een afzonderlijke representatie/schemawijziging en wordt tijdens de huidige migratievrije V1-ontwikkeling niet geïntroduceerd.
 
 ## Vervolg
 
