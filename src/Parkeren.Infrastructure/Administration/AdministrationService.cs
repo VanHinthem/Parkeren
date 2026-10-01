@@ -1027,9 +1027,19 @@ internal sealed class AdministrationService(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await LockCapacitySettingsAsync(cancellationToken);
 
-        var existing = await dbContext.ParkingTariffs.AsNoTracking()
+        var existing = await dbContext.ParkingTariffs
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
+
+        if (!validUntil.HasValue)
+        {
+            var latestOpen = existing
+                .Where(x => !x.ValidUntil.HasValue)
+                .OrderByDescending(x => x.ValidFrom)
+                .FirstOrDefault();
+            if (latestOpen is not null && validFrom > latestOpen.ValidFrom)
+                latestOpen.CloseAt(validFrom);
+        }
 
         try
         {
