@@ -869,6 +869,313 @@ internal sealed class AdministrationService(
                 .Select(x => new AdminCalendarExceptionSummary(x.Id, x.Date, x.IsPaid))
                 .ToArray());
 
+    public async Task<IReadOnlyList<AdminBudgetPeriodSummary>> GetBudgetPeriodsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        return await dbContext.ParkingBudgetPeriods.AsNoTracking()
+            .OrderByDescending(x => x.ValidFrom)
+            .Select(x => new AdminBudgetPeriodSummary(
+                x.Id,
+                x.ValidFrom,
+                x.ValidUntil,
+                (int)x.MaximumPaidDuration.TotalMinutes))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<AdminBudgetPeriodCreateResult> CreateBudgetPeriodAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset validUntil,
+        int maximumPaidDurationMinutes,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        if (validUntil <= validFrom || maximumPaidDurationMinutes <= 0)
+            return new AdminBudgetPeriodCreateResult(AdminBudgetPeriodCreateOutcome.Invalid, null);
+
+        var proposed = new ParkingBudgetPeriod(
+            Guid.NewGuid(),
+            validFrom,
+            validUntil,
+            TimeSpan.FromMinutes(maximumPaidDurationMinutes));
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+
+        var existing = await dbContext.ParkingBudgetPeriods.AsNoTracking()
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        try
+        {
+            ParkingBudgetPeriodResolver.ValidateNoOverlap(existing.Append(proposed));
+        }
+        catch (InvalidOperationException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new AdminBudgetPeriodCreateResult(AdminBudgetPeriodCreateOutcome.Overlap, null);
+        }
+
+        dbContext.ParkingBudgetPeriods.Add(proposed);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new AdminBudgetPeriodCreateResult(
+            AdminBudgetPeriodCreateOutcome.Created,
+            ToAdminBudgetPeriodSummary(proposed));
+    }
+
+    public async Task<AdminBudgetUsageSummary?> GetBudgetUsageAsync(
+        Guid actorUserId,
+        Guid? budgetPeriodId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        ParkingBudgetPeriod? period;
+        if (budgetPeriodId.HasValue)
+        {
+            period = await dbContext.ParkingBudgetPeriods.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == budgetPeriodId.Value, cancellationToken);
+        }
+        else
+        {
+            period = await dbContext.ParkingBudgetPeriods.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.ValidFrom <= now && now < x.ValidUntil, cancellationToken);
+        }
+
+        if (period is null)
+            return null;
+
+        var visits = await dbContext.Visits.AsNoTracking()
+            .Where(x => x.Status == VisitStatus.Completed &&
+                        x.ActualEndAt.HasValue &&
+                        x.StartAt < period.ValidUntil &&
+                        x.ActualEndAt.Value > period.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        var ruleSets = await LoadRuleSetsAsync(period.ValidFrom, period.ValidUntil, cancellationToken);
+
+        try
+        {
+            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, ruleSets);
+            return new AdminBudgetUsageSummary(
+                ToAdminBudgetPeriodSummary(period),
+                (int)Math.Floor(usage.UsedPaidDuration.TotalMinutes),
+                (int)Math.Floor(usage.RemainingPaidDuration.TotalMinutes),
+                true,
+                null);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new AdminBudgetUsageSummary(
+                ToAdminBudgetPeriodSummary(period),
+                null,
+                null,
+                false,
+                exception.Message);
+        }
+    }
+
+    public async Task<IReadOnlyList<AdminParkingTariffSummary>> GetParkingTariffsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        return await dbContext.ParkingTariffs.AsNoTracking()
+            .OrderByDescending(x => x.ValidFrom)
+            .Select(x => new AdminParkingTariffSummary(
+                x.Id,
+                x.ValidFrom,
+                x.ValidUntil,
+                x.Rate,
+                x.Unit))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<AdminParkingTariffCreateResult> CreateParkingTariffAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        DateTimeOffset? validUntil,
+        decimal rate,
+        ParkingTariffUnit unit,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+
+        if ((validUntil.HasValue && validUntil.Value <= validFrom) ||
+            rate < 0m ||
+            !Enum.IsDefined(unit))
+            return new AdminParkingTariffCreateResult(AdminParkingTariffCreateOutcome.Invalid, null);
+
+        ParkingTariff proposed;
+        try
+        {
+            proposed = new ParkingTariff(Guid.NewGuid(), validFrom, validUntil, rate, unit);
+        }
+        catch (ArgumentException)
+        {
+            return new AdminParkingTariffCreateResult(AdminParkingTariffCreateOutcome.Invalid, null);
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+
+        var existing = await dbContext.ParkingTariffs.AsNoTracking()
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        try
+        {
+            ParkingTariffResolver.ValidateNoOverlap(existing.Append(proposed));
+        }
+        catch (InvalidOperationException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new AdminParkingTariffCreateResult(AdminParkingTariffCreateOutcome.Overlap, null);
+        }
+
+        dbContext.ParkingTariffs.Add(proposed);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new AdminParkingTariffCreateResult(
+            AdminParkingTariffCreateOutcome.Created,
+            ToAdminParkingTariffSummary(proposed));
+    }
+
+    public async Task<AdminCostReport> GetCostReportAsync(
+        Guid actorUserId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (to <= from)
+            throw new ArgumentException("To must be after from.", nameof(to));
+
+        var rows = await (
+            from visit in dbContext.Visits.AsNoTracking()
+            join user in dbContext.Users.AsNoTracking() on visit.UserId equals user.Id
+            join vehicle in dbContext.Vehicles.AsNoTracking() on visit.VehicleId equals vehicle.Id
+            where visit.Status == VisitStatus.Completed &&
+                  visit.ActualEndAt.HasValue &&
+                  visit.StartAt < to &&
+                  visit.ActualEndAt.Value > from
+            orderby visit.StartAt descending
+            select new
+            {
+                Visit = visit,
+                user.Username,
+                vehicle.LicensePlate
+            })
+            .ToListAsync(cancellationToken);
+
+        var ruleSets = await LoadRuleSetsAsync(from, to, cancellationToken);
+        var tariffs = await dbContext.ParkingTariffs.AsNoTracking()
+            .Where(x => x.ValidFrom < to && (x.ValidUntil == null || x.ValidUntil > from))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+
+        var visitCosts = new List<AdminVisitCostSummary>(rows.Count);
+        foreach (var row in rows)
+        {
+            var segmentStart = row.Visit.StartAt > from ? row.Visit.StartAt : from;
+            var actualEnd = row.Visit.ActualEndAt!.Value;
+            var segmentEnd = actualEnd < to ? actualEnd : to;
+
+            try
+            {
+                var paidSegments = ParkingRuleSetPeriodSegmenter
+                    .Segment(segmentStart, segmentEnd, ruleSets)
+                    .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                    .Where(x => x.IsPaid)
+                    .ToArray();
+
+                var paidDuration = paidSegments.Aggregate(
+                    TimeSpan.Zero,
+                    (total, segment) => total + (segment.End - segment.Start));
+
+                decimal amount = 0m;
+                foreach (var paidSegment in paidSegments)
+                    amount += ParkingTariffCostCalculator.Calculate(paidSegment, tariffs).Sum(x => x.Amount);
+
+                visitCosts.Add(new AdminVisitCostSummary(
+                    row.Visit.Id,
+                    row.Visit.UserId,
+                    row.Username,
+                    row.LicensePlate,
+                    row.Visit.StartAt,
+                    actualEnd,
+                    (int)Math.Floor(paidDuration.TotalMinutes),
+                    amount,
+                    true,
+                    null));
+            }
+            catch (InvalidOperationException exception)
+            {
+                int? paidDurationMinutes = null;
+                try
+                {
+                    paidDurationMinutes = (int)Math.Floor(
+                        ParkingRuleSetPeriodSegmenter
+                            .Segment(segmentStart, segmentEnd, ruleSets)
+                            .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                            .Where(x => x.IsPaid)
+                            .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start))
+                            .TotalMinutes);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Rules are incomplete too; keep paid duration unknown.
+                }
+
+                visitCosts.Add(new AdminVisitCostSummary(
+                    row.Visit.Id,
+                    row.Visit.UserId,
+                    row.Username,
+                    row.LicensePlate,
+                    row.Visit.StartAt,
+                    actualEnd,
+                    paidDurationMinutes,
+                    null,
+                    false,
+                    exception.Message));
+            }
+        }
+
+        var isComplete = visitCosts.All(x => x.IsComplete);
+        var hasCompletePaidDurations = visitCosts.All(x => x.PaidDurationMinutes.HasValue);
+        return new AdminCostReport(
+            from,
+            to,
+            hasCompletePaidDurations ? visitCosts.Sum(x => x.PaidDurationMinutes!.Value) : null,
+            isComplete ? visitCosts.Sum(x => x.Amount!.Value) : null,
+            isComplete,
+            visitCosts);
+    }
+
+    private static AdminBudgetPeriodSummary ToAdminBudgetPeriodSummary(ParkingBudgetPeriod period) =>
+        new(
+            period.Id,
+            period.ValidFrom,
+            period.ValidUntil,
+            (int)period.MaximumPaidDuration.TotalMinutes);
+
+    private static AdminParkingTariffSummary ToAdminParkingTariffSummary(ParkingTariff tariff) =>
+        new(
+            tariff.Id,
+            tariff.ValidFrom,
+            tariff.ValidUntil,
+            tariff.Rate,
+            tariff.Unit);
+
     public async Task<IReadOnlyList<AdminVisitSummary>> GetVisitsAsync(
         Guid actorUserId,
         Guid? userId,
