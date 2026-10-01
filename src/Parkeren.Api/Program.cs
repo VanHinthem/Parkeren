@@ -771,6 +771,7 @@ app.MapGet("/api/admin/costs", async (
 });
 
 app.MapGet("/api/admin/parking-rules", async (
+    Guid? productId,
     IAdministrationService administration,
     IAuthenticationService authentication,
     HttpContext context,
@@ -780,7 +781,16 @@ app.MapGet("/api/admin/parking-rules", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    return Results.Ok(await administration.GetParkingRuleSetsAsync(authenticated.User.Id, cancellationToken));
+    var rules = productId.HasValue
+        ? await administration.GetParkingRuleSetsForProductAsync(
+            authenticated.User.Id,
+            productId.Value,
+            cancellationToken)
+        : await administration.GetParkingRuleSetsAsync(
+            authenticated.User.Id,
+            cancellationToken);
+
+    return Results.Ok(rules);
 });
 
 app.MapPost("/api/admin/parking-rules", async (
@@ -794,16 +804,28 @@ app.MapPost("/api/admin/parking-rules", async (
     if (authenticated.User is null) return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
 
-    var result = await administration.CreateParkingRuleSetVersionAsync(
-        authenticated.User.Id,
-        request.ValidFrom,
-        request.MaxProviderActionDurationMinutes,
-        request.Continuation,
-        request.PublicHolidaysAreFree,
-        request.PaidWindows,
-        request.CalendarExceptions,
-        DateTimeOffset.UtcNow,
-        cancellationToken);
+    var result = request.ProviderProductId.HasValue
+        ? await administration.CreateParkingRuleSetVersionForProductAsync(
+            authenticated.User.Id,
+            request.ProviderProductId.Value,
+            request.ValidFrom,
+            request.MaxProviderActionDurationMinutes,
+            request.Continuation,
+            request.PublicHolidaysAreFree,
+            request.PaidWindows,
+            request.CalendarExceptions,
+            DateTimeOffset.UtcNow,
+            cancellationToken)
+        : await administration.CreateParkingRuleSetVersionAsync(
+            authenticated.User.Id,
+            request.ValidFrom,
+            request.MaxProviderActionDurationMinutes,
+            request.Continuation,
+            request.PublicHolidaysAreFree,
+            request.PaidWindows,
+            request.CalendarExceptions,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
 
     return result.Outcome switch
     {
@@ -1802,6 +1824,7 @@ public sealed record AdminParkingTariffCreateRequest(
     decimal Rate,
     ParkingTariffUnit Unit);
 public sealed record AdminParkingRuleSetCreateRequest(
+    Guid? ProviderProductId,
     DateTimeOffset ValidFrom,
     int MaxProviderActionDurationMinutes,
     ProviderCoverageContinuation Continuation,
