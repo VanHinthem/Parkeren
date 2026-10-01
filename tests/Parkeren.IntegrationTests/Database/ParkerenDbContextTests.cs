@@ -3521,7 +3521,19 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
         Assert.Equal(ProviderActionState.Active, next.State);
         Assert.Equal(nextPaidStart.ToUnixTimeSeconds(), next.PlannedStartAt.ToUnixTimeSeconds());
-        Assert.Equal(nextPaidEnd.ToUnixTimeSeconds(), next.PlannedEndAt.ToUnixTimeSeconds());
+
+        var expectedPaidEnd = nextPaidEnd;
+        if (localPaidStart.Date != localPaidEnd.Date)
+        {
+            var localEndOfDay = DateTime.SpecifyKind(
+                localPaidStart.Date.Add(TimeOnly.MaxValue.ToTimeSpan()),
+                DateTimeKind.Unspecified);
+            expectedPaidEnd = new DateTimeOffset(
+                localEndOfDay,
+                businessZone.GetUtcOffset(localEndOfDay)).ToUniversalTime();
+        }
+
+        Assert.Equal(expectedPaidEnd.ToUnixTimeSeconds(), next.PlannedEndAt.ToUnixTimeSeconds());
         Assert.Equal(2, (await parkingProvider.GetActionsAsync(cancellationToken)).Count);
     }
 
