@@ -6,7 +6,7 @@ public sealed class Visit
 {
     private Visit() { }
 
-    public Visit(Guid id, Guid startOperationId, Guid userId, Guid vehicleId, Guid startedByUserId, DateTimeOffset startAt, DateTimeOffset? desiredEndAt, EffectiveParkingPolicySnapshot policySnapshot)
+    public Visit(Guid id, Guid startOperationId, Guid userId, Guid vehicleId, Guid startedByUserId, DateTimeOffset startAt, DateTimeOffset? desiredEndAt, EffectiveParkingPolicySnapshot policySnapshot, Guid? providerProductId = null)
     {
         ArgumentNullException.ThrowIfNull(policySnapshot);
         if (desiredEndAt is not null && desiredEndAt <= startAt)
@@ -20,6 +20,7 @@ public sealed class Visit
         StartAt = startAt;
         DesiredEndAt = desiredEndAt;
         PolicySnapshot = policySnapshot;
+        ProviderProductId = providerProductId;
         Status = VisitStatus.Starting;
         Health = VisitHealth.Healthy;
         CreatedAt = DateTimeOffset.UtcNow;
@@ -36,6 +37,7 @@ public sealed class Visit
     public VisitStatus Status { get; private set; }
     public VisitHealth Health { get; private set; }
     public EffectiveParkingPolicySnapshot PolicySnapshot { get; private set; } = null!;
+    public Guid? ProviderProductId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public uint Version { get; private set; }
 
