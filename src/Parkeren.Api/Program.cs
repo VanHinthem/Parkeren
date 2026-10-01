@@ -801,6 +801,7 @@ app.MapPost("/api/admin/zones", async (
         request.ValidFrom,
         request.ValidUntil,
         request.IsDefault,
+        DateTimeOffset.UtcNow,
         cancellationToken);
 
     return result.Outcome switch
