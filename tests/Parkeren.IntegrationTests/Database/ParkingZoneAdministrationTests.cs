@@ -25,8 +25,9 @@ public sealed class ParkingZoneAdministrationTests(PostgreSqlFixture fixture)
         var visitor = new User(Guid.NewGuid(), $"zone-visitor-{suffix}", $"ZONE-VISITOR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"ZN{suffix}"[..8], $"ZN{suffix}"[..8], null);
         var assignment = new UserVehicle(visitor.Id, vehicle.Id);
+        var now = DateTimeOffset.UtcNow;
         var firstFrom = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var secondFrom = new DateTimeOffset(2026, 10, 1, 8, 0, 0, TimeSpan.Zero);
+        var secondFrom = now.AddDays(1);
 
         await using (var seed = fixture.CreateDbContext())
         {
@@ -52,6 +53,7 @@ public sealed class ParkingZoneAdministrationTests(PostgreSqlFixture fixture)
                 firstFrom,
                 null,
                 true,
+                now,
                 ct);
             Assert.Equal(AdminParkingZoneCreateOutcome.Created, first.Outcome);
             firstId = first.Zone!.Id;
@@ -63,6 +65,7 @@ public sealed class ParkingZoneAdministrationTests(PostgreSqlFixture fixture)
                 secondFrom,
                 null,
                 true,
+                now,
                 ct);
             Assert.Equal(AdminParkingZoneCreateOutcome.Created, second.Outcome);
             secondId = second.Zone!.Id;
