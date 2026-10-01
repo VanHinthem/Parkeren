@@ -226,16 +226,33 @@ public sealed class StopVisitProviderReconciler(
         var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
             : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-        var match = actions.SingleOrDefault(x =>
-            x.ProviderActionId == preparation.Action.ProviderActionId &&
-            string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase));
+        var current = actions.SingleOrDefault(x =>
+            x.ProviderActionId == preparation.Action.ProviderActionId);
 
-        if (match is null)
+        Parkeren.Application.ParkingProvider.ProviderParkingAction? confirmed = null;
+        if (current is not null &&
+            string.Equals(current.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+        {
+            confirmed = current;
+        }
+        else if (current is null && preparation.ProviderActionKnownMissing)
+        {
+            confirmed = new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                preparation.Action.ProviderActionId!,
+                string.Empty,
+                preparation.Action.PlannedStartAt,
+                preparation.Action.PlannedEndAt,
+                preparation.Action.ProviderLocation ?? string.Empty,
+                "missing",
+                preparation.Action.ProviderProductId);
+        }
+
+        if (confirmed is null)
             return null;
 
         preparation.Operation.BeginReconciliation();
         preparation.Action.BeginReconciliation();
-        await resultStore.RecordConfirmedAsync(preparation, match, clock.GetUtcNow(), cancellationToken);
-        return match;
+        await resultStore.RecordConfirmedAsync(preparation, confirmed, clock.GetUtcNow(), cancellationToken);
+        return confirmed;
     }
 }
