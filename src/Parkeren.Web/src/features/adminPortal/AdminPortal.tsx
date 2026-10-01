@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
+import { AdminProviderPage } from "./AdminProviderPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -126,6 +127,15 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
               <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
             ) : (
               <AdminVisitsPage />
+            )
+          ) : section.path === "/beheer/provider" ? (
+            currentPath === "/beheer/provider/afwijkingen" ? (
+              <section className="admin-portal__panel admin-portal__placeholder">
+                <h2>Afwijkingen & reconciliatie</h2>
+                <p>Persistente discrepancies en recovery-acties worden in verticale slice 8.11 toegevoegd.</p>
+              </section>
+            ) : (
+              <AdminProviderPage />
             )
           ) : (
             <section className="admin-portal__panel admin-portal__placeholder">
