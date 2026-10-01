@@ -153,6 +153,63 @@ export type AdminProviderStatus={
 export async function getAdminProviderStatus(){
   return json<AdminProviderStatus>(await apiFetch("/api/admin/provider/status"));
 }
+
+export type AdminSystemSettings={
+  defaultPolicy:AdminParkingPolicyValues;
+  defaultPolicyUpdatedAt:string;
+  globalMaxConcurrentVisits:number;
+  longVisitWarningAfterMinutes:number|null;
+  notifyAdminOnLongVisit:boolean;
+  longVisitReminderIntervalMinutes:number|null;
+  budgetWarningThresholdPercentages:number[];
+  systemSettingsUpdatedAt:string;
+};
+export type AdminDefaultPolicyField=
+  |"MaxPaidParkingDuration"
+  |"MaxVisitElapsedDuration"
+  |"AllowVisitExtension"
+  |"AllowOpenEndedVisits"
+  |"MaxConcurrentVisits";
+export type AdminDefaultPolicyUpdateResult={
+  outcome:"Updated"|"Invalid"|"ActiveVisitConflict";
+  affectedActiveVisitCount:number;
+  blockedFields:AdminDefaultPolicyField[];
+  currentPolicy:AdminParkingPolicyValues;
+};
+export async function getAdminSystemSettings(){
+  return json<AdminSystemSettings>(await apiFetch("/api/admin/system/settings"));
+}
+export async function setAdminDefaultPolicy(policy:AdminParkingPolicyValues){
+  const response=await apiFetch("/api/admin/system/default-policy",{
+    method:"PUT",
+    body:JSON.stringify(policy)
+  });
+  const result=await response.json() as AdminDefaultPolicyUpdateResult;
+  if(response.status===409)return result;
+  if(!response.ok)throw new Error("Standaardbeleid kon niet worden gewijzigd.");
+  return result;
+}
+export async function setAdminGlobalMaxConcurrentVisits(maxConcurrentVisits:number){
+  const response=await apiFetch("/api/admin/parking-settings/max-concurrent-visits",{
+    method:"PUT",
+    body:JSON.stringify({maxConcurrentVisits})
+  });
+  if(response.status===409)throw new Error("De globale capaciteit kan niet worden gewijzigd zolang er actieve Visits zijn.");
+  if(!response.ok)throw new Error("Globale capaciteit kon niet worden gewijzigd.");
+}
+export async function setAdminWarningSettings(settings:{
+  longVisitWarningAfterMinutes:number|null;
+  notifyAdminOnLongVisit:boolean;
+  longVisitReminderIntervalMinutes:number|null;
+  budgetWarningThresholdPercentages:number[];
+}){
+  const response=await apiFetch("/api/admin/system/warnings",{
+    method:"PUT",
+    body:JSON.stringify(settings)
+  });
+  if(!response.ok)throw new Error("Waarschuwingsinstellingen konden niet worden gewijzigd.");
+  return response.json() as Promise<{outcome:"Updated";settings:AdminSystemSettings}>;
+}
 export async function getAdminUserParkingPolicy(userId:string){
   const response=await apiFetch(`/api/admin/users/${userId}/parking-policy`);
   if(response.status===404)return null;
