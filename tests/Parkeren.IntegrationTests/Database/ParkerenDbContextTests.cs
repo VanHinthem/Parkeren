@@ -3458,13 +3458,25 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
         var localPaidStart = TimeZoneInfo.ConvertTime(nextPaidStart, businessZone);
         var localPaidEnd = TimeZoneInfo.ConvertTime(nextPaidEnd, businessZone);
-        var paidWindows = new[]
-        {
-            new PaidWindow(
-                localPaidStart.DayOfWeek,
-                TimeOnly.FromDateTime(localPaidStart.DateTime),
-                TimeOnly.FromDateTime(localPaidEnd.DateTime))
-        };
+        var paidWindows = localPaidStart.Date == localPaidEnd.Date
+            ? new[]
+            {
+                new PaidWindow(
+                    localPaidStart.DayOfWeek,
+                    TimeOnly.FromDateTime(localPaidStart.DateTime),
+                    TimeOnly.FromDateTime(localPaidEnd.DateTime))
+            }
+            : new[]
+            {
+                new PaidWindow(
+                    localPaidStart.DayOfWeek,
+                    TimeOnly.FromDateTime(localPaidStart.DateTime),
+                    TimeOnly.MaxValue),
+                new PaidWindow(
+                    localPaidEnd.DayOfWeek,
+                    TimeOnly.MinValue,
+                    TimeOnly.FromDateTime(localPaidEnd.DateTime))
+            };
 
         await using (var seedContext = fixture.CreateDbContext())
         {
