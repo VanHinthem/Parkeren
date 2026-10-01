@@ -154,6 +154,33 @@ export async function getAdminProviderStatus(){
   return json<AdminProviderStatus>(await apiFetch("/api/admin/provider/status"));
 }
 
+export type AdminProviderProduct={
+  id:string;
+  providerProductId:string;
+  name:string;
+  categoryId:string|null;
+  categoryName:string|null;
+  location:string;
+  isAvailable:boolean;
+  isDefault:boolean;
+  firstSeenAt:string;
+  lastSeenAt:string;
+};
+export type AdminProviderProductSyncResult={
+  products:AdminProviderProduct[];
+  defaultAutoSelected:boolean;
+};
+export async function getAdminProviderProducts(){
+  return json<AdminProviderProduct[]>(await apiFetch("/api/admin/provider/products"));
+}
+export async function syncAdminProviderProducts(){
+  return json<AdminProviderProductSyncResult>(await apiFetch("/api/admin/provider/products/sync",{method:"POST"}));
+}
+export async function setAdminDefaultProviderProduct(productId:string){
+  const response=await apiFetch("/api/admin/provider/products/"+encodeURIComponent(productId)+"/default",{method:"PUT"});
+  if(!response.ok)throw new Error("Default parkeerproduct kon niet worden gewijzigd.");
+}
+
 export type AdminSystemSettings={
   defaultPolicy:AdminParkingPolicyValues;
   defaultPolicyUpdatedAt:string;
