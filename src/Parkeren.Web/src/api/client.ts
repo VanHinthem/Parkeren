@@ -213,6 +213,31 @@ export async function setAdminDefaultProviderProduct(productId:string){
   if(!response.ok)throw new Error("Default parkeerproduct kon niet worden gewijzigd.");
 }
 
+export type AdminSystemDiagnostics={
+  observedAt:string;
+  database:{healthy:boolean;status:string};
+  provider:{configured:boolean;status:string};
+  webPush:{configured:boolean;status:string};
+  scheduler:{
+    pendingCount:number;
+    claimedCount:number;
+    overdueCount:number;
+    oldestPendingDueAt:string|null;
+    oldestClaimedAt:string|null;
+    lastCompletedAt:string|null;
+  };
+  pushDeliveries:{
+    pendingCount:number;
+    failedCount:number;
+    oldestPendingCreatedAt:string|null;
+    lastAttemptAt:string|null;
+    lastDeliveredAt:string|null;
+  };
+};
+export async function getAdminSystemDiagnostics(){
+  return json<AdminSystemDiagnostics>(await apiFetch("/api/admin/system/diagnostics"));
+}
+
 export type AdminSystemSettings={
   defaultPolicy:AdminParkingPolicyValues;
   defaultPolicyUpdatedAt:string;
