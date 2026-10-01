@@ -102,12 +102,13 @@ De eerste inventarisatie voor #95 is afgerond. De backend bevat al een groot dee
 | Recovery/reconciliation | `VisitRecoveryService` | automatisch | beheerinzage |
 | Systeemstatus | `/health`, `/api/status` | beperkt | operationeel statusmodel |
 
-### Ontbrekende domeinconcepten
+### Nieuwe en resterende domeinconcepten
 
-Twee onderdelen vragen meer dan alleen ontsluiting van bestaande code:
+8.10 introduceert **ParkingProviderProduct** als lokaal catalogusrecord van een product dat door 2Park wordt geleverd. De provider-location is onderdeel van het product en geen zelfstandig door gebruiker of beheerder te kiezen parkeerzone.
 
-1. **Parkeerzones** — er bestaat nog geen zelfstandig `ParkingZone`-domeinmodel. De provider levert nu één product/location. Multi-zonebeheer vraagt een expliciet zoneconcept met providerlocatie en geldigheidsperiode.
-2. **Persistente discrepancies** — reconciliation bestaat technisch, maar er is nog geen duurzaam discrepancy-record waarmee gedetecteerde en opgeloste afwijkingen voor #63 traceerbaar blijven.
+Het resterende nieuwe domeinconcept binnen Fase 8 is:
+
+1. **Persistente discrepancies** — reconciliation bestaat technisch, maar er is nog geen duurzaam discrepancy-record waarmee gedetecteerde en opgeloste afwijkingen voor #63 traceerbaar blijven.
 
 ### Configuratie versus secrets
 
@@ -197,11 +198,12 @@ Routebasis: `/beheer/configuratie`
 
 Pagina's:
 
-- parkeerzones;
-- parkeerregels;
-- betaalvensters en kalenderuitzonderingen;
-- tarieven;
-- budgetperioden.
+- parkeerregels per providerproduct;
+- betaalvensters en kalenderuitzonderingen per providerproduct;
+- tarieven per providerproduct;
+- budgetperioden per providerproduct.
+
+De providerproductcatalogus en defaultproductselectie staan onder `/beheer/provider`. Providerproductgegevens zoals externe product-id, categorie en location zijn read-only.
 
 Configuratie met tijdsafhankelijk gedrag wordt versioned beheerd via `ValidFrom`/`ValidUntil`. Historische versies zijn voor audit in beginsel read-only; wijzigingen worden als een nieuwe geldigheidsversie vastgelegd in plaats van historische betekenis te overschrijven.
 
@@ -341,6 +343,24 @@ Voor 8.9 geldt:
 - drill-down hergebruikt het bestaande `/beheer/bezoeken/{id}` Visit-detail;
 - 8.9 introduceert geen nieuwe database-entiteiten of migration.
 
+Voor 8.10 geldt:
+
+- `ParkingProviderProduct` bewaart de door 2Park ontdekte productcontext met externe product-id, naam/categorie, location, beschikbaarheidsstatus en first/last-seen timestamps;
+- providerproducten worden gesynchroniseerd en niet handmatig aangemaakt of inhoudelijk gewijzigd;
+- precies één beschikbaar product kan lokaal als default voor nieuwe Visits worden gekozen;
+- alleen bij de eerste synchronisatie met exact één product wordt default automatisch ingesteld;
+- een verdwenen default wordt niet automatisch vervangen;
+- voor V1 selecteert een gewone gebruiker nooit een product;
+- een toekomstige productbinding per gebruiker of expliciete productkeuze kan bovenop dezelfde catalogus worden gebouwd;
+- `Visit` bewaart lokale product-id plus externe product-id/location als immutable startcontext;
+- `ProviderParkingAction` bewaart de daadwerkelijk gebruikte externe product-id/location;
+- continuation, extend/stop, recovery en reconciliation blijven product-scoped;
+- `ParkingRuleSet`, `ParkingTariff` en `ParkingBudgetPeriod` zijn product-scoped;
+- overlapregels gelden per product, waardoor verschillende producten gelijktijdig verschillende geldige configuratie mogen hebben;
+- historische kosten en budgetgebruik filteren per `Visit.ProviderProductId`;
+- dashboard/verbruik gebruiken voor de actieve budgetvergelijking het defaultproduct;
+- V1-schemawijzigingen worden nog niet als afzonderlijke migration geconsolideerd; een bestaande developmentdatabase moet worden gereset.
+
 ## Vervolg
 
 De backendinventarisatie en informatiearchitectuur zijn vastgesteld. De volgende stap is de implementatie opdelen in kleine verticale slices. De eerste slice richt zich op het beheerfundament: de desktop admin-shell, routing/autorisatie en het operationele overzicht/#57, waarbij bestaande Visit-businessflows worden hergebruikt.
@@ -360,7 +380,7 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 | **8.7 Parkeerregels** | versioned rulesets, betaalvensters, kalenderuitzonderingen, provider-actionduur en continuation | #95 |
 | **8.8 Budgetten & tarieven** | budgetperioden, tarieven, lokaal gebruik en kostenberekening | #59, #60 |
 | **8.9 Analyse** | aggregatie per gebruiker/kenteken met drill-down naar Visits | #62 |
-| **8.10 Zones** | nieuw ParkingZone-domein en multi-zonebeheer | #95 |
+| **8.10 Providerproducten** | providerproductcatalogus, defaultselectie, productsnapshot en product-scoped configuratie | #95 |
 | **8.11 Discrepancies & reconciliation** | persistent discrepancy-model, detectie, historie en herstelcontext | #63 |
 | **8.12 Systeem & diagnostiek** | scheduler-, pushdelivery-, health-, audit- en infrastructuurstatus | #95 |
 
