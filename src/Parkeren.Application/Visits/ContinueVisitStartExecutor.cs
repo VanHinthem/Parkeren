@@ -23,7 +23,11 @@ public sealed class ContinueVisitStartExecutor(
             provider, resultStore, reconciler, timeProvider, mutationGuard);
         return executor.ExecuteAsync(
             preparation,
-            new ProviderStartRequest(licensePlate, location, preparation.Action.PlannedEndAt),
+            new ProviderStartRequest(
+                licensePlate,
+                location,
+                preparation.Action.PlannedEndAt,
+                preparation.Action.ProviderProductId),
             cancellationToken);
     }
 }
