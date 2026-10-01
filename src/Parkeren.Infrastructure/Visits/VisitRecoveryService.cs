@@ -58,7 +58,9 @@ internal sealed class VisitRecoveryService(
                 continue;
             }
 
-            var remoteActions = await provider.GetActionsAsync(cancellationToken);
+            var remoteActions = string.IsNullOrWhiteSpace(visit.ProviderProductExternalId)
+                ? await provider.GetActionsAsync(cancellationToken)
+                : await provider.GetActionsForProductAsync(visit.ProviderProductExternalId, cancellationToken);
             foreach (var action in actions)
             {
                 var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
@@ -325,7 +327,9 @@ internal sealed class VisitRecoveryService(
             string.IsNullOrWhiteSpace(action.ProviderActionId))
             throw new InvalidOperationException("Only an unknown scheduled-action cancellation can be reconciled.");
 
-        var remoteActions = await provider.GetActionsAsync(cancellationToken);
+        var remoteActions = string.IsNullOrWhiteSpace(action.ProviderProductId)
+            ? await provider.GetActionsAsync(cancellationToken)
+            : await provider.GetActionsForProductAsync(action.ProviderProductId, cancellationToken);
         var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
         if (remote is null || !string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase))
             return false;
@@ -505,7 +509,9 @@ internal sealed class VisitRecoveryService(
             return;
         }
 
-        var providerActions = await provider.GetActionsAsync(cancellationToken);
+        var providerActions = string.IsNullOrWhiteSpace(activeAction.ProviderProductId)
+            ? await provider.GetActionsAsync(cancellationToken)
+            : await provider.GetActionsForProductAsync(activeAction.ProviderProductId, cancellationToken);
         var confirmedAction = providerActions.SingleOrDefault(x =>
             x.ProviderActionId == activeAction.ProviderActionId);
 
@@ -556,7 +562,8 @@ internal sealed class VisitRecoveryService(
         var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
             .Include(x => x.PaidWindows)
             .Include(x => x.CalendarExceptions)
-            .Where(x => x.ValidFrom < desiredEndAt &&
+            .Where(x => (item.Visit.ProviderProductId == null || x.ProviderProductId == item.Visit.ProviderProductId) &&
+                        x.ValidFrom < desiredEndAt &&
                         (!x.ValidUntil.HasValue || x.ValidUntil.Value > confirmedAction.End))
             .ToListAsync(cancellationToken);
         var nextPaid = ProviderCoverageSchedule.NextPaidSegment(confirmedAction.End, desiredEndAt, ruleSets);
@@ -598,7 +605,9 @@ internal sealed class VisitRecoveryService(
         var ruleSets = await dbContext.ParkingRuleSets.AsNoTracking()
             .Include(x => x.PaidWindows)
             .Include(x => x.CalendarExceptions)
-            .Where(x => x.ValidFrom < endAt && (!x.ValidUntil.HasValue || x.ValidUntil.Value > startAt))
+            .Where(x => (visit.ProviderProductId == null || x.ProviderProductId == visit.ProviderProductId) &&
+                        x.ValidFrom < endAt &&
+                        (!x.ValidUntil.HasValue || x.ValidUntil.Value > startAt))
             .ToListAsync(cancellationToken);
 
         try
