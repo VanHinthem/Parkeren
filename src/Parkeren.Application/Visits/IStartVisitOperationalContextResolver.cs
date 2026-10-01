@@ -16,4 +16,11 @@ public interface IStartVisitOperationalContextResolver
         DateTimeOffset startAt,
         DateTimeOffset? desiredEndAt,
         CancellationToken cancellationToken = default);
+
+    Task<StartVisitOperationalContext?> ResolveForProductAsync(
+        Guid ownerUserId,
+        Guid providerProductId,
+        DateTimeOffset startAt,
+        DateTimeOffset? desiredEndAt,
+        CancellationToken cancellationToken = default);
 }
