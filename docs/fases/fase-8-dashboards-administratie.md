@@ -230,6 +230,45 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 - Geen migrations tijdens de V1-ontwikkeling; schemawijzigingen worden volgens de bestaande V1-afspraak later gereconcilieerd.
 - CI wordt niet automatisch gecontroleerd; fouten worden onderzocht wanneer een Actions-run wordt aangeleverd.
 
+## Voortgang beheerportaal — 1 oktober 2026
+
+De beheerimplementatie staat inmiddels op **slice 8.5 afgerond**:
+
+- 8.1 beheerfundament ✅
+- 8.2 operationeel dashboard ✅
+- 8.3 Visit-detail & beheerhistorie ✅
+- 8.4 providerstatus & officieel saldo ✅
+- 8.5 gebruikers & voertuigen ✅
+
+### 8.5 Gebruikers & voertuigen
+
+Beschikbaar in het desktop beheerportaal:
+
+- `/beheer/gebruikers` — gebruikerslijst, bezoeker aanmaken, activeren/deactiveren;
+- `/beheer/gebruikers/{id}` — detail, toegewezen voertuigen, PIN reset, sessies intrekken en user policy overrides;
+- `/beheer/voertuigen` — voertuigenlijst, voertuig aanmaken en activeren/deactiveren.
+
+De policy-editor ondersteunt de bestaande velden:
+
+- `MaxPaidParkingDuration`;
+- `MaxVisitElapsedDuration`;
+- `AllowVisitExtension`;
+- `AllowOpenEndedVisits`;
+- `MaxConcurrentVisits`.
+
+Per veld is zichtbaar of de waarde uit de default komt of een user override is. Terugzetten op **Standaard** verwijdert die override. De effectieve waarde wordt apart getoond.
+
+Server-side beveiliging:
+
+- policywijzigingen die de EffectiveParkingPolicy veranderen worden geblokkeerd zolang de gebruiker een actieve Visit heeft;
+- `MaxConcurrentVisits` kan niet boven de globale capaciteit worden gezet;
+- gebruiker of voertuig deactiveren wordt geblokkeerd wanneer er een relevante actieve Visit bestaat;
+- bestaande StartVisit-/policy enforcement blijft leidend.
+
+Bewuste V1-beperking: bij de huidige nullable duurkolommen betekent `null` “geen override”. Een expliciete user override naar onbeperkt terwijl de default begrensd is, vereist later aanvullende persistence-representatie en wordt zonder migration niet geïntroduceerd.
+
+Volgende slice: **8.6 Algemene policies/settings**.
+
 ## Exit
 
 Fase 8 is gereed wanneer:
