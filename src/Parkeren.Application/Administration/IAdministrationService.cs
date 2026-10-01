@@ -1,5 +1,6 @@
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.Policies;
 using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Administration;
@@ -25,7 +26,9 @@ public interface IAdministrationService
     Task<AdminUserPolicyUpdateResult> SetUserPolicyAsync(
         Guid actorUserId,
         Guid userId,
+        PolicyDurationOverrideMode maxPaidParkingDurationMode,
         int? maxPaidParkingDurationMinutes,
+        PolicyDurationOverrideMode maxVisitElapsedDurationMode,
         int? maxVisitElapsedDurationMinutes,
         bool? allowVisitExtension,
         bool? allowOpenEndedVisits,
@@ -151,7 +154,9 @@ public sealed record AdminParkingPolicyValues(
     int MaxConcurrentVisits);
 
 public sealed record AdminParkingPolicyOverrideValues(
+    PolicyDurationOverrideMode MaxPaidParkingDurationMode,
     int? MaxPaidParkingDurationMinutes,
+    PolicyDurationOverrideMode MaxVisitElapsedDurationMode,
     int? MaxVisitElapsedDurationMinutes,
     bool? AllowVisitExtension,
     bool? AllowOpenEndedVisits,
