@@ -135,6 +135,100 @@ export async function getAdminUserParkingPolicy(userId:string){
   if(response.status===404)return null;
   return json<AdminParkingPolicySummary>(response);
 }
+
+export type AdminVisitSummary={
+  id:string;
+  userId:string;
+  username:string;
+  vehicleId:string;
+  licensePlate:string;
+  startedByUserId:string;
+  startedByUsername:string;
+  startAt:string;
+  desiredEndAt:string|null;
+  actualEndAt:string|null;
+  status:ActiveVisit["status"];
+  health:ActiveVisit["health"];
+  paidDurationMinutes:number|null;
+};
+export type AdminProviderParkingActionSummary={
+  id:string;
+  providerActionId:string|null;
+  plannedStartAt:string;
+  plannedEndAt:string;
+  actualStartAt:string|null;
+  actualEndAt:string|null;
+  providerStatus:string|null;
+  state:"Planned"|"Starting"|"Scheduled"|"Active"|"Stopping"|"Stopped"|"Completed"|"Failed";
+  health:"Healthy"|"Unknown"|"Reconciling";
+};
+export type AdminProviderOperationSummary={
+  id:string;
+  operationId:string;
+  providerParkingActionId:string|null;
+  parentOperationId:string|null;
+  type:"Start"|"ContinueStart"|"Extend"|"Stop";
+  status:"Pending"|"InProgress"|"Succeeded"|"Failed"|"Unknown"|"Reconciling";
+  attemptCount:number;
+  lastErrorCode:string|null;
+  createdAt:string;
+  attemptStartedAt:string|null;
+  requestedEndAt:string|null;
+  completedAt:string|null;
+};
+export type AdminVisitEndTimeChangeSummary={
+  id:string;
+  operationId:string;
+  actorUserId:string;
+  actorUsername:string;
+  previousDesiredEndAt:string|null;
+  requestedDesiredEndAt:string|null;
+  createdAt:string;
+  result:"Pending"|"Applied"|"Rejected";
+};
+export type AdminRuleSetSummary={
+  id:string;
+  validFrom:string;
+  validUntil:string|null;
+  maxProviderActionDurationMinutes:number;
+  continuation:"ExtendAction"|"StartNewAction";
+  publicHolidaysAreFree:boolean;
+};
+export type AdminVisitDetail={
+  visit:AdminVisitSummary;
+  policySnapshot:{
+    maxPaidParkingDurationMinutes:number|null;
+    maxVisitElapsedDurationMinutes:number|null;
+    allowVisitExtension:boolean;
+    allowOpenEndedVisits:boolean;
+  };
+  providerActions:AdminProviderParkingActionSummary[];
+  providerOperations:AdminProviderOperationSummary[];
+  endTimeChanges:AdminVisitEndTimeChangeSummary[];
+  relevantRuleSets:AdminRuleSetSummary[];
+};
+export type AdminVisitFilters={
+  userId?:string;
+  licensePlate?:string;
+  from?:string;
+  to?:string;
+  status?:ActiveVisit["status"];
+};
+export async function getAdminVisits(filters:AdminVisitFilters={}){
+  const params=new URLSearchParams();
+  if(filters.userId)params.set("userId",filters.userId);
+  if(filters.licensePlate)params.set("licensePlate",filters.licensePlate);
+  if(filters.from)params.set("from",filters.from);
+  if(filters.to)params.set("to",filters.to);
+  if(filters.status)params.set("status",filters.status);
+  const query=params.toString();
+  return json<AdminVisitSummary[]>(await apiFetch(`/api/admin/visits${query?`?${query}`:""}`));
+}
+export async function getAdminVisit(visitId:string){
+  const response=await apiFetch(`/api/admin/visits/${visitId}`);
+  if(response.status===404)return null;
+  return json<AdminVisitDetail>(response);
+}
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
