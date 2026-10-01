@@ -3500,8 +3500,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var next = Assert.Single(await verifyContext.ProviderParkingActions
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
         Assert.Equal(ProviderActionState.Active, next.State);
-        Assert.Equal(nextPaidStart.ToUnixTimeMilliseconds(), next.PlannedStartAt.ToUnixTimeMilliseconds());
-        Assert.Equal(nextPaidEnd.ToUnixTimeMilliseconds(), next.PlannedEndAt.ToUnixTimeMilliseconds());
+        Assert.Equal(nextPaidStart.ToUnixTimeSeconds(), next.PlannedStartAt.ToUnixTimeSeconds());
+        Assert.Equal(nextPaidEnd.ToUnixTimeSeconds(), next.PlannedEndAt.ToUnixTimeSeconds());
         Assert.Equal(2, (await parkingProvider.GetActionsAsync(cancellationToken)).Count);
     }
 
