@@ -265,7 +265,7 @@ Server-side beveiliging:
 - gebruiker of voertuig deactiveren wordt geblokkeerd wanneer er een relevante actieve Visit bestaat;
 - bestaande StartVisit-/policy enforcement blijft leidend.
 
-Bewuste V1-beperking: bij de huidige nullable duurkolommen betekent `null` “geen override”. Een expliciete user override naar onbeperkt terwijl de default begrensd is, vereist later aanvullende persistence-representatie en wordt zonder migration niet geïntroduceerd.
+De duur-overrides zijn aangescherpt naar drie expliciete toestanden: **Standaard**, **Limiet** en **Onbeperkt**. Dit wordt persistent vastgelegd via `PolicyDurationOverrideMode`, zodat een begrensde default per gebruiker expliciet onbeperkt kan worden gemaakt zonder ambigu `null`-gedrag.
 
 Volgende slice: **8.6 Algemene policies/settings**.
 
