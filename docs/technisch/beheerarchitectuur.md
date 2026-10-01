@@ -265,7 +265,7 @@ Voorbeelden:
 
 ## Realisatiestatus beheerportaal — 1 oktober 2026
 
-De beheerimplementatie staat inmiddels op **slice 8.10 in CI-validatie**:
+De beheerimplementatie is functioneel afgerond tot en met **slice 8.10**. De volgende slice is **8.11 Discrepancies & reconciliation**:
 
 - **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
@@ -362,9 +362,24 @@ Voor 8.10 geldt:
 - dashboard/verbruik gebruiken voor de actieve budgetvergelijking het defaultproduct;
 - V1-schemawijzigingen worden nog niet als afzonderlijke migration geconsolideerd; een bestaande developmentdatabase moet worden gereset.
 
+Functionele V1-validatie van 8.10 is afgerond:
+
+- lege developmentdatabase -> providerproduct wordt bij startup gesynchroniseerd en bij exact één product automatisch default;
+- normale app-restart met bestaande catalogus veroorzaakt geen onnodige productsync;
+- een mislukte initiële productsync blokkeert applicatiestart niet en kan later handmatig worden hersteld;
+- StartVisit legt lokale product-id, externe product-id en provider-location vast;
+- ProviderParkingAction gebruikt en bewaart dezelfde productcontext;
+- restart/recovery tijdens een actieve Visit behoudt de context en maakt geen dubbele provideractie;
+- stoppen, historie, budgetverbruik, kosten en analyse blijven product-scoped correct;
+- handmatige productsync met bestaande historie maakt geen duplicaten en wijzigt historische Visit/action-context niet;
+- providerproduct en location zijn zichtbaar op het beheer Visit-detail;
+- een korte echte 2Park start/stop-smoketest is succesvol uitgevoerd.
+
+Voor V1 blijft de functionele scope bewust bij één gebruikt/default providerproduct. Een gewone gebruiker kiest geen product. De catalogus handelt meerdere producten alleen defensief af; uitgebreid multi-productgebruik blijft post-V1.
+
 ## Vervolg
 
-De backendinventarisatie en informatiearchitectuur zijn vastgesteld. De volgende stap is de implementatie opdelen in kleine verticale slices. De eerste slice richt zich op het beheerfundament: de desktop admin-shell, routing/autorisatie en het operationele overzicht/#57, waarbij bestaande Visit-businessflows worden hergebruikt.
+De beheerimplementatie is functioneel afgerond tot en met 8.10. De volgende verticale slice is **8.11 Discrepancies & reconciliation** (#63), met als kern een persistent discrepancy-model, detectie van lokale/providerafwijkingen, historie en veilige herstelcontext.
 
 ## Verticale implementatieslices
 
