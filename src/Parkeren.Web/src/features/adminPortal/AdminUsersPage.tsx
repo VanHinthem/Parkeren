@@ -279,7 +279,7 @@ export function AdminUserDetailPage({userId}:{userId:string}){
     const concurrent=concurrencyOverride?Number(concurrency):null;
     if((paidOverride&&paidMinutes===null)||
        (elapsedOverride&&elapsedMinutes===null)||
-       (concurrencyOverride&&(!Number.isInteger(concurrent)||concurrent===null||concurrent<=0))){
+       (concurrencyOverride&&(concurrent===null||!Number.isInteger(concurrent)||concurrent<=0))){
       setError("Controleer de afwijkende policywaarden.");
       return;
     }
