@@ -3,6 +3,7 @@ import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
+import { AdminSystemPage } from "./AdminSystemPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -147,6 +148,8 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             ) : (
               <AdminProviderPage />
             )
+          ) : section.path === "/beheer/systeem" ? (
+            <AdminSystemPage />
           ) : (
             <section className="admin-portal__panel admin-portal__placeholder">
               <h2>{section.title}</h2>
