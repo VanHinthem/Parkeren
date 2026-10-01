@@ -240,6 +240,7 @@ De beheerimplementatie staat inmiddels op **slice 8.5 afgerond**:
 - 8.4 providerstatus & officieel saldo ✅
 - 8.5 gebruikers & voertuigen ✅
 - 8.6 algemene policies/settings ✅
+- 8.7 parkeerregels 🚧 implementatie gereed, CI-validatie volgt
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -292,7 +293,33 @@ Long Visit scheduler-semantiek: bestaande reeds geplande warning-work behoudt zi
 
 Generieke persistente beheer-audit volgt in 8.12; daarom blijft #74 nog open ondanks dat de functionele default/user policy-beheercriteria zijn gerealiseerd.
 
-Volgende slice: **8.7 Parkeerregels**.
+### 8.7 Parkeerregels
+
+De beheerroute `/beheer/configuratie/parkeerregels` beheert parkeerregels als tijdsgebonden versies.
+
+Ondersteund:
+
+- alle rulesetversies read-only terugzien;
+- nieuwe toekomstige versie plannen;
+- betaalvensters per weekdag, inclusief meerdere niet-overlappende vensters per dag;
+- expliciete kalenderuitzonderingen per datum als betaald/gratis;
+- Nederlandse feestdagen gratis aan/uit;
+- `MaxProviderActionDuration`;
+- `Continuation = StartNewAction | ExtendAction`.
+
+Versioningsemantiek:
+
+- historische records worden niet aangepast;
+- een nieuwe versie sluit de vorige open-ended versie automatisch op dezelfde `ValidFrom`;
+- `ValidFrom` moet in de toekomst liggen;
+- overlap tussen rulesetversies wordt voorkomen;
+- actieve Visits mogen een toekomstige rulesetboundary passeren; de bestaande period-segmentatie gebruikt per tijdvak de geldige ruleset.
+
+Domeinvalidatie is toegevoegd voor overlappende betaalvensters en dubbele kalenderuitzonderingen. Domain- en PostgreSQL-integratietests dekken validatie, future-only versioning en het atomisch afsluiten van de vorige versie.
+
+Er is geen databaseschemawijziging nodig.
+
+Na groene CI is de volgende slice: **8.8 Budgetten & tarieven**.
 
 ## Exit
 
