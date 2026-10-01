@@ -179,3 +179,15 @@
     gap:.2rem;
   }
 }
+
+.admin-provider__product-default{
+  display:inline-flex;
+  margin-left:.45rem;
+  padding:.16rem .42rem;
+  border-radius:999px;
+  background:var(--color-success-soft);
+  color:var(--color-success);
+  font-size:.68rem;
+  font-weight:700;
+  vertical-align:middle;
+}
