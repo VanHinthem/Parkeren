@@ -7,6 +7,7 @@ import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
 import { AdminUsagePage } from "./AdminUsagePage";
+import { AdminAnalysisPage } from "./AdminAnalysisPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -63,7 +64,7 @@ const sections: AdminSection[] = [
 
 function resolveSection(path: string): AdminSection {
   if (path === "/beheer" || path === "/beheer/") return sections[0];
-  if (path === "/beheer/verbruik" || path === "/beheer/historie") return sections[1];
+  if (path === "/beheer/verbruik" || path === "/beheer/analyse" || path === "/beheer/historie") return sections[1];
   if (path === "/beheer/voertuigen" || path.startsWith("/beheer/voertuigen/")) return sections[2];
   return sections.find(section => section.path !== "/beheer" && path.startsWith(section.path)) ?? sections[0];
 }
@@ -132,6 +133,8 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           ) : section.path === "/beheer/bezoeken" ? (
             currentPath === "/beheer/verbruik" ? (
               <AdminUsagePage />
+            ) : currentPath === "/beheer/analyse" ? (
+              <AdminAnalysisPage />
             ) : currentPath.startsWith("/beheer/bezoeken/") ? (
               <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
             ) : (
