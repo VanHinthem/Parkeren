@@ -196,8 +196,7 @@ export function AdminSystemPage(){
     </div>
   </div>;
 
-  return <div className="admin-system">
-    {error&&<Alert tone="danger">{error}</Alert>}
+  return <div className="admin-system">\n    <section className="admin-system__panel admin-system__panel--navigation">\n      <div className="admin-system__panel-heading">\n        <div>\n          <h2>Systeemdiagnostiek</h2>\n          <p className="admin-system__navigation-copy">Database, providerconfiguratie, scheduler en push delivery controleren.</p>\n        </div>\n        <a className="admin-system__navigation-link" href="/beheer/systeem/diagnostiek">Diagnostiek openen</a>\n      </div>\n    </section>\n   {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}
     {conflict&&<Alert tone="warning">
       Deze wijziging raakt {conflict.count} actieve Visit(s) die één of meer gewijzigde defaultvelden erven.
