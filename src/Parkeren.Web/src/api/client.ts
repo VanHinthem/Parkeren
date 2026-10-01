@@ -107,7 +107,7 @@ export async function changeVisitEndTime(
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
-export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean};
+export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean;maxConcurrentVisits:number|null};
 export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
 export type AdminActiveVisitSummary={
   id:string;
@@ -157,6 +157,59 @@ export async function getAdminUserParkingPolicy(userId:string){
   const response=await apiFetch(`/api/admin/users/${userId}/parking-policy`);
   if(response.status===404)return null;
   return json<AdminParkingPolicySummary>(response);
+}
+
+export type AdminParkingPolicyValues={
+  maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMinutes:number|null;
+  allowVisitExtension:boolean;
+  allowOpenEndedVisits:boolean;
+  maxConcurrentVisits:number;
+};
+export type AdminParkingPolicyOverrideValues={
+  maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMinutes:number|null;
+  allowVisitExtension:boolean|null;
+  allowOpenEndedVisits:boolean|null;
+  maxConcurrentVisits:number|null;
+};
+export type AdminUserPolicyDetail={
+  defaults:AdminParkingPolicyValues;
+  overrides:AdminParkingPolicyOverrideValues;
+  effective:AdminParkingPolicyValues;
+  globalMaxConcurrentVisits:number;
+};
+export type AdminUserDetail={
+  user:UserSummary;
+  assignedVehicles:VehicleSummary[];
+  policy:AdminUserPolicyDetail;
+  activeVisitCount:number;
+};
+export type AdminUserPolicyUpdate={
+  maxPaidParkingDurationMinutes:number|null;
+  maxVisitElapsedDurationMinutes:number|null;
+  allowVisitExtension:boolean|null;
+  allowOpenEndedVisits:boolean|null;
+  maxConcurrentVisits:number|null;
+};
+export type AdminUserPolicyUpdateResult={
+  outcome:"Updated"|"NotFound"|"Invalid"|"ActiveVisitConflict";
+  activeVisitCount:number;
+  policy:AdminUserPolicyDetail|null;
+};
+export async function getAdminUserDetail(userId:string){
+  const response=await apiFetch(`/api/admin/users/${userId}/detail`);
+  if(response.status===404)return null;
+  return json<AdminUserDetail>(response);
+}
+export async function setAdminUserPolicy(userId:string,policy:AdminUserPolicyUpdate){
+  const response=await apiFetch(`/api/admin/users/${userId}/policy`,{method:"PUT",body:JSON.stringify(policy)});
+  if(response.status===409){
+    const result=await response.json() as AdminUserPolicyUpdateResult;
+    throw new Error(`Policy kan niet worden gewijzigd zolang deze gebruiker ${result.activeVisitCount} actieve Visit(s) heeft.`);
+  }
+  if(!response.ok)throw await visitError(response,"Gebruikerspolicy kon niet worden gewijzigd");
+  return response.json() as Promise<AdminUserPolicyUpdateResult>;
 }
 
 export type AdminVisitSummary={
@@ -255,10 +308,10 @@ export async function getAdminVisit(visitId:string){
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
-export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Gebruiker kon niet worden gewijzigd.");}
+export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw await visitError(r,"Gebruiker kon niet worden gewijzigd");}
 export async function getVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/admin/vehicles"));}
 export async function createVehicle(licensePlate:string,displayName?:string){return json<VehicleSummary>(await apiFetch("/api/admin/vehicles",{method:"POST",body:JSON.stringify({licensePlate,displayName:displayName||null})}));}
-export async function setVehicleActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/vehicles/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw new Error("Voertuig kon niet worden gewijzigd.");}
+export async function setVehicleActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/vehicles/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw await visitError(r,"Voertuig kon niet worden gewijzigd");}
 export async function assignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"PUT"});if(!r.ok)throw new Error("Voertuig kon niet worden toegewezen.");}
 
 export async function getAssignedVehicles(userId:string){return json<VehicleSummary[]>(await apiFetch(`/api/admin/users/${userId}/vehicles`));}
