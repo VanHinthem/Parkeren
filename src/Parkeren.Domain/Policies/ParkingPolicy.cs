@@ -80,6 +80,13 @@ public sealed class DefaultParkingPolicy
     public int MaxConcurrentVisits { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 }
+public enum PolicyDurationOverrideMode
+{
+    Inherit,
+    Value,
+    Unlimited
+}
+
 public sealed class UserPolicyOverride
 {
     private UserPolicyOverride() { }
@@ -92,18 +99,26 @@ public sealed class UserPolicyOverride
     }
 
     public void SetOverrides(
+        PolicyDurationOverrideMode maxPaidParkingDurationMode,
         TimeSpan? maxPaidParkingDuration,
+        PolicyDurationOverrideMode maxVisitElapsedDurationMode,
         TimeSpan? maxVisitElapsedDuration,
         bool? allowVisitExtension,
         bool? allowOpenEndedVisits,
         int? maxConcurrentVisits)
     {
-        ValidateDuration(maxPaidParkingDuration, nameof(maxPaidParkingDuration));
-        ValidateDuration(maxVisitElapsedDuration, nameof(maxVisitElapsedDuration));
+        ValidateDurationOverride(maxPaidParkingDurationMode, maxPaidParkingDuration, nameof(maxPaidParkingDuration));
+        ValidateDurationOverride(maxVisitElapsedDurationMode, maxVisitElapsedDuration, nameof(maxVisitElapsedDuration));
         if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
 
-        MaxPaidParkingDuration = maxPaidParkingDuration;
-        MaxVisitElapsedDuration = maxVisitElapsedDuration;
+        MaxPaidParkingDurationMode = maxPaidParkingDurationMode;
+        MaxPaidParkingDuration = maxPaidParkingDurationMode == PolicyDurationOverrideMode.Value
+            ? maxPaidParkingDuration
+            : null;
+        MaxVisitElapsedDurationMode = maxVisitElapsedDurationMode;
+        MaxVisitElapsedDuration = maxVisitElapsedDurationMode == PolicyDurationOverrideMode.Value
+            ? maxVisitElapsedDuration
+            : null;
         AllowVisitExtension = allowVisitExtension;
         AllowOpenEndedVisits = allowOpenEndedVisits;
         MaxConcurrentVisits = maxConcurrentVisits;
@@ -112,40 +127,73 @@ public sealed class UserPolicyOverride
 
     public void SetMaxConcurrentVisits(int? maxConcurrentVisits) =>
         SetOverrides(
+            MaxPaidParkingDurationMode,
             MaxPaidParkingDuration,
+            MaxVisitElapsedDurationMode,
             MaxVisitElapsedDuration,
             AllowVisitExtension,
             AllowOpenEndedVisits,
             maxConcurrentVisits);
 
     public bool HasAnyOverride =>
-        MaxPaidParkingDuration is not null ||
-        MaxVisitElapsedDuration is not null ||
+        MaxPaidParkingDurationMode != PolicyDurationOverrideMode.Inherit ||
+        MaxVisitElapsedDurationMode != PolicyDurationOverrideMode.Inherit ||
         AllowVisitExtension is not null ||
         AllowOpenEndedVisits is not null ||
         MaxConcurrentVisits is not null;
 
     public Guid UserId { get; private set; }
+    public PolicyDurationOverrideMode MaxPaidParkingDurationMode { get; private set; } = PolicyDurationOverrideMode.Inherit;
     public TimeSpan? MaxPaidParkingDuration { get; private set; }
+    public PolicyDurationOverrideMode MaxVisitElapsedDurationMode { get; private set; } = PolicyDurationOverrideMode.Inherit;
     public TimeSpan? MaxVisitElapsedDuration { get; private set; }
     public bool? AllowVisitExtension { get; private set; }
     public bool? AllowOpenEndedVisits { get; private set; }
     public int? MaxConcurrentVisits { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    private static void ValidateDuration(TimeSpan? value, string parameterName)
+    private static void ValidateDurationOverride(
+        PolicyDurationOverrideMode mode,
+        TimeSpan? value,
+        string parameterName)
     {
-        if (value.HasValue && value.Value <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(parameterName);
+        if (mode == PolicyDurationOverrideMode.Value)
+        {
+            if (!value.HasValue || value.Value <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(parameterName);
+            return;
+        }
+
+        if (value.HasValue)
+            throw new ArgumentException("A duration value is only valid when override mode is Value.", parameterName);
     }
 }
 public sealed record EffectiveParkingPolicy(TimeSpan? MaxPaidParkingDuration, TimeSpan? MaxVisitElapsedDuration, bool AllowVisitExtension, bool AllowOpenEndedVisits = true, int MaxConcurrentVisits = 1);
 public static class ParkingPolicyResolver
 {
     public static EffectiveParkingPolicy Resolve(DefaultParkingPolicy defaults, UserPolicyOverride? overrides) => new(
-        overrides?.MaxPaidParkingDuration ?? defaults.MaxPaidParkingDuration,
-        overrides?.MaxVisitElapsedDuration ?? defaults.MaxVisitElapsedDuration,
+        ResolveDuration(
+            defaults.MaxPaidParkingDuration,
+            overrides?.MaxPaidParkingDurationMode ?? PolicyDurationOverrideMode.Inherit,
+            overrides?.MaxPaidParkingDuration),
+        ResolveDuration(
+            defaults.MaxVisitElapsedDuration,
+            overrides?.MaxVisitElapsedDurationMode ?? PolicyDurationOverrideMode.Inherit,
+            overrides?.MaxVisitElapsedDuration),
         overrides?.AllowVisitExtension ?? defaults.AllowVisitExtension,
         overrides?.AllowOpenEndedVisits ?? defaults.AllowOpenEndedVisits,
         overrides?.MaxConcurrentVisits ?? defaults.MaxConcurrentVisits);
+
+    private static TimeSpan? ResolveDuration(
+        TimeSpan? defaultValue,
+        PolicyDurationOverrideMode mode,
+        TimeSpan? overrideValue) =>
+        mode switch
+        {
+            PolicyDurationOverrideMode.Inherit => defaultValue,
+            PolicyDurationOverrideMode.Unlimited => null,
+            PolicyDurationOverrideMode.Value => overrideValue
+                ?? throw new InvalidOperationException("Duration override value is missing."),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
 }
