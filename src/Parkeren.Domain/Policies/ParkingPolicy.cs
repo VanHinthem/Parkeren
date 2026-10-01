@@ -70,8 +70,24 @@ public sealed class ParkingSystemSettings
 public sealed class DefaultParkingPolicy
 {
     private DefaultParkingPolicy() { }
-    public DefaultParkingPolicy(Guid id, TimeSpan? maxPaidParkingDuration, TimeSpan? maxVisitElapsedDuration, bool allowVisitExtension, bool allowOpenEndedVisits = true, int maxConcurrentVisits = 1)
-    { if (maxConcurrentVisits <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits)); Id=id; MaxPaidParkingDuration=maxPaidParkingDuration; MaxVisitElapsedDuration=maxVisitElapsedDuration; AllowVisitExtension=allowVisitExtension; AllowOpenEndedVisits=allowOpenEndedVisits; MaxConcurrentVisits=maxConcurrentVisits; UpdatedAt=DateTimeOffset.UtcNow; }
+
+    public DefaultParkingPolicy(
+        Guid id,
+        TimeSpan? maxPaidParkingDuration,
+        TimeSpan? maxVisitElapsedDuration,
+        bool allowVisitExtension,
+        bool allowOpenEndedVisits = true,
+        int maxConcurrentVisits = 1)
+    {
+        Id = id;
+        SetValues(
+            maxPaidParkingDuration,
+            maxVisitElapsedDuration,
+            allowVisitExtension,
+            allowOpenEndedVisits,
+            maxConcurrentVisits);
+    }
+
     public Guid Id { get; private set; }
     public TimeSpan? MaxPaidParkingDuration { get; private set; }
     public TimeSpan? MaxVisitElapsedDuration { get; private set; }
@@ -79,6 +95,32 @@ public sealed class DefaultParkingPolicy
     public bool AllowOpenEndedVisits { get; private set; }
     public int MaxConcurrentVisits { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public void SetValues(
+        TimeSpan? maxPaidParkingDuration,
+        TimeSpan? maxVisitElapsedDuration,
+        bool allowVisitExtension,
+        bool allowOpenEndedVisits,
+        int maxConcurrentVisits)
+    {
+        ValidateDuration(maxPaidParkingDuration, nameof(maxPaidParkingDuration));
+        ValidateDuration(maxVisitElapsedDuration, nameof(maxVisitElapsedDuration));
+        if (maxConcurrentVisits <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxConcurrentVisits));
+
+        MaxPaidParkingDuration = maxPaidParkingDuration;
+        MaxVisitElapsedDuration = maxVisitElapsedDuration;
+        AllowVisitExtension = allowVisitExtension;
+        AllowOpenEndedVisits = allowOpenEndedVisits;
+        MaxConcurrentVisits = maxConcurrentVisits;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static void ValidateDuration(TimeSpan? value, string parameterName)
+    {
+        if (value.HasValue && value.Value <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(parameterName);
+    }
 }
 public enum PolicyDurationOverrideMode
 {
