@@ -217,6 +217,87 @@ export type AdminParkingRuleSetCreateResult={
 export async function getAdminParkingRuleSets(){
   return json<AdminParkingRuleSetVersion[]>(await apiFetch("/api/admin/parking-rules"));
 }
+
+export type AdminBudgetPeriod={
+  id:string;
+  validFrom:string;
+  validUntil:string;
+  maximumPaidDurationMinutes:number;
+};
+export type AdminBudgetPeriodCreateResult={
+  outcome:"Created"|"Invalid"|"Overlap";
+  period:AdminBudgetPeriod|null;
+};
+export type AdminBudgetUsage={
+  period:AdminBudgetPeriod;
+  usedPaidDurationMinutes:number|null;
+  remainingPaidDurationMinutes:number|null;
+  isComplete:boolean;
+  error:string|null;
+};
+export async function getAdminBudgetPeriods(){
+  return json<AdminBudgetPeriod[]>(await apiFetch("/api/admin/budgets"));
+}
+export async function createAdminBudgetPeriod(input:{
+  validFrom:string;
+  validUntil:string;
+  maximumPaidDurationMinutes:number;
+}){
+  const response=await apiFetch("/api/admin/budgets",{method:"POST",body:JSON.stringify(input)});
+  return response.json() as Promise<AdminBudgetPeriodCreateResult>;
+}
+export async function getAdminBudgetUsage(periodId?:string){
+  const query=periodId?"?periodId="+encodeURIComponent(periodId):"";
+  const response=await apiFetch("/api/admin/budgets/usage"+query);
+  if(response.status===404)return null;
+  return json<AdminBudgetUsage>(response);
+}
+export type AdminParkingTariff={
+  id:string;
+  validFrom:string;
+  validUntil:string|null;
+  rate:number;
+  unit:"Hour";
+};
+export type AdminParkingTariffCreateResult={
+  outcome:"Created"|"Invalid"|"Overlap";
+  tariff:AdminParkingTariff|null;
+};
+export async function getAdminParkingTariffs(){
+  return json<AdminParkingTariff[]>(await apiFetch("/api/admin/tariffs"));
+}
+export async function createAdminParkingTariff(input:{
+  validFrom:string;
+  validUntil:string|null;
+  rate:number;
+  unit:"Hour";
+}){
+  const response=await apiFetch("/api/admin/tariffs",{method:"POST",body:JSON.stringify(input)});
+  return response.json() as Promise<AdminParkingTariffCreateResult>;
+}
+export type AdminVisitCost={
+  visitId:string;
+  userId:string;
+  username:string;
+  licensePlate:string;
+  startAt:string;
+  actualEndAt:string;
+  paidDurationMinutes:number|null;
+  amount:number|null;
+  isComplete:boolean;
+  error:string|null;
+};
+export type AdminCostReport={
+  from:string;
+  to:string;
+  totalPaidDurationMinutes:number|null;
+  totalAmount:number|null;
+  isComplete:boolean;
+  visits:AdminVisitCost[];
+};
+export async function getAdminCostReport(from:string,to:string){
+  return json<AdminCostReport>(await apiFetch("/api/admin/costs?from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to)));
+}
 export async function createAdminParkingRuleSetVersion(input:AdminParkingRuleSetCreateInput){
   const response=await apiFetch("/api/admin/parking-rules",{
     method:"POST",
