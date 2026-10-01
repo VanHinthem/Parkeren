@@ -50,10 +50,13 @@ public sealed class StartVisitFlow(
             coverageEvaluationEndAt,
             providerContext?.ParkingZoneId);
 
-        if (providerContext is null)
-            throw new InvalidOperationException("Server-resolved parking zone context is required for a Visit start.");
-        if (string.IsNullOrWhiteSpace(providerContext.LicensePlate) || string.IsNullOrWhiteSpace(providerContext.Location))
-            throw new InvalidOperationException("Provider context must contain a license plate and location.");
+        if (preparation.RequiresProviderCoverageNow)
+        {
+            if (providerContext is null)
+                throw new InvalidOperationException("Server-resolved provider context is required for a paid Visit start.");
+            if (string.IsNullOrWhiteSpace(providerContext.LicensePlate) || string.IsNullOrWhiteSpace(providerContext.Location))
+                throw new InvalidOperationException("Provider context must contain a license plate and location.");
+        }
 
         var claim = await claimer.ClaimAsync(
             preparation,
