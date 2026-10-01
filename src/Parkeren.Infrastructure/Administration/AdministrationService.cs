@@ -970,7 +970,22 @@ internal sealed class AdministrationService(
         }
 
         dbContext.ParkingRuleSets.Add(proposed);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "ParkingRuleSetCreated",
+            "ParkingRuleSet",
+            proposed.Id.ToString(),
+            new
+            {
+                ProviderProductId = proposed.ProviderProductId,
+                proposed.ValidFrom,
+                MaxProviderActionDurationMinutes = maxProviderActionDurationMinutes,
+                Continuation = continuation.ToString(),
+                PublicHolidaysAreFree = publicHolidaysAreFree,
+                PaidWindowCount = paidWindows.Count,
+                CalendarExceptionCount = calendarExceptions.Count
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminParkingRuleSetCreateResult(
@@ -1044,7 +1059,22 @@ internal sealed class AdministrationService(
         }
 
         dbContext.ParkingRuleSets.Add(proposed);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "ParkingRuleSetCreated",
+            "ParkingRuleSet",
+            proposed.Id.ToString(),
+            new
+            {
+                ProviderProductId = proposed.ProviderProductId,
+                proposed.ValidFrom,
+                MaxProviderActionDurationMinutes = maxProviderActionDurationMinutes,
+                Continuation = continuation.ToString(),
+                PublicHolidaysAreFree = publicHolidaysAreFree,
+                PaidWindowCount = paidWindows.Count,
+                CalendarExceptionCount = calendarExceptions.Count
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminParkingRuleSetCreateResult(
@@ -1183,7 +1213,19 @@ internal sealed class AdministrationService(
         }
 
         dbContext.ParkingBudgetPeriods.Add(proposed);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "ParkingBudgetCreated",
+            "ParkingBudgetPeriod",
+            proposed.Id.ToString(),
+            new
+            {
+                ProviderProductId = proposed.ProviderProductId,
+                proposed.ValidFrom,
+                proposed.ValidUntil,
+                MaximumPaidDurationMinutes = maximumPaidDurationMinutes
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminBudgetPeriodCreateResult(
@@ -1414,7 +1456,20 @@ internal sealed class AdministrationService(
             latestOpenToClose.CloseAt(validFrom);
 
         dbContext.ParkingTariffs.Add(proposed);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "ParkingTariffCreated",
+            "ParkingTariff",
+            proposed.Id.ToString(),
+            new
+            {
+                ProviderProductId = proposed.ProviderProductId,
+                proposed.ValidFrom,
+                proposed.ValidUntil,
+                proposed.Rate,
+                Unit = proposed.Unit.ToString()
+            },
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new AdminParkingTariffCreateResult(
