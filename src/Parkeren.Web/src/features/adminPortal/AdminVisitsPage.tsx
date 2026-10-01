@@ -16,7 +16,7 @@ import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminVisits.css";
 
-type AdminVisitStatus=AdminVisitSummary["status"];
+type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
 
 function formatDateTime(value:string|null){
   return value
@@ -32,7 +32,7 @@ function formatMinutes(value:number|null){
   return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
 }
 
-function statusLabel(status:AdminVisitSummary["status"]){
+function statusLabel(status:AdminVisitStatus){
   switch(status){
     case "Starting": return "Wordt gestart";
     case "Active": return "Actief";
