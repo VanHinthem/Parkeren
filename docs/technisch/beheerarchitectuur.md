@@ -263,7 +263,7 @@ Voorbeelden:
 
 ## Realisatiestatus beheerportaal — 1 oktober 2026
 
-De eerste vijf verticale slices zijn inmiddels gerealiseerd:
+De beheerimplementatie is inmiddels gerealiseerd tot en met slice 8.8:
 
 - **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
