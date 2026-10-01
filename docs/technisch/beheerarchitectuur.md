@@ -264,3 +264,32 @@ Voorbeelden:
 ## Vervolg
 
 De backendinventarisatie en informatiearchitectuur zijn vastgesteld. De volgende stap is de implementatie opdelen in kleine verticale slices. De eerste slice richt zich op het beheerfundament: de desktop admin-shell, routing/autorisatie en het operationele overzicht/#57, waarbij bestaande Visit-businessflows worden hergebruikt.
+
+## Verticale implementatieslices
+
+De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
+
+| Slice | Scope | Relatie |
+|---|---|---|
+| **8.1 Beheerfundament** | `/beheer` routing, admin-only toegang, desktop shell/navigatie en verhuizing van mobiel beheer naar `/snelbeheer` | basis voor alle volgende slices |
+| **8.2 Operationeel dashboard** | actieve Visits, capaciteit, operationele waarschuwingen, Visit openen en bestaande start/stop-use-cases ontsluiten | #57 |
+| **8.3 Visit-detail & beheerhistorie** | enriched Visit-detail, ProviderParkingActions, ProviderOperations, filters en beheerhistorie | #61, basis voor diagnose |
+| **8.4 Providerstatus & saldo** | officieel 2Park-saldo, freshness/status en actuele provideracties | #58, basis voor reconciliation |
+| **8.5 Gebruikers & voertuigen** | desktopbeheer voor gebruikers, voertuigen, toewijzingen en volledige user policies | #95 |
+| **8.6 Algemene policies/settings** | default policy, globale capaciteit, long-visit- en budget-warninginstellingen | #95 |
+| **8.7 Parkeerregels** | versioned rulesets, betaalvensters, kalenderuitzonderingen, provider-actionduur en continuation | #95 |
+| **8.8 Budgetten & tarieven** | budgetperioden, tarieven, lokaal gebruik en kostenberekening | #59, #60 |
+| **8.9 Analyse** | aggregatie per gebruiker/kenteken met drill-down naar Visits | #62 |
+| **8.10 Zones** | nieuw ParkingZone-domein en multi-zonebeheer | #95 |
+| **8.11 Discrepancies & reconciliation** | persistent discrepancy-model, detectie, historie en herstelcontext | #63 |
+| **8.12 Systeem & diagnostiek** | scheduler-, pushdelivery-, health-, audit- en infrastructuurstatus | #95 |
+
+### Slice-richtlijnen
+
+- 8.1 en 8.2 blijven bewust gescheiden: eerst het beheerfundament, daarna de eerste functionele beheerervaring.
+- Iedere slice is zo veel mogelijk verticaal: benodigde backend read/write use-cases, API, frontend en tests worden samen afgerond.
+- Bestaande businessflows worden hergebruikt; een beheerpagina krijgt geen alternatieve implementatie van bestaande Visit/providerlogica.
+- Nieuwe configuratiemutaties krijgen eerst een expliciete application/domain-use-case voordat ze vanuit de frontend worden aangeboden.
+- Geen migrations tijdens de V1-ontwikkeling; schemawijzigingen worden volgens de bestaande V1-afspraak later gereconcilieerd.
+- CI wordt niet automatisch gecontroleerd; fouten worden onderzocht wanneer een Actions-run wordt aangeleverd.
+
