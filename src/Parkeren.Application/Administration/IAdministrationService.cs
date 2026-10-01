@@ -44,6 +44,22 @@ public interface IAdministrationService
         DateTimeOffset now,
         CancellationToken cancellationToken);
     Task<AdminVisitDetail?> GetVisitDetailAsync(Guid actorUserId, Guid visitId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task<AdminSystemSettingsSummary> GetSystemSettingsAsync(Guid actorUserId, CancellationToken cancellationToken);
+    Task<AdminDefaultPolicyUpdateResult> SetDefaultParkingPolicyAsync(
+        Guid actorUserId,
+        int? maxPaidParkingDurationMinutes,
+        int? maxVisitElapsedDurationMinutes,
+        bool allowVisitExtension,
+        bool allowOpenEndedVisits,
+        int maxConcurrentVisits,
+        CancellationToken cancellationToken);
+    Task<AdminWarningSettingsUpdateResult> SetWarningSettingsAsync(
+        Guid actorUserId,
+        int? longVisitWarningAfterMinutes,
+        bool notifyAdminOnLongVisit,
+        int? longVisitReminderIntervalMinutes,
+        IReadOnlyList<int> budgetWarningThresholdPercentages,
+        CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -186,3 +202,45 @@ public sealed record AdminUserPolicyUpdateResult(
     AdminUserPolicyUpdateOutcome Outcome,
     int ActiveVisitCount,
     AdminUserPolicyDetail? Policy);
+
+public sealed record AdminSystemSettingsSummary(
+    AdminParkingPolicyValues DefaultPolicy,
+    DateTimeOffset DefaultPolicyUpdatedAt,
+    int GlobalMaxConcurrentVisits,
+    int? LongVisitWarningAfterMinutes,
+    bool NotifyAdminOnLongVisit,
+    int? LongVisitReminderIntervalMinutes,
+    IReadOnlyList<int> BudgetWarningThresholdPercentages,
+    DateTimeOffset SystemSettingsUpdatedAt);
+
+public enum AdminDefaultPolicyField
+{
+    MaxPaidParkingDuration,
+    MaxVisitElapsedDuration,
+    AllowVisitExtension,
+    AllowOpenEndedVisits,
+    MaxConcurrentVisits
+}
+
+public enum AdminDefaultPolicyUpdateOutcome
+{
+    Updated,
+    Invalid,
+    ActiveVisitConflict
+}
+
+public sealed record AdminDefaultPolicyUpdateResult(
+    AdminDefaultPolicyUpdateOutcome Outcome,
+    int AffectedActiveVisitCount,
+    IReadOnlyList<AdminDefaultPolicyField> BlockedFields,
+    AdminParkingPolicyValues CurrentPolicy);
+
+public enum AdminWarningSettingsUpdateOutcome
+{
+    Updated,
+    Invalid
+}
+
+public sealed record AdminWarningSettingsUpdateResult(
+    AdminWarningSettingsUpdateOutcome Outcome,
+    AdminSystemSettingsSummary Settings);
