@@ -198,6 +198,56 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
     }
 
     [Fact]
+    public async Task Warning_settings_are_persisted_and_returned_by_admin_read_model()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"admin-{suffix}", $"ADMIN-{suffix}", "hash", UserRole.Admin);
+
+        await using var seed = fixture.CreateDbContext();
+        var settings = await seed.ParkingSystemSettings.SingleAsync(ct);
+        var originalWarningAfter = settings.LongVisitWarningAfter;
+        var originalNotifyAdmin = settings.NotifyAdminOnLongVisit;
+        var originalReminder = settings.LongVisitReminderInterval;
+        var originalThresholds = settings.BudgetWarningThresholdPercentages.ToArray();
+        seed.Users.Add(admin);
+        await seed.SaveChangesAsync(ct);
+
+        try
+        {
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+
+            var update = await administration.SetWarningSettingsAsync(
+                admin.Id,
+                longVisitWarningAfterMinutes: 360,
+                notifyAdminOnLongVisit: false,
+                longVisitReminderIntervalMinutes: 120,
+                budgetWarningThresholdPercentages: new[] { 75, 90, 100 },
+                ct);
+
+            Assert.Equal(AdminWarningSettingsUpdateOutcome.Updated, update.Outcome);
+
+            var read = await administration.GetSystemSettingsAsync(admin.Id, ct);
+            Assert.Equal(360, read.LongVisitWarningAfterMinutes);
+            Assert.False(read.NotifyAdminOnLongVisit);
+            Assert.Equal(120, read.LongVisitReminderIntervalMinutes);
+            Assert.Equal(new[] { 75, 90, 100 }, read.BudgetWarningThresholdPercentages);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
+            var restore = await cleanup.ParkingSystemSettings.SingleAsync(ct);
+            restore.SetLongVisitNotifications(originalWarningAfter, originalNotifyAdmin, originalReminder);
+            restore.SetBudgetWarningThresholdPercentages(originalThresholds);
+            await cleanup.SaveChangesAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Lowering_global_capacity_clamps_default_concurrency()
     {
         var ct = TestContext.Current.CancellationToken;
