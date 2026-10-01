@@ -352,8 +352,12 @@ internal sealed class VisitSchedulerWorkProcessor(
                     .SingleAsync(x => x.Id == existingActionId, cancellationToken)).PlannedEndAt
                 : new[] { desiredEndAt, latestAction.PlannedEndAt + actionRules.MaxProviderActionDuration, nextPaid.End }.Min();
 
+            var providerLocation = visit.ProviderLocation;
+            if (string.IsNullOrWhiteSpace(providerLocation))
+                providerLocation = (await parkingProvider.GetProductAsync(cancellationToken)).Location;
+
             var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
-            if (string.IsNullOrWhiteSpace(visit.ProviderLocation) || executor is null)
+            if (string.IsNullOrWhiteSpace(providerLocation) || executor is null)
             {
                 work.Release(now.AddMinutes(1));
                 await dbContext.SaveChangesAsync(cancellationToken);
@@ -367,7 +371,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var startPreparation = await continuationStartStore.PrepareAttemptAsync(
                 visit, latestAction, work.Id, nextEndAt, cancellationToken);
             var startExecution = await executor.ExecuteAsync(
-                startPreparation, licensePlate, visit.ProviderLocation, cancellationToken);
+                startPreparation, licensePlate, providerLocation, cancellationToken);
             if (startExecution.RequiresReconciliation)
             {
                 work.Release(now.AddMinutes(1));
