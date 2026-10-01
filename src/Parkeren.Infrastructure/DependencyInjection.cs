@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddSingleton<AdminProviderStatusCache>();
         services.AddScoped<IAdminProviderStatusService, AdminProviderStatusService>();
+        services.AddScoped<IProviderProductCatalogService, ProviderProductCatalogService>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
         services.AddScoped<IVisitSchedulerWorkClaimer, PostgresVisitSchedulerWorkClaimer>();
         services.AddScoped<IVisitSchedulerWorkProcessor, VisitSchedulerWorkProcessor>();
