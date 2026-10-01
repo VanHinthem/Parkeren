@@ -10,8 +10,8 @@ public sealed record AdminSystemDiagnosticsSummary(
     AdminDatabaseDiagnostics Database,
     AdminConfigurationDiagnostics Provider,
     AdminConfigurationDiagnostics WebPush,
-    AdminQueueDiagnostics Scheduler,
-    AdminQueueDiagnostics PushDeliveries);
+    AdminSchedulerDiagnostics Scheduler,
+    AdminPushDeliveryDiagnostics PushDeliveries);
 
 public sealed record AdminDatabaseDiagnostics(
     bool Healthy,
@@ -21,11 +21,17 @@ public sealed record AdminConfigurationDiagnostics(
     bool Configured,
     string Status);
 
-public sealed record AdminQueueDiagnostics(
-    int Pending,
-    int Claimed,
-    int Completed,
-    int Cancelled,
-    int Failed,
-    DateTimeOffset? OldestPendingAt,
+public sealed record AdminSchedulerDiagnostics(
+    int PendingCount,
+    int ClaimedCount,
+    int OverdueCount,
+    DateTimeOffset? OldestPendingDueAt,
+    DateTimeOffset? OldestClaimedAt,
     DateTimeOffset? LastCompletedAt);
+
+public sealed record AdminPushDeliveryDiagnostics(
+    int PendingCount,
+    int FailedCount,
+    DateTimeOffset? OldestPendingCreatedAt,
+    DateTimeOffset? LastAttemptAt,
+    DateTimeOffset? LastDeliveredAt);
