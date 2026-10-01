@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IAdministrationService, AdministrationService>();
+        services.AddScoped<IAdminSystemDiagnosticsService, AdminSystemDiagnosticsService>();
         services.AddSingleton<AdminProviderStatusCache>();
         services.AddScoped<IAdminProviderStatusService, AdminProviderStatusService>();
         services.AddScoped<IProviderProductCatalogService, ProviderProductCatalogService>();
