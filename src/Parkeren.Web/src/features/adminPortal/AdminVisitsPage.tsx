@@ -17,6 +17,7 @@ import { clearPendingOperation,getOrCreatePendingOperation } from "../../pending
 import "./AdminVisits.css";
 
 type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
+type AdminVisitStatusFilter=AdminVisitStatus|"";
 
 function formatDateTime(value:string|null){
   return value
@@ -135,7 +136,7 @@ export function AdminVisitsPage(){
 
         <label className="admin-visits__field">
           <span>Status</span>
-          <select value={status} onChange={event=>setStatus(event.target.value as AdminVisitStatus|"")}>
+          <select value={status} onChange={event=>setStatus(event.target.value as AdminVisitStatusFilter)}>
             <option value="">Alle statussen</option>
             <option value="Starting">Wordt gestart</option>
             <option value="Active">Actief</option>
