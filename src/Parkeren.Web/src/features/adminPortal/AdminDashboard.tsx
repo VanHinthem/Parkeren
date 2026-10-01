@@ -1,5 +1,6 @@
 import { useEffect,useMemo,useState } from "react";
 import {
+  getAdminBudgetUsage,
   getAdminDashboard,
   getAdminProviderStatus,
   getAdminUserParkingPolicy,
@@ -7,6 +8,7 @@ import {
   getUsers,
   startVisit,
   stopVisit,
+  type AdminBudgetUsage,
   type AdminDashboardSummary,
   type AdminParkingPolicySummary,
   type AdminProviderStatus,
@@ -71,6 +73,7 @@ function durationOptions(maxMinutes:number|null){
 export function AdminDashboard(){
   const[dashboard,setDashboard]=useState<AdminDashboardSummary>();
   const[providerStatus,setProviderStatus]=useState<AdminProviderStatus>();
+  const[budgetUsage,setBudgetUsage]=useState<AdminBudgetUsage|null>();
   const[users,setUsers]=useState<UserSummary[]>([]);
   const[selectedUserId,setSelectedUserId]=useState("");
   const[vehicles,setVehicles]=useState<VehicleSummary[]>();
@@ -93,9 +96,15 @@ export function AdminDashboard(){
     setLoading(true);
     setError(undefined);
     try{
-      const[result,userList,provider]=await Promise.all([getAdminDashboard(),getUsers(),getAdminProviderStatus()]);
+      const[result,userList,provider,budget]=await Promise.all([
+        getAdminDashboard(),
+        getUsers(),
+        getAdminProviderStatus(),
+        getAdminBudgetUsage()
+      ]);
       setDashboard(result);
       setProviderStatus(provider);
+      setBudgetUsage(budget);
       const visitors=userList.filter(user=>user.role==="Visitor"&&user.isActive);
       setUsers(visitors);
       setSelectedUserId(current=>visitors.some(user=>user.id===current)?current:(visitors[0]?.id??""));
@@ -242,6 +251,19 @@ export function AdminDashboard(){
               ?"Actueel volgens provider"
               :"Niet beschikbaar"}
         </small>
+      </section>
+      <section className="admin-dashboard__metric">
+        <span>Lokaal jaarbudget</span>
+        <strong>{budgetUsage?.isComplete
+          ? formatPaidMinutes(budgetUsage.remainingPaidDurationMinutes)
+          : budgetUsage===null
+            ?"Niet ingesteld"
+            :"Onvolledig"}</strong>
+        <small>{budgetUsage?.isComplete
+          ? `${formatPaidMinutes(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatPaidMinutes(budgetUsage.period.maximumPaidDurationMinutes)}`
+          : budgetUsage===null
+            ?"Configureer een budgetperiode"
+            :"Historische parkeerregels dekken de periode niet volledig"}</small>
       </section>
     </div>
 
