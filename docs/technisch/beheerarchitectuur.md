@@ -269,7 +269,8 @@ De eerste vijf verticale slices zijn inmiddels gerealiseerd:
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
 - **8.3 Visit-detail & beheerhistorie** — filters, Visit-detail, provideractions/operations, policy snapshot en relevante rulesetversies;
 - **8.4 Providerstatus & saldo** — officieel providersaldo met freshness/stale-semantiek en actuele provideractions;
-- **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor.
+- **8.5 Gebruikers & voertuigen** — desktop gebruikers-/voertuigenbeheer, toewijzingen, PIN/sessies en volledige per-user policy-editor;
+- **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -281,6 +282,19 @@ Voor user policy overrides geldt in 8.5:
 - de bestaande Visit-policy snapshot blijft leidend voor historie.
 
 Duur-overrides gebruiken expliciet `PolicyDurationOverrideMode` met drie toestanden: `Inherit`, `Value` en `Unlimited`. Daardoor kan een gebruiker de default volgen, een concrete eigen limiet krijgen of expliciet onbeperkt worden ingesteld, ook wanneer de default begrensd is. De nullable effectieve duur blijft uitsluitend betekenen: **geen effectieve limiet**.
+
+Voor 8.6 geldt daarnaast:
+
+- `DefaultParkingPolicy` is volledig beheerbaar via een expliciete administration-use-case;
+- defaultwijzigingen worden per gewijzigd veld getoetst tegen actieve Visits;
+- een defaultveld mag wijzigen wanneer actieve gebruikers voor dat veld een expliciete override hebben;
+- de UI toont bij een blokkade de geraakte velden en het aantal actieve Visits;
+- `DefaultParkingPolicy.MaxConcurrentVisits` kan niet boven de globale capaciteit uitkomen;
+- verlagen van de globale capaciteit klemt zowel hogere user-overrides als de default concurrency;
+- Long Visit-warningtijd, adminnotificatie, reminderinterval en budgetwaarschuwingsdrempels zijn beheerbaar;
+- bestaande reeds geplande Long Visit scheduler-work behoudt zijn bestaande `DueAt`; nieuwe Visits en toekomstige reminderplanning gebruiken de actuele instellingen.
+
+Persistente generieke audit van beheerwijzigingen wordt in 8.12 ontsloten. De huidige policy/settings-records bewaren hun `UpdatedAt`, maar #74 blijft tot die auditlaag formeel open.
 
 ## Vervolg
 
