@@ -372,8 +372,6 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Single(await verifyContext.NotificationEvents
             .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
             .ToListAsync(cancellationToken));
-    }
-
 
         await verifyContext.ProviderDiscrepancies
             .Where(x => x.Id == discrepancy.Id)
@@ -381,6 +379,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await verifyContext.ParkingProviderProducts
             .Where(x => x.Id == discrepancyProduct.Id)
             .ExecuteDeleteAsync(cancellationToken);
+    }
 
     [Fact]
     public async Task Completed_visit_creates_budget_warning_for_active_admin_only()
