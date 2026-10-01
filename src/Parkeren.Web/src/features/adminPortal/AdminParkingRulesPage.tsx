@@ -2,7 +2,9 @@ import { useEffect,useState } from "react";
 import {
   createAdminParkingRuleSetVersion,
   getAdminParkingRuleSets,
+  getAdminProviderProducts,
   type AdminParkingRuleSetVersion,
+  type AdminProviderProduct,
   type DayOfWeekName
 } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
@@ -78,6 +80,8 @@ function toEditorExceptions(version:AdminParkingRuleSetVersion|undefined):Except
 }
 
 export function AdminParkingRulesPage(){
+  const[products,setProducts]=useState<AdminProviderProduct[]>();
+  const[selectedProductId,setSelectedProductId]=useState<string>();
   const[versions,setVersions]=useState<AdminParkingRuleSetVersion[]>();
   const[error,setError]=useState<string>();
   const[message,setMessage]=useState<string>();
@@ -100,10 +104,10 @@ export function AdminParkingRulesPage(){
     setExceptions(toEditorExceptions(latest));
   }
 
-  async function load(resetEditor:boolean){
+  async function load(productId:string,resetEditor:boolean){
     setError(undefined);
     try{
-      const rows=await getAdminParkingRuleSets();
+      const rows=await getAdminParkingRuleSets(productId);
       setVersions(rows);
       if(resetEditor)applyLatest(rows);
     }catch(e){
@@ -111,9 +115,37 @@ export function AdminParkingRulesPage(){
     }
   }
 
-  useEffect(()=>{void load(true);},[]);
+  useEffect(()=>{
+    void (async()=>{
+      try{
+        const rows=await getAdminProviderProducts();
+        setProducts(rows);
+        const selected=rows.find(product=>product.isDefault)?.id
+          ?? rows.find(product=>product.isAvailable)?.id
+          ?? rows[0]?.id;
+        setSelectedProductId(selected);
+        if(!selected)setVersions([]);
+      }catch(e){
+        setError(e instanceof Error?e.message:"Providerproducten konden niet worden geladen.");
+      }
+    })();
+  },[]);
+
+  useEffect(()=>{
+    if(selectedProductId)void load(selectedProductId,true);
+  },[selectedProductId]);
 
   async function save(){
+    const selectedProduct=products?.find(product=>product.id===selectedProductId);
+    if(!selectedProductId||!selectedProduct){
+      setError("Selecteer eerst een 2Park-product.");
+      return;
+    }
+    if(!selectedProduct.isAvailable){
+      setError("Dit providerproduct is niet meer beschikbaar; historische configuratie blijft alleen-lezen.");
+      return;
+    }
+
     const startAt=new Date(validFrom);
     const hours=Number(maxActionHours);
     if(!validFrom||Number.isNaN(startAt.getTime())||startAt.getTime()<=Date.now()){
@@ -138,6 +170,7 @@ export function AdminParkingRulesPage(){
     setMessage(undefined);
     try{
       const result=await createAdminParkingRuleSetVersion({
+        providerProductId:selectedProductId,
         validFrom:startAt.toISOString(),
         maxProviderActionDurationMinutes:Math.round(hours*60),
         continuation,
@@ -152,14 +185,14 @@ export function AdminParkingRulesPage(){
 
       if(result.outcome==="Created"){
         setMessage("Nieuwe parkeerregelversie is gepland; de vorige versie wordt op de ingangsdatum afgesloten.");
-        await load(true);
+        await load(selectedProductId,true);
         return;
       }
       if(result.outcome==="MustBeFuture"){
         setError("De ingangsdatum moet in de toekomst liggen.");
       }else if(result.outcome==="SequenceConflict"){
         setError("Er is inmiddels een nieuwere rulesetversie. Vernieuw de pagina en plan de versie opnieuw.");
-        await load(true);
+        await load(selectedProductId,true);
       }else{
         setError("De parkeerregels zijn ongeldig. Controleer overlappende vensters, dubbele uitzonderingen en de provider-actieduur.");
       }
@@ -170,7 +203,7 @@ export function AdminParkingRulesPage(){
     }
   }
 
-  if(!versions&&!error)return <Loading label="Parkeerregels laden"/>;
+  if((!products||!versions)&&!error)return <Loading label="Parkeerregels laden"/>;
   if(!versions)return <div className="admin-rules">
     <Alert tone="danger">{error??"Parkeerregels konden niet worden geladen."}</Alert>
     <div className="admin-rules__actions"><Button onClick={()=>void load(true)}>Opnieuw proberen</Button></div>
@@ -178,7 +211,7 @@ export function AdminParkingRulesPage(){
 
   return <div className="admin-rules">
     <nav className="admin-rules__tabs" aria-label="Parkeerconfiguratie">
-      <a className="admin-rules__tab" href="/beheer/configuratie/zones">Zones</a>
+      <a className="admin-rules__tab" href="/beheer/provider">Providerproducten</a>
       <a className="admin-rules__tab active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
       <a className="admin-rules__tab" href="/beheer/configuratie/tarieven">Tarieven</a>
       <a className="admin-rules__tab" href="/beheer/configuratie/budgetten">Budgetten</a>
@@ -186,6 +219,26 @@ export function AdminParkingRulesPage(){
 
     {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}
+
+    <section className="admin-rules__panel">
+      <h2>2Park-product</h2>
+      {products.length===0
+        ? <p>Er zijn nog geen providerproducten gesynchroniseerd. Synchroniseer ze eerst onder <a href="/beheer/provider">Provider & reconciliatie</a>.</p>
+        : <div className="admin-rules__grid">
+            <label className="admin-rules__field">
+              <span>Configuratie voor</span>
+              <select value={selectedProductId??""} onChange={event=>setSelectedProductId(event.target.value)}>
+                {products.map(product=><option key={product.id} value={product.id}>
+                  {product.name}{product.isDefault?" · default":""}{product.isAvailable?"":" · niet beschikbaar"}
+                </option>)}
+              </select>
+            </label>
+            {selectedProductId&&<div className="admin-rules__fact">
+              <span>Providercontext</span>
+              <strong>{products.find(product=>product.id===selectedProductId)?.location??"—"}</strong>
+            </div>}
+          </div>}
+    </section>
 
     <section className="admin-rules__panel">
       <h2>Nieuwe rulesetversie plannen</h2>
@@ -257,7 +310,7 @@ export function AdminParkingRulesPage(){
         </div>
 
         <div className="admin-rules__actions">
-          <Button onClick={()=>void save()} disabled={saving}>{saving?"Opslaan…":"Nieuwe versie plannen"}</Button>
+          <Button onClick={()=>void save()} disabled={saving||!products.find(product=>product.id===selectedProductId)?.isAvailable}>{saving?"Opslaan…":"Nieuwe versie plannen"}</Button>
           <Button variant="secondary" onClick={()=>applyLatest(versions)} disabled={saving}>Terug naar laatste versie</Button>
         </div>
       </div>
