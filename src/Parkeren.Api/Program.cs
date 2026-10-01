@@ -904,6 +904,19 @@ app.MapGet("/api/admin/system/settings", async (
     return Results.Ok(await administration.GetSystemSettingsAsync(authenticated.User.Id, cancellationToken));
 });
 
+app.MapGet("/api/admin/system/diagnostics", async (
+    IAdminSystemDiagnosticsService diagnostics,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+
+    return Results.Ok(await diagnostics.GetAsync(cancellationToken));
+});
+
 app.MapPut("/api/admin/system/default-policy", async (
     AdminDefaultPolicyUpdateRequest request,
     IAdministrationService administration,
