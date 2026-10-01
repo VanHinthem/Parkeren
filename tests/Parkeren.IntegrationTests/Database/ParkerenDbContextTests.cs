@@ -3455,9 +3455,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
             VisitSchedulerWorkType.ContinueProviderCoverage, nextPaidStart);
         work.Claim("gap-worker", DateTimeOffset.UtcNow);
-        var paidWindows = Enumerable.Range(0, 7)
-            .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
-            .ToArray();
+        var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
+        var localPaidStart = TimeZoneInfo.ConvertTime(nextPaidStart, businessZone);
+        var localPaidEnd = TimeZoneInfo.ConvertTime(nextPaidEnd, businessZone);
+        var paidWindows = new[]
+        {
+            new PaidWindow(
+                localPaidStart.DayOfWeek,
+                TimeOnly.FromDateTime(localPaidStart.DateTime),
+                TimeOnly.FromDateTime(localPaidEnd.DateTime))
+        };
 
         await using (var seedContext = fixture.CreateDbContext())
         {
