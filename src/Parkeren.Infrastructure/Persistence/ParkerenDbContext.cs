@@ -172,6 +172,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.ToTable("provider_parking_actions");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ProviderActionId).HasMaxLength(200);
+            entity.Property(x => x.ProviderProductId).HasMaxLength(200);
+            entity.Property(x => x.ProviderLocation).HasMaxLength(100);
             entity.Property(x => x.ProviderStatus).HasMaxLength(100);
             entity.Property(x => x.State).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -284,6 +286,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.StartedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.ProviderProductId);
             entity.OwnsOne(x => x.PolicySnapshot, owned =>
             {
                 owned.Property(x => x.MaxPaidParkingDuration).HasColumnName("PolicyMaxPaidParkingDuration");
