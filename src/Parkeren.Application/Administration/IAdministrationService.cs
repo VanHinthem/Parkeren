@@ -60,6 +60,19 @@ public interface IAdministrationService
         int? longVisitReminderIntervalMinutes,
         IReadOnlyList<int> budgetWarningThresholdPercentages,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<AdminParkingRuleSetVersion>> GetParkingRuleSetsAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken);
+    Task<AdminParkingRuleSetCreateResult> CreateParkingRuleSetVersionAsync(
+        Guid actorUserId,
+        DateTimeOffset validFrom,
+        int maxProviderActionDurationMinutes,
+        ProviderCoverageContinuation continuation,
+        bool publicHolidaysAreFree,
+        IReadOnlyList<AdminPaidWindowInput> paidWindows,
+        IReadOnlyList<AdminCalendarExceptionInput> calendarExceptions,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
 }
 
 public sealed record UserSummary(Guid Id, string Username, UserRole Role, bool IsActive, int? MaxConcurrentVisits);
@@ -244,3 +257,45 @@ public enum AdminWarningSettingsUpdateOutcome
 public sealed record AdminWarningSettingsUpdateResult(
     AdminWarningSettingsUpdateOutcome Outcome,
     AdminSystemSettingsSummary Settings);
+
+public sealed record AdminPaidWindowInput(
+    DayOfWeek Day,
+    TimeOnly Start,
+    TimeOnly End);
+
+public sealed record AdminCalendarExceptionInput(
+    DateOnly Date,
+    bool IsPaid);
+
+public sealed record AdminPaidWindowSummary(
+    Guid Id,
+    DayOfWeek Day,
+    TimeOnly Start,
+    TimeOnly End);
+
+public sealed record AdminCalendarExceptionSummary(
+    Guid Id,
+    DateOnly Date,
+    bool IsPaid);
+
+public sealed record AdminParkingRuleSetVersion(
+    Guid Id,
+    DateTimeOffset ValidFrom,
+    DateTimeOffset? ValidUntil,
+    int MaxProviderActionDurationMinutes,
+    ProviderCoverageContinuation Continuation,
+    bool PublicHolidaysAreFree,
+    IReadOnlyList<AdminPaidWindowSummary> PaidWindows,
+    IReadOnlyList<AdminCalendarExceptionSummary> CalendarExceptions);
+
+public enum AdminParkingRuleSetCreateOutcome
+{
+    Created,
+    Invalid,
+    MustBeFuture,
+    SequenceConflict
+}
+
+public sealed record AdminParkingRuleSetCreateResult(
+    AdminParkingRuleSetCreateOutcome Outcome,
+    AdminParkingRuleSetVersion? Version);
