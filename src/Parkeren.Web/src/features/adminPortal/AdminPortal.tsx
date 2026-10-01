@@ -5,6 +5,7 @@ import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
+import { AdminSystemDiagnosticsPage } from "./AdminSystemDiagnosticsPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
 import { AdminUsagePage } from "./AdminUsagePage";
@@ -171,6 +172,8 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           ) : section.path === "/beheer/systeem" ? (
             currentPath === "/beheer/systeem" ? (
               <AdminSystemPage />
+            ) : currentPath === "/beheer/systeem/diagnostiek" ? (
+              <AdminSystemDiagnosticsPage />
             ) : (
               <section className="admin-portal__panel admin-portal__placeholder">
                 <h2>{section.title}</h2>
