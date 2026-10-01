@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
+import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import "./AdminPortal.css";
 
 type Props = {
@@ -120,6 +121,12 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
 
           {section.path === "/beheer" ? (
             <AdminDashboard />
+          ) : section.path === "/beheer/bezoeken" ? (
+            currentPath.startsWith("/beheer/bezoeken/") ? (
+              <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
+            ) : (
+              <AdminVisitsPage />
+            )
           ) : (
             <section className="admin-portal__panel admin-portal__placeholder">
               <h2>{section.title}</h2>
