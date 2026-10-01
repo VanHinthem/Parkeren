@@ -1097,9 +1097,15 @@ app.MapPost("/api/visits/start", async (
         cancellationToken);
     if (requestContext is null)
         return Results.BadRequest(new { error = "Visit-context kon niet worden bepaald." });
+    if (requestContext.ProviderContext?.ProductId is not Guid providerProductId ||
+        string.IsNullOrWhiteSpace(requestContext.ProviderContext.ProviderProductId))
+        return Results.Problem(
+            "Er is geen beschikbaar default parkeerproduct geconfigureerd.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
 
-    var operationalContext = await operationalContextResolver.ResolveAsync(
+    var operationalContext = await operationalContextResolver.ResolveForProductAsync(
         ownerUserId,
+        providerProductId,
         startAt,
         request.DesiredEndAt,
         cancellationToken);
