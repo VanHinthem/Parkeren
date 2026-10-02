@@ -2,164 +2,124 @@
 
 **Laatst bijgewerkt:** 2 oktober 2026
 
-Dit bestand wordt vanaf de implementatiefase bijgewerkt in dezelfde logische commits als de codewijzigingen. Er worden geen aparte voortgangscommits gemaakt.
+## Eindstatus vóór SCHED-018
 
-## Fase A — state policy en locking
+Scheduler-hardening en regressieverificatie voor **SCHED-001 t/m SCHED-017 zijn afgerond en CI-groen**. De enige bewust nog niet gestarte schedulerverbetering is **SCHED-018 — persistente scheduler observability/audit trail**.
 
-### A1 — SCHED-015 work-type execution policy
+## Fase A — state policy en locking ✅
 
-- ✅ `VisitSchedulerWorkExecutionPolicy` toegevoegd.
-- ✅ Volledige status/health-matrix unit-getest, inclusief `StopFailed`.
-- ✅ CI groen op commit `fa697924` (`test: cover scheduler work execution policy`).
-- ✅ `PostgresVisitSchedulerWorkClaimer` aangesloten op `Execute` / `Defer` / `Cancel`.
-- ✅ `Pending` work kan semantisch worden uitgesteld zonder kunstmatig claim/release-pad.
-- ✅ CI groen op commit `82ea3ba6` (`fix: apply scheduler work execution policy`).
-- ✅ `ReleaseFailedAsync` gebruikt dezelfde policy; `Execute` en `Defer` releasen voor retry, alleen `Cancel` annuleert definitief.
-- ✅ CI groen op commit `7554ceb2` (`fix: apply scheduler retry policy`).
+- centrale `VisitSchedulerWorkExecutionPolicy` toegevoegd;
+- claim, retry en recovery gebruiken dezelfde `Execute` / `Defer` / `Cancel` semantiek;
+- `StopVisit` is niet afhankelijk van health;
+- `LongVisitWarning` volgt lifecycle, niet providerhealth;
+- uniforme Visit-first lock-order ingevoerd;
+- race-tests voor schedulerclaim versus Stop/end-time change en gelijke `DueAt`-prioriteit groen.
 
-Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt standaard **1 minuut** uitgesteld. Recovery mag eerder herbeoordelen. De delay staat op één plek in de claimer en kan later eenvoudig configureerbaar worden gemaakt als operationele tuning dat nodig maakt.
+Belangrijkste bewijs: `4023c6e3`.
 
-### A2 — SCHED-014 uniforme lock-order
+## Fase B — terminale Visit lifecycle ✅
 
-- ✅ `ClaimNextDueAsync` gebruikt tweefasenclaim: kandidaat zonder row lock, daarna Visit advisory lock, daarna exacte scheduler-row `FOR UPDATE` en her-validatie.
-- ✅ Bij gelijke `DueAt` geldt selectieprioriteit `StopVisit -> ContinueProviderCoverage -> LongVisitWarning`.
-- ✅ CI groen op commit `7c86a9f8` (`fix: enforce visit-first scheduler claim locking`).
-- ✅ `ReleaseFailedAsync` gebruikt dezelfde Visit-first lock-order en revalideert pas na de row lock.
-- ✅ CI groen op commit `69675b38` (`fix: enforce visit-first scheduler retry locking`).
-- ✅ PostgreSQL-racetests toegevoegd voor twee workers, claim versus manual Stop, claim versus end-time change en gelijke `DueAt`-prioriteit.
-- ✅ CI groen op commit `4023c6e3` (`test: cover scheduler locking races`).
-- ✅ SCHED-014 afgerond.
+- `VisitEndReason` toegevoegd;
+- centrale `VisitTerminalBoundaryCalculator`;
+- tie-break `MaxPaid -> MaxElapsed -> DesiredEnd`;
+- `VisitTerminalWorkPlanner` bewaakt duurzame terminale `StopVisit`-work;
+- automatische finalization gebruikt terminale `DueAt` als functionele `ActualEndAt`;
+- startup recovery herbouwt ontbrekende/verouderde terminal-work.
 
-## Fase B — terminale Visit lifecycle ✅ AFGEROND
+Belangrijkste eindcommit recovery: `203d562a`.
 
-### B1 — SCHED-013 Visit end reason
+## Fase C — provider identity/matching ✅
 
-- ✅ `VisitEndReason` toegevoegd met `ManualStop`, `DesiredEndReached`, `MaxVisitElapsedDurationReached` en `MaxPaidParkingDurationReached`.
-- ✅ `Visit.BeginStopping(reason)` legt de reden persistent vast; bestaande parameterloze `BeginStopping()` blijft compatibel en betekent `ManualStop`.
-- ✅ Domeintests dekken expliciete reden en immutable lifecycle-semantiek.
-- ✅ CI groen op commit `baee2000` (`feat: add visit end reason`).
-
-### B2 — centrale terminal boundary
-
-- ✅ `VisitTerminalBoundaryCalculator` bepaalt de vroegste functionele grens uit DesiredEndAt, MaxVisitElapsedDuration en MaxPaidParkingDuration.
-- ✅ Paid-time gebruikt versioned parkeerregels; gratis/overnight tijd telt niet mee.
-- ✅ Tie-break vastgelegd als `MaxPaid -> MaxElapsed -> DesiredEnd`.
-- ✅ Unit tests dekken desired/elapsed/paid, overnight, tie-break en onbeperkte Visits.
-- ✅ CI groen na gerichte testfixes op commit `91b93086`.
-
-### B3 — terminal scheduler work
-
-- ✅ `VisitSchedulerWork.EndReason` toegevoegd; alleen `StopVisit` work mag een eindreden dragen.
-- ✅ `VisitTerminalWorkPlanner.EnsureAsync` bewaakt idempotent precies één actuele terminale Stop-taak en vervangt alleen pending obsolete work.
-- ✅ Claimed terminal work wordt nooit stil vervangen.
-- ✅ Domein- en PostgreSQL-integratietests toegevoegd voor metadata, idempotentie, replacement en claimed conflict.
-- ✅ Terminal planning aangesloten op Visit start en `DesiredEndAt`-wijzigingen; oude ad-hoc StopVisit-planning verwijderd.
-- ✅ CI groen op commit `8d358ada` na fixture- en PostgreSQL timestamp-precisiefixes.
-
-### B4 — terminal stop execution, finalization en recovery
-
-- ✅ `StopVisitCommand` kan een expliciete `VisitEndReason` dragen; ontbrekende reden blijft compatibel en betekent `ManualStop`.
-- ✅ `PostgresStopVisitClaimer` gebruikt de expliciete eindreden bij de overgang naar `Stopping`.
-- ✅ CI groen op commit `843228ca` (`feat: carry visit end reason through stop claim`).
-- ✅ Als de schedulercommand geen reden meegeeft, resolveert de claimer de reden uit de duurzame `StopVisit`-work met hetzelfde operation/work-id.
-- ✅ Replays valideren dat een gevonden terminale reden niet conflicteert met de reeds vastgelegde Visit-redenen.
-- ✅ `StopVisitFinalizer` gebruikt voor automatische terminale stops de `DueAt` van de matchende scheduler-work als functionele `ActualEndAt`; manual stop blijft de werkelijke stoptijd gebruiken.
-- ✅ CI groen op commit `76103a03` (`fix: finalize visits at terminal boundary`).
-- ✅ PostgreSQL-integratietests dekken automatische `EndReason` + boundary-`ActualEndAt` en behoud van `ManualStop` + echte stoptijd.
-- ✅ Test-cleanup hersteld; volledige CI groen op commit `b810214e`.
-- ✅ Startup terminal recovery herbouwt ontbrekende/verouderde terminale Stop-work vóór de scheduler claim-loop wordt vrijgegeven.
-- ✅ Recoverytests dekken ontbrekende overdue terminal work (direct claimbaar) en vervanging van obsolete pending terminal work.
-- ✅ Volledige CI groen op commit `203d562a` (`fix: rebuild terminal work during recovery`).
-
-## Fase C — provider identity/matching — SCHED-017, deel SCHED-009 ✅ AFGEROND
-
-### C1 — centrale `ProviderActionMatchPolicy`
-
-V1-besluit provider timestamp tolerance: **5 seconden**. Dit is bewust een **engineering margin**, geen gemeten 2Park-SLA. Start en End gebruiken dezelfde tolerance tenzij later live 2Park-bewijs een onderscheid rechtvaardigt.
+V1 timestamp tolerance: **5 seconden**, bewust een engineering margin en geen gemeten 2Park-SLA.
 
 Matchingprioriteit:
 
-1. bekende provider action-id;
-2. provider productcontext;
-3. genormaliseerd kenteken;
-4. semantisch geldige status;
-5. Start/End binnen de centrale tolerance.
+1. known action-id;
+2. provider product;
+3. normalized plate indien relevant;
+4. semantische status;
+5. Start/End binnen tolerance indien relevant.
 
-Aanvullende afspraken:
+Aanvullend:
 
-- Stop blijft primair action-id driven; geen onnodige fallback-identificatie toevoegen.
-- Eerst beoordelen waarom `TwoParkProvider.StartActionAsync` nu `< 2 minuten` gebruikt voordat die logica wordt vervangen.
-- `ExternalProviderAction` detection niet automatisch fallback-matchen wanneer het provider action-id onbekend is.
-- Locationcode versus providerlabel is geen harde identity mismatch.
-- Zonder bekend provider action-id mag fallback alleen één unieke kandidaat accepteren.
+- Stop blijft action-id driven;
+- bekende-ID mismatch mag nooit fallbacken;
+- onbekende-ID fallback vereist één unieke kandidaat;
+- locationlabel versus code is geen identity mismatch;
+- `ExternalProviderAction` detection blijft exact-ID gebaseerd.
 
-- ✅ Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; CI groen op commit `8ffaa755` (`fix: centralize provider action matching`).
-- ✅ Directe start-readback en `StartVisitProviderReconciler` aangesloten op de centrale policy; CI groen op commit `417afe53` (`fix: apply provider match policy to starts`).
-- ✅ Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
-- ✅ Extend precheck, directe extend-readback en `ContinueVisitProviderReconciler` aangesloten op dezelfde centrale action-id/product/status/timestamp-semantiek; CI groen op commit `08c7d831` (`fix: apply provider match policy to extensions`).
-- ✅ Matchcriteria ondersteunen onbekende caller-context expliciet: kenteken/status/timestamps worden alleen toegepast wanneer de caller die informatie bezit; een bekende action-id valt nooit terug naar een andere kandidaat.
-- ✅ Stop read-back en Stop reconciliation gebruiken dezelfde centrale action-id/product identity; Stop blijft strikt action-id driven zonder fallback; CI groen op commit `797021ec` (`fix: apply provider match policy to stops`).
-- ✅ Beoordeeld waarom `TwoParkProvider.StartActionAsync` `< 2 minuten` gebruikte: de startresponse levert geen bruikbaar action-id op, waardoor de adapter via read-back een fallback-kandidaat moest zoeken; de 2-minutenwaarde was een heuristische zoekwindow, geen 2Park-SLA.
-- ✅ `TwoParkProvider.StartActionAsync` gebruikt dezelfde unique-fallback policy met product, genormaliseerd kenteken, `active|scheduled` en 5-seconden Start/End-tolerance; CI groen op commit `7d176ec8` (`fix: align twopark start readback matching`).
-- ✅ Actieve provider-action discrepancy-detectie gebruikt centrale action-id/product identity en de centrale 5-seconden End-tolerance; integratietests dekken ±4 seconden als gezond en +6 seconden als `ProviderActionEndMismatch`; CI groen na gerichte testfixes op commit `5cf172bc`.
-- ✅ `ExternalProviderAction` detectie blijft bewust exact action-id gebaseerd; er is geen fallback-koppeling voor onbekende provider IDs toegevoegd.
-- ✅ Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd; CI groen op commit `adf59937` (`fix: align scheduler recovery matching`).
-- ✅ `ReconcileScheduledCancelAsync` blijft bewust product-scoped en strikt bekend-action-id + `stopped` status; omdat dit Stop-semantiek is en geen lokale timestamp/fallbackheuristiek bevat, is geen cosmetische policy-conversie nodig.
-- ✅ `VisitSchedulerWorkProcessor` gebruikt voor scheduled wake-up, free-gap predecessorcheck en aansluitende continuation centrale action-id/product identity; de twee provider-End checks gebruiken de centrale 5-seconden tolerance; CI groen op commit `5dedf4ba` (`fix: align scheduler provider matching`).
-- ✅ Initial-coverage duplicate-prevention gebruikt centrale productcontext, kenteken-normalisatie en 5-seconden Start-tolerance en blijft bewust een conservatieve `Any`-guard; CI groen op commit `ef04e4d3` (`fix: align initial coverage duplicate guard`).
-- ✅ Overige strict known-action-id read-backs zijn geïnventariseerd en blijven bewust lokaal waar zij geen fallback/timestampheuristiek bevatten en semantische validatie al door de bovenliggende flow gebeurt.
+Fase afgerond t/m `ef04e4d3`.
 
-## Fase D — JIT scheduled continuation — SCHED-001 — kern ✅ AFGEROND
+## Fase D — JIT scheduled continuation / SCHED-001 ✅
 
-### D1/D2 — future continuation en scheduled providerstart
+- T-5 maakt exact één future `scheduled` successor;
+- contiguous start = predecessor.End + 1 seconde;
+- direct read-back accepteert `scheduled`;
+- redundant work/replay maakt geen duplicate;
+- Stop ruimt active predecessor én scheduled successor op;
+- activation boundary met bestuurbare mockklok bewezen.
 
-- ✅ Directe start-readback accepteert naast `active` ook `scheduled` als geldige bevestigde providerstatus, met dezelfde centrale identity- en timestampcriteria; CI groen op commit `89fba047` (`fix: accept scheduled provider starts`).
-- ✅ `ProviderContinuationStartStore.PrepareAttemptAsync` accepteert een nog actieve predecessor vóór diens eindgrens, zodat T-5 geen exception/retry-polling meer vereist; CI groen na gerichte compilefix op commit `e0bc330a`.
-- ✅ Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde`; de bestaande guard tegen een latere provideraction blijft de single-successor invariant bewaken.
-- ✅ Scheduler-processor end-to-end coverage bewijst T-5: één future successor wordt als `scheduled` bevestigd en redundant schedulerwork maakt geen tweede successor; CI groen na gerichte test-isolatie/cleanupfixes op commit `2ebf464d`.
-- ✅ Stop-pad end-to-end bewezen: de future `scheduled` successor en actieve predecessor worden beide veilig gestopt zonder open provideraction achter te laten; CI groen op commit `f581a135` (`test: cover stopping scheduled jit successor`).
-- ✅ Bestaande continuation-recovery dekt Unknown/restart zonder tweede provideraction; gecombineerd met de JIT replay-test is duplicate-prevention voor de kernflow gedekt.
-- ⏸️ Klokgestuurde `scheduled -> active` providertransitie en activation-boundary bewijs worden afgerond in fase G / SCHED-016, omdat TwoParkMock status nu alleen bij creatie bepaalt.
+Belangrijk bewijs: `18fc51cd` en `f581a135`.
 
-## Fase E — free-gap / overnight continuation — SCHED-002 ✅ AFGEROND
+## Fase E — free-gap / overnight / SCHED-002 ✅
 
-### E1 — pre-schedule volgend betaald segment
+- volgend betaald segment wordt voorbereid op `nextPaid.Start - 5 minuten`;
+- geen providerdekking tijdens gratis tijd;
+- successor na gratis gat start exact op `nextPaid.Start`;
+- restart dupliceert scheduled future coverage niet.
 
-- ✅ `VisitStartStore` plant een later betaald segment op T-5 van `nextPaid.Start` in plaats van exact op de betaalgrens; CI groen op commit `b1761379` (`fix: precheck free-gap coverage`).
-- ✅ `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken; implementatie op `9a9511b8` en CI groen na gerichte testfix op `8f8466ae` (`fix: expect free-gap precheck in start test`).
-- ✅ Startup recovery herbouwt zowel vervolgcoverage na een actieve provideraction als eerste coverage na een gratis periode op T-5 van `nextPaid.Start`; CI groen op commit `9a80e929` (`fix: precheck recovered paid coverage`).
-- ✅ `ProviderExtendResultStore` plant na een bevestigde extension een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `72429032` (`fix: precheck paid window after provider extend`).
-- ✅ `ProviderContinuationStartResultStore` plant na een bevestigde continuation-start een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d75e0e6b` (`fix: precheck paid window after continuation start`).
-- ✅ `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d2fa0b25` (`fix: precheck paid window after end-time change`).
+Fase groen t/m `6cc9bf05`.
 
-### E2 — future successor over gratis periode
+## Fase F — recovery hardening / SCHED-009 + SCHED-010 ✅
 
-- ✅ `VisitSchedulerWorkProcessor` maakt binnen T-5 vóór het volgende betaalde segment de future successor direct aan; recovery dupliceert die scheduled successor niet. CI groen na gerichte herstel/testfixes t/m `6cc9bf05`.
+- V1 single-instance deploymentcontract vastgelegd;
+- achtergelaten claimed schedulerwork wordt policygedreven hersteld;
+- stale `InProgress` provideroperations pas na de bestaande 5-minuten attempt lease naar `Unknown`;
+- interrupted `Reconciling` wordt via read-back hervat zonder repeat mutation.
 
-## Fase F — recovery hardening — SCHED-009 + SCHED-010
+Belangrijkste commits: `79ce2d04`, `d8f48c26`, `2de98742`, `0b17d16a`.
 
-### F1/F2 — deploymentcontract en claimed-work recovery
+## Fase G — TwoParkMock boundary harness / SCHED-016 ✅
 
-- ✅ V1 single-instance deploymentcontract vastgelegd; CI groen op commit `79ce2d04` (`docs: define single-instance scheduler deployment`).
-- ✅ Startup recovery verwerkt achtergelaten `Claimed` schedulerwork per Visit onder de SCHED-014 lock-order en via de SCHED-015 execution policy; tijdelijke defer gebruikt dezelfde centrale delay als runtime claiming; CI groen op commit `d8f48c26` (`fix: recover claimed scheduler work by policy`).
-- ✅ Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; CI groen na compilefix op `2de98742`.
-- ✅ `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald; CI groen op commit `0b17d16a` (`fix: resume interrupted provider reconciliation`).
+- centrale mockklok;
+- set/advance/reset endpoints;
+- dynamic `scheduled -> active` read-back;
+- visibility delay klokgestuurd;
+- Start/End read-back offsets;
+- locationlabel override;
+- expliciete post-End modi `keep-active`, `completed`, `hide`;
+- providercapaciteit uit derived state;
+- scheduled actions tellen alleen mee wanneer de test dat expliciet configureert.
 
-## Fase G — SCHED-016 TwoParkMock + boundary test harness
+G8 is groen op `110ebce5`. Daarmee is fase G als **harness/capabilityfase afgerond**. Exact live 2Park post-End gedrag en scheduled-capacity blijven externe observatiepunten, niet mock-defaults.
 
-- ✅ G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen; CI groen op commit `8b0f09e5` (`refactor: centralize twopark mock clock`).
-- ✅ G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok; CI groen op commit `08b6cb3f` (`feat: add twopark mock clock control`).
-- ✅ G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld; CI groen op commit `d848fc22` (`feat: derive twopark mock action status`).
-- ✅ G4: JIT end-to-end bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert dat redundant schedulerwork geen derde provideraction maakt; CI groen t/m commit `18fc51cd`.
-- ✅ G5: provider read-back kan Start/End offsets simuleren zonder opgeslagen action-intent te wijzigen; visibility delay is eveneens klokgestuurd; CI groen op commit `a2f645c3`.
-- ✅ G6: provider read-back kan een afwijkend locationlabel teruggeven zonder de mutation-location te wijzigen; CI groen op commit `b3953e22`.
-- ✅ G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname; CI groen op commit `80ebcf7a`.
-- 🚧 G8: provider-capaciteit wordt uit mockklok/state afgeleid en scheduled actions tellen alleen mee wanneer de test dit expliciet configureert.
+## Fase H — regressieverificatie SCHED-001 t/m SCHED-017 ✅
 
-## Volgende hoofdfasen
+Scenario's en gedeelde bevindingen zijn opnieuw tegen de geharde implementatie gelopen.
 
-- ✅ Fase E — SCHED-002 free-gap / overnight continuation.
-- ✅ Fase F — SCHED-009/010 algemene recovery hardening.
-- 🚧 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.
-- 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.
-- 📋 Fase I — SCHED-018 observability als laatste.
+- SCHED-003 manual Stop versus continuation ✅ — `2df05292`
+- SCHED-004 shortening ✅ — `c958c725`
+- SCHED-005 extension ✅ — `d8c20778`
+- SCHED-006 rolling horizon ✅ — scheduler `TimeProvider` + twee-horizon regressietest t/m `befb270b`
+- SCHED-007/008 duration boundaries ✅ — `ae18816f`
+- SCHED-009/010 provider/restart recovery ✅ — `4f637f00`
+- SCHED-011/012 discrepancy + Long Visit warning ✅ — `a4968334`
+- SCHED-013 t/m 017 gedeelde hardening opnieuw geverifieerd ✅ — `f7aba92d`
+- SCHED-001/002 detaildocumentatie wordt in de aansluitende documentatieronde gelijkgetrokken met het reeds groene implementatiebewijs.
+
+## Documentatieronde vóór SCHED-018 🚧
+
+Voor aanvang van SCHED-018 wordt eerst alle levende functionele en technische Visit/scheduler-documentatie gelijkgetrokken met de actuele implementatie:
+
+- functionele Visit/schedulerregels;
+- terminale lifecycle en eindredenen;
+- T-5 JIT en free-gap semantics;
+- provider matching/tolerance;
+- Visit-first locking en work-type policy;
+- recovery/single-instance contract;
+- TwoParkMock boundary harness;
+- auditstatus SCHED-001 t/m 017.
+
+## Fase I — SCHED-018 observability 📋 NIET GESTART
+
+SCHED-018 blijft bewust geparkeerd. Eerst wordt deze documentatieronde afgerond en beoordeeld. Er is nog geen observability-datamodel, eventcatalogus of implementatie gestart.

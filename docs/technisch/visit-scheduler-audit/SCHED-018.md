@@ -1,6 +1,6 @@
 # SCHED-018 — Visit scheduler observability / audit trail
 
-**Status:** 🛠 Ontwerp gepland na schedulerfixes  
+**Status:** 📋 Gereed om later op te pakken; nog niet gestart  
 **Prioriteit:** middel/hoog  
 **Raakt:** alle schedulerflows, beheerdiagnostiek en troubleshooting.
 
@@ -10,36 +10,36 @@ Per Visit een persistente, chronologische scheduler/audit-timeline beschikbaar m
 
 Dit is nadrukkelijk iets anders dan gewone applicatie-/structured logging. Serverlogs blijven bedoeld voor technische runtime-diagnostiek; de Visit scheduler audit trail wordt een domeingerichte historie die aan één Visit gekoppeld blijft.
 
-## Waarom als laatste verbeterpunt
+## Waarom pas nu
 
-De eventcatalogus moet de definitieve scheduler-state-machine volgen. Daarom wordt SCHED-018 pas inhoudelijk ontworpen en geïmplementeerd nadat de schedulerbevindingen SCHED-001 t/m SCHED-017 zijn opgelost of expliciet geaccepteerd.
+De schedulerstate-machine en reliability-hardening voor SCHED-001 t/m SCHED-017 zijn inmiddels geïmplementeerd en opnieuw geverifieerd. Daarmee is de functionele basis stabiel genoeg om een observabilitycontract te kunnen ontwerpen zonder tijdelijke schedulerpaden als permanent auditcontract vast te leggen.
 
-Daarmee voorkomen we dat tijdelijke of straks verwijderde schedulerpaden onderdeel worden van een publiek/beheerbaar auditcontract.
+**Er is nog geen observability-datamodel, eventcatalogus of implementatie gestart.** Eerst wordt de bestaande functionele en technische documentatie gelijkgetrokken en beoordeeld; daarna wordt expliciet besloten of SCHED-018 wordt gestart.
 
 ## Gewenste eigenschappen
 
-De audit trail moet:
+De toekomstige audit trail moet:
 
-- persistent zijn en een proces/container-restart overleven;
+- persistent en restartbestendig zijn;
 - chronologisch per Visit opvraagbaar zijn;
 - betekenisvolle domein-/schedulertransities vastleggen, niet iedere interne logregel;
 - scheduler work, provider operations en provider actions kunnen correleren;
 - retries en reconciliation verklaarbaar maken;
-- voldoende context bevatten om een incident te reconstrueren zonder losse serverlogs te moeten combineren;
+- voldoende context bevatten om een incident te reconstrueren zonder losse serverlogs te combineren;
 - geen secrets, providercredentials of onnodige persoonsgegevens opslaan;
 - geschikt zijn om later in beheer als Visit-timeline te tonen.
 
-## Voorlopige eventcategorieën
+## Waarschijnlijke eventcategorieën
 
-De definitieve lijst wordt pas na de schedulerfixes vastgesteld. Waarschijnlijke categorieën zijn:
+De definitieve lijst moet nog worden ontworpen. Kandidaten zijn onder andere:
 
-- scheduler-work aangemaakt, geclaimd, vrijgegeven, voltooid of geannuleerd;
-- terminal Visit-work gepland en uitgevoerd;
+- scheduler-work aangemaakt, geclaimd, uitgesteld, voltooid of geannuleerd;
+- terminale Visit-boundary gepland/gewijzigd/bereikt;
 - continuation gepland;
 - provideraction voorbereid / scheduled / active / gestopt / completed;
-- handmatige Stop die schedulerwerk of providerdekking beïnvloedt;
-- `DesiredEndAt` wijziging met vervangen/geannuleerd schedulerwerk;
-- gratis → betaald of betaald → gratis overgang wanneer dit scheduleractie veroorzaakt;
+- manual Stop die schedulerwerk of providerdekking beïnvloedt;
+- `DesiredEndAt` wijziging met vervangen/geannuleerd work;
+- gratis/betaald overgang wanneer dit scheduleractie veroorzaakt;
 - harde policygrens bereikt;
 - retry/reschedule inclusief reden;
 - provider mutation met unknown outcome;
@@ -48,76 +48,44 @@ De definitieve lijst wordt pas na de schedulerfixes vastgesteld. Waarschijnlijke
 - discrepancy / `AttentionRequired`;
 - automatische Visit-finalization.
 
-## Voorlopige eventcontext
+## Waarschijnlijke context
 
-Een event zal waarschijnlijk minimaal bevatten:
+Een event zal waarschijnlijk minimaal correleren met:
 
 - `VisitId`;
 - timestamp;
 - eventtype;
-- korte reden/beschrijving;
+- reden/beschrijving;
 - `VisitSchedulerWorkId` indien relevant;
 - `ProviderOperationId` indien relevant;
-- `ProviderParkingActionId` en eventueel externe provideraction-id indien relevant;
-- oude/nieuwe Visitstatus of health indien relevant;
-- oude/nieuwe work-/providerstate indien relevant;
-- compacte technische metadata die voor reconstructie nodig is.
+- `ProviderParkingActionId` / externe provider action-id indien relevant;
+- relevante lifecycle/health/work/provider state;
+- beperkte reconstructiemetadata.
 
-Exacte velden en normalisatie worden pas vastgesteld nadat de eventcatalogus definitief is.
+De exacte velden, retentie en append-only invarianten zijn nog niet besloten.
 
-## Voorbeeld van gewenst resultaat
+## Open ontwerpvragen
 
-```text
-12:00:00  Visit gestart
-12:00:01  Provideraction active
-15:55:00  Continuation work geclaimd
-15:55:01  Successor gepland voor 16:00:01
-15:55:02  Provideraction successor scheduled
-16:00:01  Successor active
-17:30:00  DesiredEndAt gewijzigd naar 18:00
-18:00:00  Terminal work geclaimd
-18:00:02  Provideraction gestopt
-18:00:02  Visit completed
-```
-
-De timeline moet daarbij ook uitzonderingen begrijpelijk maken, bijvoorbeeld:
-
-```text
-15:55:02  Provider start response onzeker
-15:55:03  Visit health = Reconciling
-15:56:00  Reconciliation gestart
-15:56:01  Bestaande scheduled successor gevonden
-15:56:01  Provider operation bevestigd
-15:56:02  Visit health = Healthy
-```
-
-## Onduidelijkheden / open vragen
-
-Deze punten worden bewust pas na de schedulerfixes besloten:
-
-1. Wordt dit een eigen persistente entiteit, een uitbreiding van bestaand audit/event-model, of een projectie uit bestaande durable records?
-2. Welke events zijn functioneel betekenisvol genoeg om permanent te bewaren en welke blijven alleen structured logs?
-3. Welke metadata moet sterk getypeerd worden en welke mag compacte JSON/details zijn?
-4. Hoe lang bewaren we scheduler audit events?
+1. Eigen persistente entiteit, uitbreiding van bestaand eventmodel, of projectie uit bestaande durable records?
+2. Welke events zijn permanent functioneel betekenisvol en welke blijven alleen structured logs?
+3. Welke metadata is sterk getypeerd en welke compacte details mogen flexibel zijn?
+4. Welke retentie geldt voor scheduler audit events?
 5. Wie mag de timeline zien: alleen beheerder of gedeeltelijk ook gebruiker?
-6. Moeten recovery/reconciliation meerdere technische subevents tonen of één samengevat domeinevent?
-7. Moeten events append-only zijn en zo ja, welke database-invariant dwingt dat af?
-
-## Implementatiemoment
-
-SCHED-018 wordt **als laatste schedulerverbeterpunt** opgepakt. Eerst worden de schedulerstate-machine, lifecycle, provider timing/matching, locking, recovery en testharness gestabiliseerd.
-
-Daarna bepalen we samen per definitieve flow:
-
-> Welke actie of state transition moet persistent worden vastgelegd om achteraf te kunnen begrijpen wat de scheduler heeft gedaan en waarom?
+6. Hoe grof/fijn tonen we recovery/reconciliation?
+7. Worden events append-only en hoe dwingen we dat af?
+8. Hoe voorkomen we duplicate audit events bij replay/idempotency?
 
 ## Verificatiecriteria
 
-SCHED-018 kan pas op ✅ wanneer minimaal bewezen is dat:
+SCHED-018 kan pas naar ✅ wanneer minimaal bewezen is dat:
 
 1. iedere belangrijke schedulerflow een begrijpelijke Visit-timeline oplevert;
-2. retries/recovery/reconciliation achteraf causaal te reconstrueren zijn;
+2. retries/recovery/reconciliation causaal te reconstrueren zijn;
 3. events niet dubbel ontstaan door replay/idempotency;
 4. de audit trail restartbestendig is;
 5. beheer de historie per Visit kan raadplegen;
 6. de audit trail geen secrets of onnodige gevoelige data bevat.
+
+## Startvoorwaarde
+
+SCHED-018 wordt pas inhoudelijk ontworpen of geïmplementeerd na een expliciete vervolgbeslissing na afronding en beoordeling van de huidige documentatieronde.

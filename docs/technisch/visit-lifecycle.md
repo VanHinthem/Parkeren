@@ -1,148 +1,120 @@
 # Visit lifecycle — technische implementatie
 
-## Fase 5 baseline
+## Persistente kern
 
-Fase 5 verbindt Domain, Application, Infrastructure, API en React UI tot een complete Visit-flow tegen de 2Park-mock.
+`Visit` bewaart functionele parkeerintentie, lifecycle, health, policy snapshot en providerproductcontext. `ProviderParkingAction` representeert één concrete provideraction; `ProviderOperation` maakt provider-mutaties duurzaam en replay-safe.
 
-### Persistente kern
+De backend blijft autoritatief voor policy, parkeerregels, capaciteit en providerstate.
 
-- `Visit` bewaart eigenaar, voertuig, start/eindtijden, lifecycle en health.
-- De effectieve parking policy wordt bij start als immutable snapshot gebruikt voor de Visit.
-- `ProviderParkingAction` koppelt providerwerk aan de Visit.
-- `ProviderOperation` geeft provider-mutaties een stabiele operation/idempotency-context.
-- Capacity wordt server-side en concurrency-safe geclaimd.
-
-### Application flows
-
-De applicatielaag bevat afzonderlijke flows voor:
-- Start Visit;
-- Stop Visit;
-- wijzigen van `DesiredEndAt`;
-- provider start/read-back/reconciliation;
-- policy/rules/capacity-resolutie.
-
-De backend valideert mutaties opnieuw; frontendvalidatie is uitsluitend UX.
-
-### HTTP/API
-
-De webclient gebruikt authenticated endpoints voor:
-- actieve Visit;
-- starten;
-- stoppen;
-- eindtijd wijzigen;
-- recente Visits;
-- Visit-historie;
-- capaciteit;
-- effectieve parking policy.
-
-Provider-onzekerheid kan als reconciliation-resultaat terugkomen. De UI houdt de Visit dan zichtbaar en pollt de actuele state.
-
-### UI
-
-Het dashboard toont de actieve Visit, verstreken tijd, gewenste eindtijd, Stop/Verleng-acties, capaciteit en recente acties. Zonder actieve Visit wordt de Start-flow getoond met voertuig- en duurkeuze. Policy/capacity moeten bekend zijn voordat een mutatie beschikbaar wordt.
-
-### Fasegrens
-
-Fase 6 gebruikt persistente scheduler-work: de lokale controle kan vijf minuten vóór het einde van providerdekking plaatsvinden, maar de daadwerkelijke vervolgactie start pas op de grens. Na een gratis periode wordt vervolgwerk op het volgende betaalde begin gepland. Bij opstarten herstelt de server onbekende provideruitkomsten en ontbrekend schedulerwerk. Iedere minuut probeert de worker nog onbekende provideruitkomsten opnieuw te reconciliëren zonder lopende workerclaims vrij te geven. Daarna vergelijkt hij bekende actieve provideracties met de provider; een externe stop of afwijkende status/eindtijd blokkeert verdere automatische acties en vraagt aandacht. Providerstoringen tijdens deze periodieke controle blokkeren de schedulerloop niet. Providergedrag dat alleen tegen echt 2Park bewezen kan worden blijft gekoppeld aan spike #71/fase 9.
-
-Voor een gratis gestarte Visit met concrete eindtijd wordt het begin van het eerstvolgende betaalde segment als persistente scheduler-work opgeslagen. De worker maakt op die grens pas de eerste provideractie aan. Een gratis interval tussen betaalde provideracties krijgt eveneens werk op de volgende betaalgrens; de verlopen actie wordt afgerond. Bij een onzekere providerstart blijft de operation bewaard voor reconciliation. Het open-ended pad (`DesiredEndAt = null`) en validatie van werkelijk 2Park-grensgedrag blijven aparte vervolgstappen.
-
-Ook een Visit die tijdens betaalde tijd begint, begrenst zijn eerste provideractie op het einde van het actuele betaalde segment (of de kortere providerduur). Als daarna een gratis interval volgt, wordt vervolgwerk op de volgende betaalgrens gezet; zonder volgend betaald segment is geen providervervolg nodig.
-
-## Lifecycle-aanscherping na scheduler-audit — oktober 2026
-
-De betrouwbaarheidsaudit heeft een ontbrekende verantwoordelijkheid zichtbaar gemaakt: het beëindigen van providerdekking is niet automatisch hetzelfde als het beëindigen van de logische Visit.
-
-Voor V1 geldt daarom expliciet:
-
-> Providerdekking en Visit-finalization zijn gescheiden verantwoordelijkheden.
-
-### Effectieve terminale Visitgrens
-
-Een actieve Visit eindigt op de vroegste toepasselijke harde grens uit:
-
-1. `DesiredEndAt`, indien aanwezig;
-2. `StartAt + MaxVisitElapsedDuration`, indien aanwezig;
-3. de wall-clock boundary waarop `MaxPaidParkingDuration` is verbruikt, indien aanwezig.
-
-`MaxPaidParkingDuration` en `MaxVisitElapsedDuration` zijn harde Visit-grenzen. Ze stoppen dus niet alleen verdere providerdekking, maar beëindigen de hele Visit.
-
-Een volledig open-ended Visit zonder deze grenzen heeft geen vooraf bekende natuurlijke eindtijd.
-
-### Uniforme terminale lifecycle
-
-Zowel handmatig als automatisch eindigen gebruikt dezelfde lifecycle:
+## Lifecycle
 
 ```text
-Active
--> Stopping
--> Completed
+Starting -> Active -> Stopping -> Completed
+            \-> Cancelled
 ```
 
-De oorzaak verschilt, maar er komt geen aparte status voor een automatisch afgelopen Visit.
+Lifecycle en health zijn orthogonaal. Health kan onder andere `Healthy`, `Reconciling`, `AttentionRequired` of `StopFailed` zijn zonder de functionele lifecycle te vervangen.
 
-Minimaal moeten de volgende eindredenen functioneel herleidbaar blijven:
+## VisitEndReason
 
-- handmatige stop;
-- `DesiredEndAt` bereikt;
-- `MaxVisitElapsedDuration` bereikt;
-- `MaxPaidParkingDuration` bereikt.
+Terminale Visits bewaren de oorzaak via `VisitEndReason`:
 
-### Durable terminal work
+- `ManualStop`;
+- `DesiredEndReached`;
+- `MaxVisitElapsedDurationReached`;
+- `MaxPaidParkingDurationReached`.
 
-Zodra een effectieve terminale grens berekenbaar is, moet durable scheduler-work bestaan dat de Visit op die grens via de normale Stop/finalization-orchestration afhandelt.
+`Visit.BeginStopping(reason)` maakt die oorzaak onderdeel van de duurzame lifecycle.
 
-Dit geldt ook voor:
+## Centrale terminal boundary
 
-- volledig gratis Visits;
-- Visits zonder enige provideraction;
-- Visits waarvan de laatste provideraction exact op de Visitgrens eindigt;
-- Visits met een gratis staart na de laatste betaalde provideraction.
+`VisitTerminalBoundaryCalculator` bepaalt één effectieve terminale boundary uit:
 
-Continuation-work blijft uitsluitend verantwoordelijk voor providerdekking vóór de terminale Visitgrens.
+1. `DesiredEndAt`;
+2. `StartAt + MaxVisitElapsedDuration`;
+3. de wall-clock boundary waarop `MaxPaidParkingDuration` is verbruikt.
 
-### Finalization-volgorde
+Paid-time wordt over versioned parkeerregels berekend; gratis/overnight tijd telt niet mee.
 
-Op de terminale grens geldt functioneel:
+Bij gelijke boundaries geldt de vaste tie-break:
 
 ```text
-Visit opnieuw valideren
--> Active naar Stopping
--> actieve/scheduled/unknown provideractions veilig afhandelen
--> provider-onzekerheid zo nodig reconciliëren
--> pas zonder open providerwerk:
-   Visit naar Completed
+MaxPaidParkingDurationReached
+-> MaxVisitElapsedDurationReached
+-> DesiredEndReached
 ```
 
-Een provideraction die reeds natuurlijk is geëindigd hoeft niet onnodig gestopt te worden, maar de lokale state moet eerst betrouwbaar terminal zijn bevestigd.
+Een volledig open-ended Visit zonder deze grenzen heeft geen vooraf bekende terminale boundary.
 
-Een scheduled successor mag de Visitgrens nooit overleven.
+## Durable terminal work
 
-### `ActualEndAt`
+`VisitTerminalWorkPlanner` bewaakt idempotent één actuele terminale `StopVisit`-taak wanneer een boundary bestaat.
 
-Bij een natuurlijk gepland einde is `Visit.ActualEndAt` de functionele effectieve terminale Visitgrens.
+- obsolete pending terminal-work wordt vervangen;
+- claimed terminal-work wordt niet stil overschreven;
+- een end-time change herberekent de boundary;
+- startup recovery herbouwt ontbrekende of verouderde terminal-work.
 
-Providerreadback-timestamps mogen daarvan enkele seconden afwijken en bepalen daarom niet achteraf de Visit-eindtijd. Zij worden gebruikt om provideraction-state te bevestigen/reconciliëren.
+Providerdekking en Visit-finalization blijven daarmee gescheiden verantwoordelijkheden.
 
-Bij een handmatige stop blijft `ActualEndAt` het daadwerkelijke stopmoment.
+## Finalization
 
-### Wijzigen van de eindtijd
+Automatisch en handmatig eindigen hergebruiken dezelfde Stop Visit-orchestration:
 
-Bij een wijziging van `DesiredEndAt` wordt de effectieve terminale grens opnieuw bepaald.
+```text
+claim Stop
+-> Visit naar Stopping
+-> alle open active/scheduled/unknown provideractions afhandelen
+-> uncertain outcomes reconciliëren
+-> pas zonder open providerwerk: Visit Completed
+```
 
-- Verkorten vervangt obsolete terminal work, annuleert continuation na de nieuwe grens en handelt providerdekking voorbij die grens durable af.
-- Verlengen verschuift terminal work alleen wanneer `DesiredEndAt` werkelijk de leidende grens is; een eerdere policygrens blijft leidend.
+Voor automatische terminale stops gebruikt `StopVisitFinalizer` de `DueAt` van de matchende terminal scheduler-work als functionele `ActualEndAt`. Voor manual stop blijft `ActualEndAt` het daadwerkelijke stopmoment.
 
-### Recovery
+## Continuation versus terminal lifecycle
 
-Startup recovery moet voor iedere `Active` Visit met een berekenbare terminale grens ook kunnen reconstrueren dat precies één relevante terminale taak bestaat.
+`ContinueProviderCoverage` mag providerdekking uitsluitend vóór de effectieve terminale boundary plannen. Wanneer geen verdere providerdekking nodig is, betekent dat niet dat de Visit vanzelf is afgerond; terminal work verzorgt die verantwoordelijkheid.
 
-Is de grens tijdens downtime al verstreken, dan wordt de taak direct uitvoerbaar en wordt dezelfde Stop/finalization-flow gebruikt.
+Op een gelijke `DueAt` heeft `StopVisit` claimprioriteit boven continuation en `LongVisitWarning`.
 
-### Schedulerprioriteit
+## End-time changes
 
-Op of na de terminale Visitgrens mag geen continuation of Long Visit reminder meer worden gestart. Wanneer meerdere scheduler-items exact dezelfde `DueAt` hebben, heeft terminale finalization functioneel voorrang.
+### Verkorten
 
-De technische lock- en claimvolgorde wordt verder uitgewerkt bij SCHED-014 en SCHED-015.
+De end-time changer serialiseert op de Visit en:
 
-Zie `docs/technisch/visit-scheduler-audit/SCHED-013.md` voor de volledige auditbevinding, ontwerpbesluiten en verificatiecriteria.
+- vervangt de terminale boundary;
+- annuleert obsolete continuation;
+- annuleert/vervangt scheduled successors die de nieuwe grens overschrijden;
+- plant zo nodig providerstop op de nieuwe boundary.
+
+### Verlengen
+
+De terminale boundary verschuift alleen wanneer `DesiredEndAt` werkelijk de leidende grens is. Een eerdere elapsed- of paid-durationgrens blijft leidend. Extra providerdekking wordt uitsluitend voor nieuwe betaalde tijd ingepland.
+
+## Manual Stop race
+
+Manual Stop en schedulerclaim volgen dezelfde Visit-first lock-order. Zodra manual Stop de Visit naar `Stopping` heeft gebracht, kan continuation die uitkomst niet terugzetten naar `Active`.
+
+De Stop-flow handelt ook een al aangemaakte future scheduled successor af.
+
+## Recovery
+
+`VisitRecoveryService` is startup gate voor de schedulerworker. Recovery herstelt onder andere:
+
+- achtergelaten schedulerclaims;
+- stale `InProgress` provideroperations na de bestaande attempt lease;
+- onderbroken `Reconciling` operations;
+- ontbrekende continuationplanning;
+- terminale Visit-work;
+- provider discrepancies.
+
+Er wordt nooit blind opnieuw gemuteerd wanneer de provideruitkomst onzeker is.
+
+## V1 deploymentcontract
+
+V1 ondersteunt exact één actieve `Parkeren.Api` / `VisitSchedulerWorker` instance. Multi-instance/rolling-overlap vereist later een expliciete distributed lease/liveness-oplossing en hoort niet bij het huidige contract.
+
+## Status
+
+De lifecycle-hardening uit SCHED-013 en de gekoppelde SCHED-003/004/005/007/008-scenario's is geïmplementeerd en opnieuw geverifieerd. Persistente scheduler-observability (SCHED-018) is nog niet geïmplementeerd.

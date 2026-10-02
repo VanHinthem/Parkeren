@@ -3,35 +3,66 @@
 Het parkeerbeleid maakt expliciet onderscheid tussen gebruikersbeleid en gemeentelijke/providerregels.
 
 ## Gebruikersbeleid
-`DefaultParkingPolicy` bevat de standaardwaarden. `UserPolicyOverride` bevat uitsluitend expliciete afwijkingen per gebruiker. `ParkingPolicyResolver` berekent daaruit een `EffectiveParkingPolicy`.
 
-De Visit-policy bevat onder andere `MaxPaidParkingDuration`, optionele `MaxVisitElapsedDuration`, `AllowOpenEndedVisits`, `AllowVisitExtension` en `MaxConcurrentVisits`. `MaxProviderActionDuration` hoort bewust niet bij gebruikersbeleid; dit is onderdeel van de versioned `ParkingRuleSet`.
+`DefaultParkingPolicy` bevat standaardwaarden. `UserPolicyOverride` bevat expliciete afwijkingen per gebruiker. `ParkingPolicyResolver` berekent daaruit de effectieve policy die bij Visit-start als immutable snapshot wordt opgeslagen.
 
-Voor de twee duurvelden heeft een user override drie expliciete modi:
+De Visit-policy bevat onder andere:
 
-- `Inherit` — gebruik de waarde uit `DefaultParkingPolicy`;
-- `Value` — gebruik een concrete per-user duur;
-- `Unlimited` — de effectieve duur is expliciet onbeperkt, ongeacht een begrensde default.
+- `MaxPaidParkingDuration`;
+- `MaxVisitElapsedDuration`;
+- `AllowOpenEndedVisits`;
+- `AllowVisitExtension`;
+- `MaxConcurrentVisits`.
 
-Na resolutie bevat `EffectiveParkingPolicy` alleen de effectieve waarde. Daar betekent `null` bij een duurveld altijd **onbeperkt**; de override-mode is alleen nodig om te bepalen hoe die effectieve waarde tot stand komt.
+`MaxProviderActionDuration` hoort niet bij gebruikersbeleid maar bij de versioned `ParkingRuleSet`.
 
-Handmatig stoppen is geen configureerbaar gebruikersrecht: een gebruiker moet een eigen actieve Visit altijd kunnen stoppen. `AllowOpenEndedVisits` bepaalt uitsluitend of `DesiredEndAt = null` is toegestaan. `AllowVisitExtension` bepaalt uitsluitend of een bestaande `DesiredEndAt` later mag worden gezet.
+Voor duurvelden ondersteunen user overrides:
 
-Bij het starten van een Visit wordt een immutable snapshot van de effective policy opgeslagen. Wijzigingen in defaults/overrides veranderen een reeds actieve Visit dus niet achteraf.
+- `Inherit`;
+- `Value`;
+- `Unlimited`.
+
+In de uiteindelijke effectieve policy betekent `null` bij een duurveld altijd onbeperkt.
+
+## Stoppen en verlengen
+
+Handmatig stoppen is geen configureerbaar gebruikersrecht: een gebruiker moet zijn eigen actieve Visit altijd kunnen stoppen.
+
+`AllowOpenEndedVisits` bepaalt alleen of `DesiredEndAt = null` is toegestaan. `AllowVisitExtension` bepaalt alleen of een bestaande concrete eindtijd later mag worden gezet.
+
+## Harde Visitgrenzen
+
+De effectieve terminale Visitgrens is de vroegste toepasselijke grens uit:
+
+1. `DesiredEndAt`;
+2. `Visit.StartAt + MaxVisitElapsedDuration`;
+3. het moment waarop `MaxPaidParkingDuration` is verbruikt.
+
+`MaxPaidParkingDuration` en `MaxVisitElapsedDuration` beëindigen dus de hele Visit; zij blokkeren niet alleen nieuwe providerdekking.
 
 ## Providerdekking
-De applicatie verzorgt providerdekking automatisch volgens de toepasselijke `ParkingRuleSet`. Dit staat los van het recht van een gebruiker om een Visit te verlengen.
 
-Voor Oss geldt momenteel:
+De applicatie verzorgt providerdekking automatisch volgens de toepasselijke `ParkingRuleSet`. Voor Oss geldt:
 
 ```text
 MaxProviderActionDuration = 4 uur
-Continuation = StartNewAction
+Continuation              = StartNewAction
 ```
 
-Live validatie van de gebruikte 2Park-interface heeft bevestigd dat `extend_action.json` wel `OK/SUCCESS` kan retourneren, maar de eindtijd van een actieve action niet persistent wijzigt. De 2Park-UI biedt voor zowel geplande als actieve actions eveneens geen verlengactie. Daarom gebruikt Oss `ExtendAction` niet als operationele strategie.
+Live validatie liet zien dat provider-extend geen betrouwbaar persistent gewijzigd einde opleverde. Oss gebruikt daarom geen `ExtendAction` als operationele continuationstrategie.
 
-Wanneer een Visit wordt ingekort tot vóór het einde van een reeds actieve provider-action, wordt die action niet direct gestopt. De nieuwe `DesiredEndAt` wordt vastgelegd en er wordt duurzame scheduler-work ingepland die de provider-action op die eindtijd stopt en daarna de Visit afrondt.
+Aaneengesloten betaalde continuation wordt JIT voorbereid op T-5 en start wegens 2Park-overlapcontrole op predecessor.End + 1 seconde. Na een gratis gat wordt het volgende betaalde segment eveneens op T-5 voorbereid, maar start de provideraction exact op `nextPaid.Start`.
 
-## Tijd
+## Verkorten
+
+Wanneer een Visit wordt ingekort, wordt de terminale boundary opnieuw berekend. Scheduled providerdekking die niet meer past wordt geannuleerd/vervangen en providerdekking die voorbij de nieuwe grens loopt wordt op die grens via duurzame Stop-afhandeling beëindigd.
+
+## Open-ended
+
+Een volledig open-ended Visit zonder harde duurgrenzen heeft geen vooraf bekende functionele eindtijd. De scheduler gebruikt technisch een rolling horizon van 14 dagen; die horizon is geen beleidslimiet.
+
+## Tijd en provider matching
+
 Absolute Visit/provider-tijden worden als UTC-instants opgeslagen. Lokale parkeerregels worden in `Europe/Amsterdam` geëvalueerd.
+
+Provider read-back gebruikt centraal 5 seconden Start/End tolerance waar timestamps voor matching relevant zijn. Dit is een engineering margin en geen gemeten 2Park-SLA.

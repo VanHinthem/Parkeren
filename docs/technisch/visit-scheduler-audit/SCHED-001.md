@@ -1,126 +1,65 @@
 # SCHED-001 — T-5 en aansluitende `StartNewAction`
 
-**Status:** ⚠️ Bevinding bevestigd  
+**Status:** ✅ Geïmplementeerd en regressiegeverifieerd  
 **Prioriteit:** hoog  
-**Scenario:** aaneengesloten betaald parkeren met een opvolgende provideraction  
-**Datum bevinding:** 2 oktober 2026
+**Scenario:** aaneengesloten betaald parkeren met één future successor
 
-## Samenvatting
+## Gewenste invariant
 
-De gewenste V1-strategie is inmiddels door echte 2Park-tests bevestigd: rond T-5 mag één toekomstige successor worden aangemaakt met:
-
-```text
-Start = predecessor.End + 1 seconde
-status bij provider = scheduled
-```
-
-De huidige scheduler plant het work wel op T-5, maar `ProviderContinuationStartStore.PrepareAttemptAsync(...)` weigert de successor zolang de predecessor nog niet is afgelopen. Daardoor wordt T-5 feitelijk een exception/retry-cyclus tot rond de providergrens in plaats van het afgesproken JIT-schedulingmoment.
-
-## Bevestigd 2Park-contract uit #71
-
-Live getest op 29 september 2026:
-
-- een action vijf minuten in de toekomst krijgt direct een provider action-id en status `scheduled`;
-- die scheduled action kan vóór start worden geannuleerd;
-- `B.Start == A.End` wordt geweigerd met `PRK-00005` wegens overlap;
-- `B.Start = A.End + 1 seconde` wordt geaccepteerd terwijl A nog `active` is en B `scheduled` wordt;
-- V1-besluit: continuation just-in-time vanaf T-5, maximaal één scheduled successor per Visit.
-
-De providersemantiek is dus geen open ontwerpvraag meer: de huidige code wijkt af van een reeds bewezen en vastgelegde V1-strategie.
-
-## As-built flow
-
-Na een bevestigde eerste provideraction maakt de applicatie `ContinueProviderCoverage` met:
+Bij aaneengesloten betaalde providerdekking wordt maximaal één toekomstige successor JIT aangemaakt:
 
 ```text
-DueAt = predecessor.PlannedEndAt - 5 minuten
+precheck        = predecessor.End - 5 minuten
+successor.Start = predecessor.End + 1 seconde
+providerstatus  = scheduled vóór Start
 ```
 
-De scheduler claimt dit durable work, controleert de actuele provideraction en gebruikt `work.Id` als stabiel operation-id voor continuation.
+De +1 seconde is gebaseerd op live 2Park-bewijs: exact aansluitende timestamps werden als overlap geweigerd met `PRK-00005`.
 
-Daarna roept de processor `ProviderContinuationStartStore.PrepareAttemptAsync` aan. Deze store bevat echter:
+## Huidig as-built gedrag
+
+`ProviderCoverageSchedule.PrecheckAt` bepaalt T-5. `ProviderContinuationStartStore` accepteert een nog actieve predecessor en kan vóór diens End de future successor duurzaam voorbereiden.
+
+De provider mutation gebruikt een persistente `ProviderOperation` en lokale `ProviderParkingAction`. De directe read-back accepteert `scheduled` als geldige bevestigde status.
+
+Dezelfde scheduler work/operation-id wordt bij replay hergebruikt; een duplicate future successor wordt daardoor niet stil aangemaakt.
+
+## Activation boundary
+
+TwoParkMock leidt status dynamisch uit de bestuurbare mockklok af:
 
 ```text
-als predecessor.PlannedEndAt > UtcNow
-    -> InvalidOperationException
+now < Start        => scheduled
+Start <= now < End => active
 ```
 
-Tegelijkertijd bouwt dezelfde store de nieuwe action als:
+De activation-boundary regressietest bewijst dat de future successor op zijn Start remote `active` wordt en redundant schedulerwork geen derde provideraction creëert.
 
-```text
-PlannedStartAt = predecessor.PlannedEndAt + 1 seconde
-```
+## Stop en recovery
 
-Praktisch gevolg:
+Manual Stop kan een reeds scheduled successor vóór zijn start veilig annuleren/stoppen en handelt daarna de actieve predecessor af. Na afloop blijft geen open provideraction over.
 
-```text
-T-5 -> exception -> work ongeveer +1 minuut opnieuw Pending
-T-4 -> exception
-T-3 -> exception
-T-2 -> exception
-T-1 -> exception
-rond T -> pas dan mag PrepareAttemptAsync verder
-```
+Unknown/restart recovery reconciliëert eerst providerstate en creëert geen duplicate successor.
 
-De `ProviderContinuationStartMutationGuard` is juist al ontworpen om een toekomstige action tot ongeveer vijf minuten vooruit toe te staan. De store en mutation guard spreken elkaar daarmee intern tegen.
+## Provider matching
 
-## Tweede inconsistentie: scheduled read-back
+Future Start gebruikt dezelfde centrale `ProviderActionMatchPolicy` als andere startflows. De 5-seconden timestamp tolerance is een engineering margin, geen gemeten 2Park-SLA.
 
-Zelfs wanneer de store wordt aangepast zodat de T-5 successor wél extern gestart kan worden, accepteert `StartVisitProviderExecutor` de directe read-back momenteel alleen wanneer de providerstatus `active` is.
+## Regressiebewijs
 
-Een correct op T-5 aangemaakte 2Park-successor is volgens de live test echter `scheduled`. De continuation-resultstore en reconciler kunnen `scheduled` wel verwerken, maar de directe executor zal de geldige mutation eerst als `Unknown` markeren.
+Belangrijk bewijs uit de hardening:
 
-De uiteindelijke oplossing moet dus de volledige keten uitlijnen:
+- T-5 future scheduled successor + exactly-one invariant;
+- `scheduled` direct read-back geaccepteerd;
+- Stop van scheduled successor + actieve predecessor (`f581a135`);
+- mock activation boundary en duplicate-prevention (`18fc51cd`);
+- centrale provider matching en unknown/reconciliation;
+- startup/replay zonder duplicate mutation.
 
-```text
-T-5 planning
--> persisted ContinueStart operation/action
--> future provider Start
--> scheduled read-back accepteren
--> work wacht tot activation boundary
--> scheduled -> active bevestigen
--> volgende continuation plannen
-```
+## Extern nog onbewezen
 
-## Betrouwbaarheidsimpact
+Of een future `scheduled` action meetelt voor de echte 2Park-capaciteitslimiet is nog niet hard gemeten. Dit verandert de exactly-one/idempotency-invariant niet; de mock kan beide testmodi expliciet modelleren.
 
-De huidige implementation maakt naadloze coverage afhankelijk van worker/retry/providerlatency precies rond de eindgrens, terwijl de provider juist vooraf plannen ondersteunt. Dit verkleint de beschikbare recoverymarge en is in strijd met de afgesproken reden voor T-5.
+## Conclusie
 
-## Positieve bouwstenen
-
-- persistent schedulerwork;
-- `FOR UPDATE SKIP LOCKED` voor claiming;
-- stabiele operation-id via `work.Id`;
-- durable `ProviderOperation`;
-- provider precheck vóór continuation;
-- unknown/reconciliation in plaats van blind retry;
-- max één latere lokale action wordt bewaakt.
-
-Deze onderdelen hoeven conceptueel niet vervangen te worden.
-
-## Relaties
-
-- [SCHED-002](SCHED-002.md): hetzelfde pre-schedulingprincipe bij hervatten na gratis tijd.
-- [SCHED-009](SCHED-009.md): unknown/reconciliation.
-- [SCHED-014](SCHED-014.md): claim/Visit locking.
-- [SCHED-016](SCHED-016.md): mock ondersteunt de tijdsstatusovergang onvoldoende.
-- [SCHED-017](SCHED-017.md): provider timestamps mogen niet op vrijwel exacte gelijkheid worden gematcht.
-
-## Onduidelijkheden / open vragen
-
-1. Hoe en wanneer verandert echte 2Park een `scheduled` action in read-back naar `active`?
-2. Moet de scheduler na succesvolle T-5 scheduling één workitem hergebruiken om activation te controleren, of een apart activation/reconciliation worktype gebruiken?
-3. Welke marge rond de geplande start is acceptabel voor het bevestigen van activatie?
-4. Telt een scheduled successor mee voor de provider-capaciteitslimiet? Dit staat nog open in #71.
-
-## Verificatiecriteria na fix
-
-SCHED-001 kan pas op ✅ wanneer bewezen is:
-
-1. T-5 creëert zonder exception-polling precies één scheduled successor;
-2. Start = predecessor.End + 1 seconde;
-3. `scheduled` read-back wordt als geldige succesvolle mutation opgeslagen;
-4. Stop kan de scheduled successor veilig annuleren;
-5. restart/timeout veroorzaakt geen duplicate successor;
-6. activation rond de grens wordt correct lokaal verwerkt;
-7. integratietests gebruiken een provider/mock die de relevante tijdsstatussen realistisch modelleert.
+De oorspronkelijke T-5 exception/retry-inconsistentie en `active`-only read-back zijn opgelost. SCHED-001 heeft geen zelfstandig code- of testgat meer.

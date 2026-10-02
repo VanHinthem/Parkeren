@@ -1,147 +1,95 @@
 # Visit scheduler — betrouwbaarheidsaudit
 
-**Status:** inhoudelijke audit afgerond; verbeterontwerp en fixes nog open  
+**Status:** SCHED-001 t/m SCHED-017 geïmplementeerd en opnieuw geverifieerd  
 **Auditdatum:** 2 oktober 2026  
-**Scope:** scheduler, continuation, stop, recovery, Visit-eindgrenzen, tijdgestuurde scheduler-work en observability
+**Nog niet gestart:** SCHED-018 persistente scheduler-observability
 
-Deze audit toetst de actuele implementatie op `main` aan het functionele model, de technische flow, bestaande tests en reeds uitgevoerde echte 2Park-tests. Tijdens deze audit is **geen productielogica gewijzigd**.
+## Statusboard
 
-Doel is eerst het hele systeembeeld te hebben, zodat gerelateerde bevindingen gezamenlijk kunnen worden opgelost in plaats van lokaal per scenario te patchen.
+| ID | Scenario / bevinding | Status |
+| --- | --- | --- |
+| SCHED-001 | T-5 aansluitende `StartNewAction` | ✅ |
+| SCHED-002 | Gratis periode / overnight hervatten | ✅ |
+| SCHED-003 | Handmatig stoppen versus continuation | ✅ |
+| SCHED-004 | `DesiredEndAt` verkorten | ✅ |
+| SCHED-005 | `DesiredEndAt` verlengen | ✅ |
+| SCHED-006 | Open-ended rolling horizon | ✅ |
+| SCHED-007 | `MaxPaidParkingDuration` grens | ✅ |
+| SCHED-008 | `MaxVisitElapsedDuration` grens | ✅ |
+| SCHED-009 | Provider timeout / unknown continuation | ✅ |
+| SCHED-010 | Crash/restart tijdens claimed work | ✅ |
+| SCHED-011 | Externe providerwijziging / discrepancy | ✅ |
+| SCHED-012 | Long Visit warning | ✅ |
+| SCHED-013 | Natuurlijke Visit-afronding | ✅ |
+| SCHED-014 | Uniforme Visit-first lock-order | ✅ |
+| SCHED-015 | Work-type execution policy | ✅ |
+| SCHED-016 | Deterministische TwoParkMock boundary harness | ✅ |
+| SCHED-017 | Centrale provider identity/timestamp matching | ✅ |
+| SCHED-018 | Persistente scheduler observability / audit trail | 📋 nog niet gestart |
+
+## Belangrijkste gerealiseerde invarianten
+
+### Lifecycle
+
+Providerdekking en Visit-finalization zijn gescheiden verantwoordelijkheden. Finite Visits krijgen duurzame terminale `StopVisit`-work met persistente `VisitEndReason`. Automatische finalization gebruikt de functionele boundary als `ActualEndAt`.
+
+### Locking
+
+Visit-gerelateerde mutaties gebruiken één Visit-first lock-order. Schedulerclaim selecteert eerst alleen een kandidaat, neemt daarna de Visit advisory lock, lockt vervolgens de exacte work-row en her-valideert.
+
+### Work-type policy
+
+`ContinueProviderCoverage`, `StopVisit` en `LongVisitWarning` hebben expliciet verschillende lifecycle/health-semantiek. Terminal Stop wordt niet geblokkeerd door technische health; continuation wordt bij onveilige health uitgesteld in plaats van blind uitgevoerd.
+
+### JIT continuation
+
+Aaneengesloten betaalde coverage:
+
+```text
+precheck        = predecessor.End - 5 minuten
+successor.Start = predecessor.End + 1 seconde
+```
+
+Gratis gat:
+
+```text
+precheck        = nextPaid.Start - 5 minuten
+successor.Start = nextPaid.Start
+```
+
+Exactly-one/duplicate-prevention, Stop en restart zijn regressiegedekt.
+
+### Provider matching
+
+Centrale `ProviderActionMatchPolicy` gebruikt bekende action-id, productcontext, genormaliseerd kenteken indien relevant, semantische status en 5 seconden timestamp tolerance waar nodig.
+
+De 5 seconden zijn een **engineering margin**, geen gemeten 2Park-SLA. Bekende-ID mismatch valt nooit terug naar een andere action; onbekende-ID fallback accepteert alleen één unieke kandidaat.
+
+### Recovery
+
+V1 is expliciet single-instance. Startup recovery verwerkt achtergelaten claimed work policygedreven, respecteert de attempt lease voor provideroperations, hervat interrupted reconciliation via read-back en herbouwt continuation- en terminal-work vóór nieuwe claims.
+
+### Boundary harness
+
+TwoParkMock ondersteunt een bestuurbare klok, dynamic `scheduled -> active`, visibility delay, timestamp offsets, locationlabel override, expliciete post-End modi en configureerbare scheduled-capacity. Onbewezen live providergedrag krijgt bewust geen default.
+
+## Externe providerpunten die nog niet als contract gelden
+
+Deze punten zijn nog niet hard live gemeten maar blokkeren SCHED-001 t/m 017 niet:
+
+- exacte 2Park status/zichtbaarheid na natuurlijke `End`;
+- of een toekomstige `scheduled` action meetelt voor providercapaciteit;
+- een gemeten 2Park timestamp-SLA.
+
+De applicatie gebruikt conservatieve identity/reconciliation zodat correctness niet van deze aannames afhangt.
 
 ## Documentstructuur
 
-- `README.md` — statusboard, hoofdbevindingen, relaties en latere verbeterclusters.
-- `SCHED-001.md` t/m `SCHED-012.md` — de oorspronkelijke functionele audit-scenario's.
-- `SCHED-013.md` t/m `SCHED-017.md` — gedeelde systeembevindingen die tijdens de scenario-audit zichtbaar zijn geworden.
-- `SCHED-018.md` — als laatste verbeterpunt: persistente Visit-scheduler observability/audit trail; de definitieve eventcatalogus wordt pas vastgesteld nadat de schedulerflows stabiel zijn.
+- `SCHED-001.md` t/m `SCHED-017.md` beschrijven de actuele scenario-/bevindingstatus en het regressiebewijs.
+- `PROGRESS.md` bevat de implementatie- en verificatievoortgang.
+- `*-technical-design.md` en `IMPLEMENTATION-PLAN.md` zijn historische ontwerp-/implementatie-inputs. Zij blijven nuttig voor besluitgeschiedenis, maar zijn **niet** de actuele statusbron wanneer zij oudere formuleringen bevatten.
+- `SCHED-018.md` beschrijft het bewust nog niet uitgevoerde observability-vervolg.
 
-Per document staat waar relevant een sectie **Onduidelijkheden / open vragen**. Die punten zijn bewust niet ingevuld met aannames.
+## Volgende stap
 
-## Auditmethode
-
-Per scenario is gekeken naar:
-
-1. gewenste invariant;
-2. daadwerkelijke codeflow;
-3. persistente state en locking;
-4. providergrens en idempotency;
-5. fout/crash/restartgedrag;
-6. bestaande geautomatiseerde tests;
-7. ontbrekend bewijs;
-8. relaties met andere bevindingen;
-9. open vragen;
-10. verificatiecriteria voor een latere fix.
-
-## Statusbetekenis
-
-| Status | Betekenis |
-| --- | --- |
-| ⚠️ Bevinding bevestigd | Concrete inconsistentie/risico aangetoond; fix nog niet ontworpen of uitgevoerd. |
-| ✅ Audit afgerond | Geen zelfstandige afwijking gevonden; document kan wel afhankelijkheden naar andere bevindingen hebben. |
-| 🧪 Testbewijs aanvullen | Geen concrete productiefout gevonden, maar bewijs is nog onvoldoende volledig. |
-| ❓ Open architectuur/providerpunt | Correct gedrag hangt af van een expliciete nog onbewezen aanname of extern contract. |
-| 📋 Gepland verbeterpunt | Bewust als latere ontwerp-/implementatiestap ingepland; details volgen nadat afhankelijke schedulerflows stabiel zijn. |
-
-## Auditstatus
-
-| ID | Scenario / bevinding | Status | Prioriteit | Detail |
-| --- | --- | --- | --- | --- |
-| SCHED-001 | T-5 → aansluitende `StartNewAction` | ⚠️ | hoog | [SCHED-001](SCHED-001.md) |
-| SCHED-002 | Gratis periode / overnight → hervatten betaald parkeren | ⚠️ | hoog | [SCHED-002](SCHED-002.md) |
-| SCHED-003 | Handmatig stoppen versus continuation | ✅ afhankelijk | hoog via gedeelde punten | [SCHED-003](SCHED-003.md) |
-| SCHED-004 | `DesiredEndAt` verkorten | ⚠️ afhankelijk | hoog | [SCHED-004](SCHED-004.md) |
-| SCHED-005 | `DesiredEndAt` verlengen | ✅ afhankelijk | middel | [SCHED-005](SCHED-005.md) |
-| SCHED-006 | Open-ended rolling horizon | 🧪 | middel | [SCHED-006](SCHED-006.md) |
-| SCHED-007 | `MaxPaidParkingDuration` grens | ⚠️ via lifecycle | hoog | [SCHED-007](SCHED-007.md) |
-| SCHED-008 | `MaxVisitElapsedDuration` grens | ⚠️ via lifecycle | hoog | [SCHED-008](SCHED-008.md) |
-| SCHED-009 | Provider timeout / unknown continuation | ⚠️ via matching | hoog | [SCHED-009](SCHED-009.md) |
-| SCHED-010 | Crash/restart tijdens claimed work | ❓ | middel/hoog | [SCHED-010](SCHED-010.md) |
-| SCHED-011 | Externe providerwijziging / discrepancy | ✅ afhankelijk | middel | [SCHED-011](SCHED-011.md) |
-| SCHED-012 | Long Visit warning schedulergedrag | ⚠️ | middel | [SCHED-012](SCHED-012.md) |
-| SCHED-013 | Natuurlijke Visit-afronding ontbreekt | ⚠️ | **kritiek/hoog** | [SCHED-013](SCHED-013.md) |
-| SCHED-014 | Lock-order inversion schedulerwork ↔ Visit-lock | ⚠️ | **hoog** | [SCHED-014](SCHED-014.md) |
-| SCHED-015 | Generieke `Active + Healthy` gating per work-type onjuist | ⚠️ | **hoog** | [SCHED-015](SCHED-015.md) |
-| SCHED-016 | TwoParkMock modelleert tijdsstatussen onvoldoende | ⚠️ testmodel | middel/hoog | [SCHED-016](SCHED-016.md) |
-| SCHED-017 | Timestampmatching strenger dan live 2Park-gedrag | ⚠️ | **hoog** | [SCHED-017](SCHED-017.md) |
-| SCHED-018 | Persistente scheduler observability per Visit | 📋 | laatste verbeterstap | [SCHED-018](SCHED-018.md) |
-
-## Kritieke hoofdbevindingen
-
-### 1. Providercontinuation is conceptueel goed, maar timingketen is niet consistent
-
-De live 2Park-tests hebben bewezen dat één toekomstige successor vanaf T-5 mogelijk is en dat `Start = predecessor.End + 1 seconde` werkt. De huidige store blokkeert die call tot ná predecessor-end. Daarnaast accepteert de directe read-back geen geldige `scheduled` status. SCHED-001 en SCHED-002 moeten daarom als één timing/schedulingprobleem worden ontworpen.
-
-### 2. Provideridentiteit en timestamps zijn te strak gekoppeld
-
-Live 2Park kan timestamps enkele seconden normaliseren, terwijl meerdere codepaden exact of binnen 1 ms vergelijken. Daardoor kan een correcte mutation in `Unknown`, `Reconciling` of discrepancy blijven hangen. SCHED-017 raakt rechtstreeks SCHED-001, SCHED-009 en SCHED-011.
-
-### 3. Providerdekking eindigen is niet hetzelfde als de Visit beëindigen
-
-De scheduler kan correct vaststellen dat geen nieuwe provideraction nodig is, maar de logische Visit krijgt bij een gewone natuurlijke eindtijd niet vanzelf een terminale lifecycle. Dat raakt finite Visits, free-only Visits en beide harde policygrenzen. Dit is SCHED-013 en behoort vóór V1 opgelost te worden.
-
-### 4. Concurrency primitives zijn goed gekozen maar lockvolgorde is niet uniform
-
-Schedulerclaim gebruikt work-row → Visit advisory lock. Stop/end-time-mutaties gebruiken Visit advisory lock → schedulerwork. Die inversie kan deadlocks veroorzaken. Zie SCHED-014.
-
-### 5. Schedulerwork heeft niet één uniforme healthsemantiek
-
-`Active + Healthy` is een logische safety gate voor continuation, maar niet vanzelf voor `StopVisit` of `LongVisitWarning`. De generieke gate kan juist veiligheidskritiek Stop-work annuleren. Zie SCHED-015.
-
-### 6. Onze mock kan de belangrijkste tijdsgrenzen nog niet echt bewijzen
-
-TwoParkMock zet `scheduled`/`active` alleen bij creatie en laat statuses niet vanzelf met de tijd overgaan. Daardoor kunnen scheduler-boundary tests een onrealistisch providerbeeld gebruiken. Zie SCHED-016.
-
-### 7. Schedulerbesluiten moeten na stabilisatie per Visit reconstrueerbaar zijn
-
-Gewone serverlogs zijn onvoldoende om achteraf betrouwbaar te verklaren waarom een scheduleractie is gepland, uitgesteld, geannuleerd, gereconciled of afgerond. SCHED-018 legt daarom een persistente Visit-gerelateerde scheduler timeline vast als laatste verbeterstap. De eventcatalogus wordt bewust pas definitief gemaakt wanneer de uiteindelijke state machine en flows bekend zijn.
-
-## Wat juist sterk is in de huidige implementatie
-
-De audit laat ook zien dat de backend niet vanaf nul opnieuw ontworpen hoeft te worden. Sterke bouwstenen zijn:
-
-- persistente `VisitSchedulerWork`;
-- durable `ProviderOperation` vóór externe mutations;
-- operation-idempotency/replay;
-- unknown → reconciliation in plaats van blind retry;
-- startup recovery als gate vóór nieuwe schedulerclaims;
-- PostgreSQL `FOR UPDATE SKIP LOCKED`;
-- Visit advisory locks;
-- duurzame Stop Visit-flow die alle provideractions afhandelt vóór Visit-finalization;
-- duurzame cancel/replace-logica voor end-time shortening;
-- versioned rulesets en betaalde/gratis segmentatie;
-- policy snapshot per Visit;
-- persistente provider discrepancy-detectie.
-
-De verbeterfase moet deze bouwstenen behouden en vooral de semantiek ertussen consistenter maken.
-
-## Relatie-/impactmatrix
-
-| Verbetercluster | Primaire IDs | Raakt daarnaast |
-| --- | --- | --- |
-| JIT/scheduled providercoverage | SCHED-001, SCHED-002 | 003, 004, 005, 009 |
-| Provider matching/normalisatie | SCHED-017 | 001, 009, 011 |
-| Visit lifecycle/finalization | SCHED-013 | 002, 007, 008, 011, 012 |
-| Locking/concurrency | SCHED-014 | 003, 004, 005, 010 |
-| Work-type state policy | SCHED-015 | 003, 004, 012 |
-| Realistische provider test harness | SCHED-016 | 001, 002, 009, 011 |
-| Recovery/deploymentmodel | SCHED-010 | 009, 014 |
-| Visit scheduler observability | SCHED-018 | uiteindelijke flows van 001 t/m 017 |
-
-## Aanbevolen volgorde ná deze audit
-
-Nog **geen codewijziging** op basis van één los SCHED-item. Eerst een gezamenlijk verbeterontwerp maken in deze volgorde:
-
-1. lifecycle-invarianten en terminale Visitstatus (`SCHED-013`);
-2. provideraction state/timing-contract inclusief scheduled successor (`SCHED-001`, `002`, `017`);
-3. work-type state/health policy (`SCHED-015`);
-4. uniforme lock-order (`SCHED-014`);
-5. recovery/deploymentaanname (`SCHED-009`, `010`);
-6. TwoParkMock en integrale boundary-tests (`SCHED-016`);
-7. scenario voor scenario regressieverificatie van SCHED-001 t/m SCHED-012;
-8. **als laatste:** persistente Visit-scheduler observability/audit trail ontwerpen en implementeren (`SCHED-018`), inclusief gezamenlijk vaststellen welke betekenisvolle scheduler-events persistent worden vastgelegd.
-
-## Algemene auditconclusie
-
-De backend bevat veel goede reliability-mechanismen, vooral rond durable provideroperations, recovery en Stop. Het huidige geheel verdient echter nog geen V1-betrouwbaarheidsvink door enkele systeemoverstijgende inconsistenties rond lifecycle, scheduled timing, provider-matching, lock-order en work-type gating.
-
-De audit is inhoudelijk afgerond. De volgende stap is een **geconsolideerd technisch verbeterontwerp**, waarna fixes in samenhang kunnen worden geïmplementeerd en per SCHED-item geverifieerd. Persistente scheduler-observability volgt bewust pas nadat die uiteindelijke flows stabiel zijn.
+Geen verdere schedulerwijziging wordt uit deze audit afgeleid zonder een nieuwe expliciete stap. SCHED-018 blijft geparkeerd totdat besloten wordt de persistente Visit scheduler timeline te ontwerpen en implementeren.

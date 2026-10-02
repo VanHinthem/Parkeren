@@ -1,9 +1,57 @@
 # Parkeerregels en tijdmodel
 
-Parkeerregels worden geëvalueerd in de business-timezone `Europe/Amsterdam`; absolute tijdstippen blijven UTC instants.
+Parkeerregels worden geëvalueerd in de business-timezone `Europe/Amsterdam`; absolute persistente tijdstippen blijven UTC-instants.
 
-Een `ParkingRuleSet` heeft een geldigheidsperiode, configureerbare `PaidWindow`-vensters en `MaxProviderActionDuration`. De rules engine segmenteert een kandidaat-Visit in betaalde en gratis stukken. Gratis tijd telt daardoor niet mee voor `MaxPaidParkingDuration` en vereist later geen 2Park-action.
+Een versioned `ParkingRuleSet` beschrijft per providerproduct:
 
-De regel bevat ook `Continuation`: `StartNewAction` (standaard voor Oss) of `ExtendAction`. Voor Oss duurt één 2Park-parkeeractie maximaal vier uur. Daarna kan hetzelfde kenteken opnieuw worden aangemeld als de Visit doorloopt. De scheduler verwerkt deze keuze in een volgende fase-6-stap; het vastleggen van de regel verandert de huidige providerflow nog niet.
+- geldigheidsperiode;
+- betaalde weekdag/tijdvensters (`PaidWindows`);
+- kalenderuitzonderingen;
+- feestdaggedrag;
+- `MaxProviderActionDuration`;
+- continuationstrategie (`StartNewAction` of `ExtendAction`).
 
-De huidige ontwikkeltests gebruiken ma–za 09:00–20:00 uitsluitend als testconfiguratie; deze tijden zijn niet als gemeentelijke waarheid in productielogica hardcoded. Feestdagen, handmatige kalenderuitzonderingen, tarieven en versioned persistence volgen in afzonderlijke slices.
+De rules engine segmenteert een Visit in betaalde en gratis stukken. Gratis tijd:
+
+- telt niet mee voor `MaxPaidParkingDuration`;
+- vereist geen provideraction;
+- beëindigt de logische Visit niet automatisch.
+
+## Oss
+
+Voor Oss is V1 momenteel:
+
+```text
+MaxProviderActionDuration = 4 uur
+Continuation              = StartNewAction
+```
+
+De betaalde vensters worden uit de persistente rulesets gelezen en niet als providerwaarheid in schedulerlogica hardcoded.
+
+## Continuation over een providergrens
+
+Bij aaneengesloten betaalde providerdekking controleert de scheduler vijf minuten vóór het geplande action-einde of een successor nodig is. Door de bevestigde overlapcontrole van 2Park start een aansluitende successor op:
+
+```text
+predecessor.End + 1 seconde
+```
+
+Bij een echte gratis periode geldt een andere invariant:
+
+```text
+geen providerdekking tijdens gratis tijd
+successor.Start = nextPaid.Start
+precheck        = nextPaid.Start - 5 minuten
+```
+
+Er wordt dus geen `+1 seconde` toegepast over een gratis gat.
+
+## Harde Visitgrenzen
+
+Parkeerregels bepalen providerdekking, maar niet zelfstandig de functionele Visitduur. De Visit eindigt op de vroegste toepasselijke `DesiredEndAt`, elapsed-durationgrens of paid-durationgrens.
+
+De paid-durationgrens wordt over de versioned rulesets berekend, zodat gratis/overnight tijd niet onterecht meetelt.
+
+## Open-ended planning
+
+Wanneer een Visit geen concrete eindtijd en geen eerdere harde policygrens heeft, gebruikt de scheduler een rolling zoek-/planningshorizon van 14 dagen. Dit is uitsluitend technische planning en geen parkeerregel of maximale Visitduur.

@@ -1,50 +1,58 @@
 # SCHED-002 — gratis periode / overnight naar volgende betaalde periode
 
-**Status:** ⚠️ Bevinding bevestigd  
+**Status:** ✅ Geïmplementeerd en regressiegeverifieerd  
 **Prioriteit:** hoog  
-**Scenario:** een Visit loopt over een gratis periode heen en heeft daarna opnieuw betaalde providerdekking nodig.
+**Scenario:** een Visit loopt over gratis tijd en heeft daarna opnieuw betaalde providerdekking nodig.
 
 ## Gewenste invariant
 
-Tijdens gratis tijd mag geen providerdekking nodig zijn. Vóór het volgende betaalde segment moet wel tijdig en betrouwbaar een provideraction gereedstaan, zonder afhankelijkheid van toevallige worker- of providerlatency op de grens.
+Tijdens gratis tijd bestaat geen providerdekking. Vóór het volgende betaalde segment moet de benodigde provideraction wel tijdig klaarstaan:
 
-## As-built gedrag
+```text
+precheck        = nextPaid.Start - 5 minuten
+successor.Start = nextPaid.Start
+```
 
-De rules engine segmenteert de Visit correct in betaalde en gratis perioden. De eerste provideraction wordt begrensd op het einde van het betaalde venster. Als later opnieuw betaald parkeren nodig is, wordt `ContinueProviderCoverage` op `nextPaid.Start` gezet.
+De Visit blijft gedurende het gratis interval logisch actief.
 
-Wanneer het work op dat moment wordt verwerkt:
+## Huidig as-built gedrag
 
-1. wordt de eerdere lokale action nog als actuele `Active` action gevonden;
-2. wordt de provider opnieuw uitgelezen;
-3. de eerdere action moet remote nog `active` zijn en dezelfde eindtijd hebben;
-4. daarna wordt de eerdere action lokaal `Completed` gemaakt;
-5. `ProcessInitialCoverageAsync` start de volgende betaalde dekking.
+Alle relevante planningspaden gebruiken dezelfde free-gap semantiek:
 
-## Bevinding
+- Visit start tijdens gratis tijd;
+- resultaat van een eerste providerstart;
+- continuation-resultaat;
+- extend-resultaat voor generieke providers;
+- end-time extension;
+- startup recovery.
 
-De scheduler wordt pas **op het begin van het volgende betaalde segment** wakker. Daarmee begint de provider-call pas wanneer betaalde dekking al nodig is. Database-claimtijd, worker-loop en providerlatency kunnen daardoor een gat veroorzaken.
+Wanneer het volgende betaalde segment pas later begint, wordt `ContinueProviderCoverage` op T-5 van `nextPaid.Start` gepland. De future action kan dan als `scheduled` bij de provider bestaan vóór het betaalde segment werkelijk begint.
 
-De live 2Park-test uit #71 heeft al bewezen dat een action vijf minuten in de toekomst als `scheduled` kan worden aangemaakt. Het huidige overnight-pad benut die mogelijkheid niet.
+Over een echt gratis gat wordt geen `+1 seconde` toegepast; de nieuwe action begint exact op `nextPaid.Start`.
 
-Daarnaast veronderstelt de processor bij hervatting dat de vorige remote action na zijn eindtijd nog als `active` terugkomt. Het echte 2Park-gedrag na natuurlijke expiratie is nog niet vastgelegd. De mock is hiervoor geen bewijs; zie [SCHED-016](SCHED-016.md).
+## Recovery en duplicate-prevention
 
-## Bestaande testdekking
+Startup recovery herkent reeds bestaande future scheduled coverage en maakt die niet opnieuw aan. De Visit blijft actief zonder providerdekking zolang het segment gratis is.
 
-Er zijn domain-tests voor overnight-segmentatie en integratietests die controleren dat work op het volgende betaalde beginmoment wordt gepland. Dat bewijst de lokale planning, maar niet een realistische provider-state transition over de nacht.
+## Provider post-End gedrag
 
-## Relaties
+Het exacte live 2Park-gedrag nadat een predecessor natuurlijk over `End` heen is — bijvoorbeeld `completed`, verborgen of tijdelijk nog zichtbaar — is niet hard gemeten.
 
-- [SCHED-001](SCHED-001.md): dezelfde vraag wanneer een toekomstige successor moet worden aangemaakt.
-- [SCHED-013](SCHED-013.md): natuurlijke afronding van actions/Visits.
-- [SCHED-016](SCHED-016.md): de mock veroudert action-statussen niet.
-- [SCHED-017](SCHED-017.md): timestampvergelijking met live providerdata.
+TwoParkMock legt daarom geen onbewezen default vast. Tests kunnen expliciet `keep-active`, `completed` of `hide` kiezen. De applicatiecorrectness leunt niet op één specifieke post-End providerstatus.
 
-## Onduidelijkheden / open vragen
+## Regressiebewijs
 
-1. Hoe exposeert 2Park een action nadat `TIMEEND` natuurlijk is verstreken: ontbrekend, `completed`, `stopped` of nog tijdelijk `active`?
-2. Hoe lang blijft zo'n action via read-back zichtbaar?
-3. Welk precheckmoment willen we voor een nieuw betaald segment na een lange gratis periode: bijvoorbeeld T-5 vóór `nextPaid.Start`?
+De hardening bewijst:
 
-## Voorlopige conclusie
+- T-5 planning voor toekomstige betaalde segmenten;
+- geen providercoverage tijdens gratis tijd;
+- future scheduled successor met start exact op `nextPaid.Start`;
+- restart/recovery zonder duplicate successor;
+- persisted planning over versioned rulesets;
+- provider matching met centrale 5-seconden engineering tolerance.
 
-De segmentatie is functioneel goed, maar de hervatting is qua timing en remote-state-aanname nog niet betrouwbaar bewezen. Dit scenario moet samen met SCHED-001 worden ontworpen, niet als losse fix.
+De free-gap acceptance/recoveryketen is groen t/m `6cc9bf05`.
+
+## Conclusie
+
+De oorspronkelijke grens-latency en remote-state-aanname zijn uit de planning verwijderd. SCHED-002 heeft geen zelfstandig code- of testgat meer. Alleen het exacte live 2Park post-End contract blijft een extern observatiepunt.

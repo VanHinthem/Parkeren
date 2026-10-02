@@ -1,6 +1,6 @@
 # V1 implementatieplanning
 
-De uitvoerbare V1-volgorde wordt bijgehouden in GitHub issue #92.
+De uitvoerbare V1-volgorde wordt primair bijgehouden in GitHub issue #92. Dit document geeft de hoofdfasen en de actuele schedulerstatus weer.
 
 ## Hoofdfasen
 
@@ -16,6 +16,22 @@ De uitvoerbare V1-volgorde wordt bijgehouden in GitHub issue #92.
 10. Echte 2Park-validatie en hardening
 11. V1 release
 
-De volgorde is dependency-driven en niet gebaseerd op issue-nummers. Vanaf de functionele slices worden API, persistence, UI, tests en documentatie zoveel mogelijk samen opgeleverd.
+De volgorde is dependency-driven en niet gebaseerd op issue-nummers. API, persistence, UI, tests en documentatie worden zoveel mogelijk samen opgeleverd.
 
-Zie #92 voor de gekoppelde stories, technische issues, exitcriteria en planningsregels.
+## Actuele schedulerstatus — 2 oktober 2026
+
+De reliability-hardening rond Visit lifecycle, scheduler, provider matching, locking, recovery en TwoParkMock is voor **SCHED-001 t/m SCHED-017 afgerond en opnieuw geverifieerd**.
+
+Daarmee zijn onder andere gerealiseerd:
+
+- terminale Visitgrenzen en eindredenen;
+- JIT scheduled continuation en free-gap/overnight hervatting;
+- Visit-first locking en work-type policy;
+- centrale provider identity/timestamp matching;
+- single-instance restart recovery;
+- deterministische boundary test harness;
+- regressieverificatie van de oorspronkelijke scheduler-scenario's.
+
+**SCHED-018 scheduler observability is nog niet gestart.** Die stap wordt pas opgepakt na expliciete beslissing na de documentatieronde.
+
+Zie `docs/technisch/visit-scheduler-audit/PROGRESS.md` voor de scheduler-hardeninghistorie en #92 voor de bredere V1-planning.

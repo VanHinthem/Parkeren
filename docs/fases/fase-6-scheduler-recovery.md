@@ -1,88 +1,96 @@
 # Fase 6 — Scheduler, continuation en recovery
 
-**Status: afgerond ✅**  
-**Afgesloten: 30 september 2026**
+**Status: functioneel afgerond en later scheduler-gehard ✅**  
+**Oorspronkelijke fase-exit:** 30 september 2026  
+**Scheduler-hardening opnieuw geverifieerd:** 2 oktober 2026
 
 ## Doel
 
-Fase 6 maakt de Visit-lifecycle onafhankelijk van een geopende PWA of in-memory timers. Providerdekking, toekomstige acties, retries en herstel worden persistent en server-side georkestreerd.
+De Visit-lifecycle onafhankelijk maken van een geopende PWA of in-memory timers. Providerdekking, toekomstige acties, retries en herstel zijn persistent en server-side georkestreerd.
 
 ## Opgeleverd
 
-- Persistente `VisitSchedulerWork` met atomair PostgreSQL-claiming.
-- Server-side `VisitSchedulerWorker` met startup recovery.
-- JIT provider-continuation met precheck op T-5 minuten.
-- Ruleset-/paid-window-gestuurde providerdekking; geen dekking in gratis perioden.
-- Rolling planning horizon van 14 dagen voor volledig open-ended Visits.
-- Visit-level advisory locking en Stop-precedence.
-- Persistente `ProviderOperation` correlation/idempotency voor provider-mutaties.
-- Unknown outcome -> reconciliation in plaats van blind retry.
-- Recovery na proces/container-restart.
-- Periodieke reconciliation van unknown operations en bekende actieve provider-actions.
-- Duurzame cancel/replace van scheduled provider-actions bij end-time changes.
-- Durable active shortening: `StopVisit` scheduler-work op de nieuwe `DesiredEndAt`.
-- Stop Visit beëindigt/cancelt alle relevante actieve/geplande providerdekking voordat de Visit definitief wordt afgerond.
-- Integration tests voor scheduler claiming, continuation, stop-races, replay/recovery, cancellation/replacement en active shortening.
+- persistente `VisitSchedulerWork`;
+- `VisitSchedulerWorker` met startup recovery gate;
+- JIT provider-continuation op T-5;
+- paid/free-segmentatie over versioned rulesets;
+- rolling 14-daagse planninghorizon voor volledig open-ended Visits;
+- duurzame `ProviderOperation` correlation/idempotency;
+- unknown outcome -> read-back/reconciliation in plaats van blind retry;
+- restart recovery;
+- provider discrepancy-detectie;
+- duurzame cancel/replace bij end-time changes;
+- terminale Visit-lifecycle met `VisitEndReason` en durable `StopVisit` work;
+- Visit-first lock-order voor scheduler/Stop/end-time/recovery;
+- centrale work-type execution policy;
+- centrale provider action matching met 5-seconden engineering tolerance;
+- deterministische TwoParkMock boundary harness.
 
-## Functionele beslissingen
-
-### Provider continuation is geen user-opt-in
-
-Een geldige actieve Visit moet automatisch providerdekking houden. `AllowVisitExtension` bepaalt alleen of een gebruiker `DesiredEndAt` later mag zetten; `AllowOpenEndedVisits` bepaalt of `DesiredEndAt = null` is toegestaan.
-
-### Oss gebruikt StartNewAction
-
-Live tests tegen 2Park bevestigden dat `extend_action.json` wel `OK/SUCCESS` kan retourneren zonder de eindtijd van een actieve action persistent te wijzigen. Ook een JIT-poging op T-60 wijzigde de action niet.
-
-Voor Oss:
+## Oss continuation
 
 ```text
 MaxProviderActionDuration = 4 uur
 Continuation              = StartNewAction
 ```
 
-Een successor wordt JIT aangemaakt. Exact aansluitende actions worden door 2Park als overlap geweigerd; een start na de vorige provider-eindtijd wordt gebruikt.
+### Aaneengesloten betaald
 
-### Active shortening
+```text
+precheck        = predecessor.End - 5 minuten
+successor.Start = predecessor.End + 1 seconde
+```
 
-Een actieve provider-action wordt niet onmiddellijk gestopt wanneer de gebruiker een latere toekomstige Visit-eindtijd naar voren haalt. De nieuwe `DesiredEndAt` wordt vastgelegd en de scheduler krijgt persistent `StopVisit`-work voor dat tijdstip.
+Live 2Park-tests bevestigden dat exact aansluitende acties als overlap kunnen worden geweigerd en dat een future action als `scheduled` kan worden aangemaakt.
 
-### Open-ended planning
+### Gratis gat
 
-De 14-daagse horizon is uitsluitend technisch. Hij is geen maximale Visitduur.
+```text
+precheck        = nextPaid.Start - 5 minuten
+successor.Start = nextPaid.Start
+```
 
-## Technische beslissingen
+Tijdens gratis tijd bestaat geen providerdekking; de logische Visit kan wel actief blijven.
 
-- Scheduler correctness is database-backed; geen correctness-afhankelijkheid van process memory.
-- Due work wordt geclaimd met `FOR UPDATE SKIP LOCKED`.
-- Scheduler, Stop en end-time change serialiseren per Visit met PostgreSQL advisory locks.
-- Scheduler work-id wordt gebruikt als stabiele correlation/idempotency-key waar van toepassing.
-- Provider-mutatie wordt vóór uitvoering persistent vastgelegd.
-- Een onzekere provideruitkomst wordt eerst gereconcilieerd.
-- Startup recovery moet slagen voordat nieuw schedulerwerk geclaimd wordt.
-- De provider wordt opnieuw gelezen op relevante grenzen; lokale state alleen is niet voldoende.
-- Stop heeft voorrang op continuation.
-- Functionele Visit-state is leidend; scheduler-work is een vervangbaar uitvoeringsplan.
+## Terminale Visitgrens
 
-## Documentatie
+De vroegste toepasselijke grens uit `DesiredEndAt`, `MaxVisitElapsedDuration` en `MaxPaidParkingDuration` krijgt duurzame terminale `StopVisit`-work.
 
-- `docs/technisch/visit-scheduler.md` — functionele en technische schedulerarchitectuur.
-- `docs/functioneel/parkeer-en-visitparameters.md` — policy/rules/continuation-semantiek.
-- `docs/functioneel/parkeerbeleid.md` — actuele policynamen en 2Park/Oss-keuzes.
+Automatische finalization gebruikt de functionele boundary als `ActualEndAt`. Manual Stop gebruikt het werkelijke stopmoment.
 
-## Fase-6 exit
+## Locking en scheduler policy
 
-De Fase-6 exit is behaald: actieve Visits kunnen server-side correct worden voortgezet en hersteld bij restart, retries, timeouts en races zonder afhankelijkheid van telefoon/PWA-timers.
+Mutaties rond dezelfde Visit volgen Visit-first locking. Schedulerclaim selecteert eerst een kandidaat, neemt daarna de Visit advisory lock en vervolgens de exacte work-row lock.
 
-## Bewust doorgeschoven
+Work-types hebben eigen semantiek:
 
-Deze punten horen bij bredere stories en blokkeren de Fase-6 scheduler/recovery-exit niet:
+- continuation wordt bij onveilige health uitgesteld;
+- terminal Stop blijft uitvoerbaar ondanks technische health;
+- Long Visit warning volgt lifecycle en niet generieke providerhealth.
 
-- Notificatie-inbox, pushdelivery en recipient rules -> Fase 7 (#53–#56, #76–#80).
-- Beheerweergave van discrepancies/externe providerhistorie -> Fase 8 (#63 en resterende delen #66).
-- Volledige echte-provider hardening, aanvullende JIT/capacity/errorproeven -> Fase 9 / #71.
-- Providerhistorie en Oss-jaarbudget import -> #93.
-- Definitieve ownership/naam van globale providercapaciteit -> #67/#73.
-- Volledige retry/backoff- en providerfout-UX waar die buiten scheduler correctness valt -> resterende delen #68.
+## Provider identity
 
-Open issues blijven open wanneer hun acceptance criteria deze latere scope bevatten; Fase 6 wordt dus niet administratief “groen” gemaakt door onaf werk af te vinken.
+Matching gebruikt centraal known action-id, productcontext, normalized plate indien relevant, semantische status en 5 seconden timestamp tolerance indien timestamps relevant zijn.
+
+De 5 seconden zijn een engineering margin, geen gemeten provider-SLA. Bekende-ID mismatch valt nooit terug naar een andere action; onbekende-ID fallback vereist één unieke kandidaat.
+
+## Recovery
+
+V1 draait single-instance. Startup recovery:
+
+- herstelt achtergelaten claimed work policygedreven;
+- respecteert de provider attempt lease;
+- brengt stale `InProgress` eerst naar `Unknown` en reconciliëert via read-back;
+- hervat interrupted reconciliation zonder repeat mutation;
+- herbouwt continuation- en terminal-work.
+
+## Testharness
+
+TwoParkMock heeft een bestuurbare klok, dynamic `scheduled -> active`, visibility delay, read-back timestamp offsets, locationlabel override, expliciete post-End modi en configureerbaar meetellen van scheduled actions voor capaciteit.
+
+Onbewezen live providersemantiek wordt niet als mockdefault vastgelegd.
+
+## Fase-exit na hardening
+
+SCHED-001 t/m SCHED-017 zijn geïmplementeerd en scenario-voor-scenario opnieuw geverifieerd. Daarmee is scheduler correctness voor V1 op de huidige single-instance architectuur opnieuw afgedekt.
+
+SCHED-018 — persistente scheduler observability/audit trail — is bewust een aparte vervolgstap en is nog niet gestart.
