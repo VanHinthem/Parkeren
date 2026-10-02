@@ -698,8 +698,11 @@ internal sealed class VisitRecoveryService(
         var providerActions = string.IsNullOrWhiteSpace(activeAction.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
             : await provider.GetActionsForProductAsync(activeAction.ProviderProductId, cancellationToken);
-        var confirmedAction = providerActions.SingleOrDefault(x =>
-            x.ProviderActionId == activeAction.ProviderActionId);
+        var confirmedAction = ProviderActionMatchPolicy.FindUniqueMatch(
+            providerActions,
+            new ProviderActionMatchCriteria(
+                activeAction.ProviderActionId,
+                activeAction.ProviderProductId));
 
         if (confirmedAction is null)
         {
@@ -733,7 +736,7 @@ internal sealed class VisitRecoveryService(
             return;
         }
 
-        if ((confirmedAction.End - activeAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+        if (!ProviderActionMatchPolicy.TimestampsMatch(confirmedAction.End, activeAction.PlannedEndAt))
         {
             logger.LogWarning(
                 "Provider action {ProviderActionId} for Visit {VisitId} has end {ProviderEndAt}, while the locally confirmed end is {LocalEndAt}; continuation is blocked pending review.",

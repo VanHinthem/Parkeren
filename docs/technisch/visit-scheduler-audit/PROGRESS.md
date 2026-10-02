@@ -101,8 +101,9 @@ Aanvullende afspraken:
 - ✅ Stop read-back en Stop reconciliation gebruiken dezelfde centrale action-id/product identity; Stop blijft strikt action-id driven zonder fallback; CI groen op commit `797021ec` (`fix: apply provider match policy to stops`).
 - ✅ Beoordeeld waarom `TwoParkProvider.StartActionAsync` `< 2 minuten` gebruikte: de startresponse levert geen bruikbaar action-id op, waardoor de adapter via read-back een fallback-kandidaat moest zoeken; de 2-minutenwaarde was een heuristische zoekwindow, geen 2Park-SLA.
 - ✅ `TwoParkProvider.StartActionAsync` gebruikt dezelfde unique-fallback policy met product, genormaliseerd kenteken, `active|scheduled` en 5-seconden Start/End-tolerance; CI groen op commit `7d176ec8` (`fix: align twopark start readback matching`).
-- 🚧 Actieve provider-action discrepancy-detectie gebruikt centrale action-id/product identity en de centrale 5-seconden End-tolerance; integratietests dekken ±4 seconden als gezond en +6 seconden als `ProviderActionEndMismatch`.
-- 🚧 `ExternalProviderAction` detectie blijft in deze slice bewust exact action-id gebaseerd; er is geen fallback-koppeling voor onbekende provider IDs toegevoegd.
+- ✅ Actieve provider-action discrepancy-detectie gebruikt centrale action-id/product identity en de centrale 5-seconden End-tolerance; integratietests dekken ±4 seconden als gezond en +6 seconden als `ProviderActionEndMismatch`; CI groen na gerichte testfixes op commit `5cf172bc`.
+- ✅ `ExternalProviderAction` detectie blijft bewust exact action-id gebaseerd; er is geen fallback-koppeling voor onbekende provider IDs toegevoegd.
+- 🚧 Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd.
 
 ## Volgende hoofdfasen
 
