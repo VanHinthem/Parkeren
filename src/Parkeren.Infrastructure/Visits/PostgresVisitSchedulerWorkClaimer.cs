@@ -86,41 +86,56 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
         DateTimeOffset retryAt,
         CancellationToken cancellationToken = default)
     {
+        var candidateVisitId = await dbContext.VisitSchedulerWork
+            .AsNoTracking()
+            .Where(x => x.Id == workId)
+            .Select(x => (Guid?)x.VisitId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (candidateVisitId is null)
+            return;
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        // Keep retry/release on the same Visit-first lock order as claiming and
+        // Stop/end-time flows. Never hold the work row while waiting for Visit.
+        var lockKey = VisitAdvisoryLock.For(candidateVisitId.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
         var work = await dbContext.VisitSchedulerWork
             .FromSqlInterpolated($"SELECT w.*, w.xmin FROM visit_scheduler_work AS w WHERE w.\"Id\" = {workId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (work is not null && work.Status == VisitSchedulerWorkStatus.Claimed && work.ClaimedBy == workerId)
+        if (work is null || work.Status != VisitSchedulerWorkStatus.Claimed || work.ClaimedBy != workerId)
         {
-            var lockKey = VisitAdvisoryLock.For(work.VisitId);
-            await dbContext.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-
-            var visit = await dbContext.Visits.AsNoTracking().SingleAsync(x => x.Id == work.VisitId, cancellationToken);
-            var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(work.Type, visit.Status, visit.Health);
-
-            switch (decision)
-            {
-                case VisitSchedulerWorkExecutionDecision.Execute:
-                case VisitSchedulerWorkExecutionDecision.Defer:
-                {
-                    var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
-                    work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
-                    break;
-                }
-
-                case VisitSchedulerWorkExecutionDecision.Cancel:
-                    work.Cancel();
-                    break;
-
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(decision), decision, "Unsupported scheduler work execution decision.");
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return;
         }
 
+        var visit = await dbContext.Visits.AsNoTracking().SingleAsync(x => x.Id == work.VisitId, cancellationToken);
+        var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(work.Type, visit.Status, visit.Health);
+
+        switch (decision)
+        {
+            case VisitSchedulerWorkExecutionDecision.Execute:
+            case VisitSchedulerWorkExecutionDecision.Defer:
+            {
+                var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
+                work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
+                break;
+            }
+
+            case VisitSchedulerWorkExecutionDecision.Cancel:
+                work.Cancel();
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(decision), decision, "Unsupported scheduler work execution decision.");
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 }

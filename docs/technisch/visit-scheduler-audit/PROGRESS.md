@@ -22,10 +22,11 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 
 ### A2 — SCHED-014 uniforme lock-order
 
-- 🚧 `ClaimNextDueAsync` gebruikt in de huidige commit de tweefasenclaim: kandidaat zonder row lock, daarna Visit advisory lock, daarna exacte scheduler-row `FOR UPDATE` en her-validatie.
-- 🚧 Bij gelijke `DueAt` geldt selectieprioriteit `StopVisit -> ContinueProviderCoverage -> LongVisitWarning`.
-- 📋 `ReleaseFailedAsync` moet hierna dezelfde Visit-first lock-order krijgen.
-- 📋 Daarna gerichte PostgreSQL concurrencytests.
+- ✅ `ClaimNextDueAsync` gebruikt tweefasenclaim: kandidaat zonder row lock, daarna Visit advisory lock, daarna exacte scheduler-row `FOR UPDATE` en her-validatie.
+- ✅ Bij gelijke `DueAt` geldt selectieprioriteit `StopVisit -> ContinueProviderCoverage -> LongVisitWarning`.
+- ✅ CI groen op commit `7c86a9f8` (`fix: enforce visit-first scheduler claim locking`).
+- 🚧 `ReleaseFailedAsync` gebruikt in de huidige commit dezelfde Visit-first lock-order en revalideert pas na de row lock.
+- 📋 Hierna gerichte PostgreSQL concurrencytests voor claim versus Stop/end-time mutation en meerdere workers.
 
 ## Volgende hoofdfasen
 
