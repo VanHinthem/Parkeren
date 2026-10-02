@@ -64,7 +64,7 @@ internal sealed class ProviderExtendResultStore(
                     return;
                 }
                 var nextDueAt = nextPaid.Start > providerAction.End
-                    ? nextPaid.Start
+                    ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
                     : ProviderCoverageSchedule.PrecheckAt(providerAction.End);
                 var nextWorkExists = await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id &&
