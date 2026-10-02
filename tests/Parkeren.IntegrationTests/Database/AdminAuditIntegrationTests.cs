@@ -6,6 +6,7 @@ using Parkeren.Application.Administration;
 using Parkeren.Application.Authentication;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -133,6 +134,56 @@ public sealed class AdminAuditIntegrationTests(PostgreSqlFixture fixture)
             await cleanup.UserSessions
                 .Where(x => x.UserId == admin.Id || x.UserId == visitor.Id)
                 .ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Repeated_vehicle_assignment_writes_single_audit_event()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"assign-admin-{suffix}", $"ASSIGN-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var visitor = new User(Guid.NewGuid(), $"assign-visitor-{suffix}", $"ASSIGN-VISITOR-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), "12AB34", "12AB34", "Audit test");
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.AddRange(admin, visitor);
+            seed.Vehicles.Add(vehicle);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            await using var provider = CreateServices().BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+
+            Assert.True(await administration.AssignVehicleAsync(admin.Id, visitor.Id, vehicle.Id, ct));
+            Assert.True(await administration.AssignVehicleAsync(admin.Id, visitor.Id, vehicle.Id, ct));
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(1, await verify.UserVehicles.AsNoTracking()
+                .CountAsync(x => x.UserId == visitor.Id && x.VehicleId == vehicle.Id, ct));
+
+            var audits = await verify.AdminAuditEvents.AsNoTracking()
+                .Where(x => x.ActorUserId == admin.Id && x.Action == "VehicleAssigned")
+                .ToListAsync(ct);
+            var audit = Assert.Single(audits);
+            Assert.Equal("UserVehicle", audit.TargetType);
+            Assert.Equal($"{visitor.Id}:{vehicle.Id}", audit.TargetId);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.AdminAuditEvents
+                .Where(x => x.ActorUserId == admin.Id || x.ActorUserId == visitor.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.UserVehicles
+                .Where(x => x.UserId == visitor.Id && x.VehicleId == vehicle.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor.Id).ExecuteDeleteAsync(ct);
         }
     }
