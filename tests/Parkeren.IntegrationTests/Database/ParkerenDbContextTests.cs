@@ -940,7 +940,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         await using var verifyContext = fixture.CreateDbContext();
         var work = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
-        Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((work.DueAt - nextPaidStart.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
