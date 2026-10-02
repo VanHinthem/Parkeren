@@ -61,10 +61,12 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ `StopVisitCommand` kan een expliciete `VisitEndReason` dragen; ontbrekende reden blijft compatibel en betekent `ManualStop`.
 - ✅ `PostgresStopVisitClaimer` gebruikt de expliciete eindreden bij de overgang naar `Stopping`.
 - ✅ CI groen op commit `843228ca` (`feat: carry visit end reason through stop claim`).
-- 🚧 Als de schedulercommand geen reden meegeeft, resolveert de claimer de reden uit de duurzame `StopVisit`-work met hetzelfde operation/work-id.
-- 🚧 Replays valideren dat een gevonden terminale reden niet conflicteert met de reeds vastgelegde Visit-redenen.
-- 🚧 `StopVisitFinalizer` gebruikt voor automatische terminale stops de `DueAt` van de matchende scheduler-work als functionele `ActualEndAt`; manual stop blijft de werkelijke stoptijd gebruiken.
-- 📋 Na groen: integratietests toevoegen voor automatische `EndReason` + boundary-`ActualEndAt`, daarna B4 afronden.
+- ✅ Als de schedulercommand geen reden meegeeft, resolveert de claimer de reden uit de duurzame `StopVisit`-work met hetzelfde operation/work-id.
+- ✅ Replays valideren dat een gevonden terminale reden niet conflicteert met de reeds vastgelegde Visit-redenen.
+- ✅ `StopVisitFinalizer` gebruikt voor automatische terminale stops de `DueAt` van de matchende scheduler-work als functionele `ActualEndAt`; manual stop blijft de werkelijke stoptijd gebruiken.
+- ✅ CI groen op commit `76103a03` (`fix: finalize visits at terminal boundary`).
+- 🚧 Gerichte PostgreSQL-integratietests toegevoegd voor automatische `EndReason` + boundary-`ActualEndAt` en voor behoud van `ManualStop` + echte stoptijd.
+- 📋 Na groen: B4 en fase B afronden en nieuwe chat starten voor fase C.
 
 ## Volgende hoofdfasen
 
