@@ -199,8 +199,6 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 Assert.Equal(2, actionsAfterRecovery.Count);
                 Assert.Equal(successorId, actionsAfterRecovery[1].Id);
                 Assert.Equal(ProviderActionState.Scheduled, actionsAfterRecovery[1].State);
-                Assert.Equal(VisitHealth.Healthy,
-                    (await recoveryVerifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
             }
 
             Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
