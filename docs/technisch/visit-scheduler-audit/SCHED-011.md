@@ -1,43 +1,50 @@
 # SCHED-011 — externe providerwijziging / discrepancy
 
-**Status:** ✅ Audit afgerond; kernmechanisme goed, afhankelijk van providercontract  
+**Status:** ✅ Opnieuw geverifieerd na matching-, lifecycle- en mock-hardening  
 **Afhankelijkheden:** SCHED-013, SCHED-016, SCHED-017
 
 ## Gewenste invariant
 
 Wanneer providerstate buiten de applicatie verandert, mag de scheduler niet blind verder muteren alsof lokale state nog autoritatief is. Afwijkingen moeten zichtbaar worden en automatische continuation moet stoppen totdat de situatie veilig is.
 
-## As-built gedrag
+## Huidig as-built gedrag
 
-De worker voert periodiek `ReconcileActiveProviderActionsAsync` uit. Voor gezonde actieve Visits zonder unresolved provideroperation:
+`VisitRecoveryService.ReconcileActiveProviderActionsAsync` vergelijkt gezonde actieve Visits zonder unresolved provideroperation periodiek met provider-readback. Daarbij gelden de centrale provideridentity- en timestampregels uit SCHED-017:
 
-- worden lokale actieve actions vergeleken met de remote provider;
-- missing action, statusverschil en eindtijdverschil worden als persistente discrepancy vastgelegd;
-- een extern gestopte action wordt lokaal als zodanig gemarkeerd;
-- de Visit gaat naar `AttentionRequired`;
-- pending en claimed schedulerwork voor die Visit wordt geannuleerd;
-- ook remote actions zonder lokale tegenhanger worden als discrepancy geregistreerd.
+- bekende provider action-id en productcontext zijn leidend;
+- locationlabel versus lokale locationcode is geen identity mismatch;
+- End-drift binnen de centrale 5-seconden engineering margin is gezond;
+- drift buiten die tolerance wordt als discrepancy vastgelegd;
+- een extern gestopte action wordt lokaal als gestopt gemarkeerd;
+- de Visit gaat bij een echte unresolved afwijking naar `AttentionRequired`;
+- continuation wordt via de work execution policy niet verder uitgevoerd zolang de Visit niet gezond is;
+- provider-only actions blijven als persistente discrepancy zichtbaar totdat de provider ze als gestopt rapporteert.
 
-Dit is een conservatief en geschikt fail-safe model: bij onverwachte providerstate stopt automatische mutatie.
+Unresolved provideroperations worden bewust niet door de periodieke discrepancycheck doorkruist; eerst wordt de mutation zelf gereconcilieerd.
 
-## Aandachtspunten
+## Regressiebewijs
 
-De juistheid van mismatchdetectie hangt af van de betekenis van providerstatussen en timestamps. Een natuurlijk geëindigde action mag niet ten onrechte als extern probleem worden geïnterpreteerd. Dat raakt:
+De huidige integratietests bewijzen onder meer:
 
-- [SCHED-013](SCHED-013.md): normale Visit/action-afronding;
-- [SCHED-016](SCHED-016.md): de mock simuleert tijdsverloop van statuses niet;
-- [SCHED-017](SCHED-017.md): eindtijden worden op meerdere plekken bijna exact vergeleken terwijl live 2Park seconden kan afwijken.
+- een externe Stop wordt als statusdiscrepancy gedetecteerd en de lokale provideraction wordt `Stopped`;
+- een provider-only action blijft open totdat de provider hem als gestopt rapporteert;
+- End-drift van +4 seconden veroorzaakt geen discrepancy en laat de Visit `Healthy`;
+- End-drift van +6 seconden veroorzaakt `ProviderActionEndMismatch` en `AttentionRequired`;
+- startup/restart blokkeert continuation na externe Stop of extern gewijzigde provider-End;
+- de centrale scheduler work policy deferreert continuation voor `Reconciling`, `AttentionRequired` en `StopFailed` in plaats van verder te muteren.
 
-## Positief
+## Providercontract dat bewust nog open blijft
 
-Periodieke reconciliation-fouten worden gelogd zonder de schedulerworker definitief te stoppen. Unresolved provideroperations worden bewust overgeslagen, zodat discrepancy-detectie niet concurreert met een lopende reconciliation.
+Het exacte live 2Park-gedrag ná het natuurlijke End van een action — bijvoorbeeld statusnaam en zichtbaarheidstijd — is nog niet hard gemeten. TwoParkMock legt daarom geen onbewezen default vast: tests kunnen expliciet `keep-active`, `completed` of `hide` kiezen.
 
-## Onduidelijkheden / open vragen
+Dit externe observatiepunt verandert de fail-safe applicatiesemantiek niet. Tot live bewijs beschikbaar is, blijven bekende IDs, centrale tolerance en conservatieve discrepancy/Unknown-afhandeling leidend.
 
-1. Welke natuurlijke eindstatus geeft 2Park terug en hoe lang blijft een afgelopen action zichtbaar?
-2. Welke timestampafwijking moet als echte discrepancy gelden in plaats van normale provider-normalisatie?
-3. Moet een beheerder een `AttentionRequired` Visit handmatig kunnen reconciliëren/herstellen waarna schedulerwork opnieuw wordt opgebouwd?
+## Relaties
+
+- [SCHED-013](SCHED-013.md): normale terminale Visit-afronding is inmiddels duurzaam opgelost.
+- [SCHED-016](SCHED-016.md): mock ondersteunt expliciete post-End modi, kloksturing en read-back afwijkingen.
+- [SCHED-017](SCHED-017.md): centrale provideridentity en 5-seconden timestamp tolerance.
 
 ## Conclusie
 
-Geen zelfstandige architectuurfout gevonden in discrepancy-detectie. Het mechanisme is juist defensief; de resterende betrouwbaarheid hangt vooral af van een correct genormaliseerd providercontract.
+Het discrepancy-mechanisme is defensief en sluit nu aan op dezelfde provideridentity-, lifecycle- en recoverysemantiek als de rest van de scheduler. Er resteert geen zelfstandig SCHED-011-codegat. Alleen het exacte live 2Park post-End contract blijft een extern observatiepunt voor latere aanscherping van tests/defaults.
