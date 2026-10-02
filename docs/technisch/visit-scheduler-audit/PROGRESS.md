@@ -14,16 +14,18 @@ Dit bestand wordt vanaf de implementatiefase bijgewerkt in dezelfde logische com
 - ✅ `PostgresVisitSchedulerWorkClaimer` aangesloten op `Execute` / `Defer` / `Cancel`.
 - ✅ `Pending` work kan semantisch worden uitgesteld zonder kunstmatig claim/release-pad.
 - ✅ CI groen op commit `82ea3ba6` (`fix: apply scheduler work execution policy`).
-- 🚧 `ReleaseFailedAsync` gebruikt in de huidige commit dezelfde policy; `Execute` en `Defer` releasen voor retry, alleen `Cancel` annuleert definitief.
+- ✅ `ReleaseFailedAsync` gebruikt dezelfde policy; `Execute` en `Defer` releasen voor retry, alleen `Cancel` annuleert definitief.
+- ✅ CI groen op commit `7554ceb2` (`fix: apply scheduler retry policy`).
 - 📋 Integratie-/regressietests voor claimer/retry volgen binnen A1/A2.
 
 Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt standaard **1 minuut** uitgesteld. Recovery mag eerder herbeoordelen. De delay staat op één plek in de claimer en kan later eenvoudig configureerbaar worden gemaakt als operationele tuning dat nodig maakt.
 
 ### A2 — SCHED-014 uniforme lock-order
 
-- 📋 Nog te implementeren.
-- Doel: `Visit advisory lock -> scheduler/provider rows`.
-- Daarna gerichte PostgreSQL concurrencytests.
+- 🚧 `ClaimNextDueAsync` gebruikt in de huidige commit de tweefasenclaim: kandidaat zonder row lock, daarna Visit advisory lock, daarna exacte scheduler-row `FOR UPDATE` en her-validatie.
+- 🚧 Bij gelijke `DueAt` geldt selectieprioriteit `StopVisit -> ContinueProviderCoverage -> LongVisitWarning`.
+- 📋 `ReleaseFailedAsync` moet hierna dezelfde Visit-first lock-order krijgen.
+- 📋 Daarna gerichte PostgreSQL concurrencytests.
 
 ## Volgende hoofdfasen
 

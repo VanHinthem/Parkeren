@@ -18,31 +18,39 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
         if (string.IsNullOrWhiteSpace(workerId))
             throw new ArgumentException("Worker id is required.", nameof(workerId));
 
+        var candidate = await dbContext.VisitSchedulerWork
+            .AsNoTracking()
+            .Where(x => x.Status == VisitSchedulerWorkStatus.Pending && x.DueAt <= now)
+            .OrderBy(x => x.DueAt)
+            .ThenBy(x => x.Type == VisitSchedulerWorkType.StopVisit
+                ? 0
+                : x.Type == VisitSchedulerWorkType.ContinueProviderCoverage
+                    ? 1
+                    : 2)
+            .ThenBy(x => x.CreatedAt)
+            .Select(x => new { x.Id, x.VisitId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (candidate is null)
+            return null;
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+        // Global SCHED-014 lock order: Visit advisory lock before scheduler rows.
+        var lockKey = VisitAdvisoryLock.For(candidate.VisitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
         var work = await dbContext.VisitSchedulerWork
-            .FromSqlInterpolated($"""
-                SELECT w.*, w.xmin
-                FROM visit_scheduler_work AS w
-                WHERE w."Status" = 'Pending' AND w."DueAt" <= {now}
-                ORDER BY w."DueAt", w."CreatedAt"
-                FOR UPDATE SKIP LOCKED
-                LIMIT 1
-                """)
+            .FromSqlInterpolated($"SELECT w.*, w.xmin FROM visit_scheduler_work AS w WHERE w.\"Id\" = {candidate.Id} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (work is null)
+        if (work is null || work.Status != VisitSchedulerWorkStatus.Pending || work.DueAt > now)
         {
             await transaction.CommitAsync(cancellationToken);
             return null;
         }
-
-        // SCHED-014 will change this to the global Visit-first lock order.
-        // For SCHED-015 we only centralize the work-type state/health decision.
-        var lockKey = VisitAdvisoryLock.For(work.VisitId);
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock({lockKey})",
-            cancellationToken);
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
         var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(work.Type, visit.Status, visit.Health);
