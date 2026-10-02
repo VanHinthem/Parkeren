@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.ParkingProvider;
+using ProviderParkingAction = Parkeren.Application.ParkingProvider.ProviderParkingAction;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Domain.ParkingProvider;
