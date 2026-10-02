@@ -32,30 +32,6 @@ jobs:
               raise SystemExit(f'Expected one continuation dueAt block, found {count}')
           path.write_text(text)
 
-          path = Path('tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs')
-          text = path.read_text()
-          needle = 'var results = scope.ServiceProvider.GetRequiredService<IProviderContinuationStartResultStore>();'
-          positions = [m.start() for m in re.finditer(re.escape(needle), text)]
-          target = None
-          old = 'Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
-          for pos in positions:
-              start = text.rfind('\n    [Fact]', 0, pos)
-              end = text.find('\n    [Fact]', pos)
-              if end == -1:
-                  end = len(text)
-              block = text[start:end]
-              if old in block and 'nextPaidStart' in block:
-                  target = (start, end, block)
-                  break
-          if target is None:
-              raise SystemExit('Could not find the continuation-result next-paid-window test')
-          start, end, block = target
-          new = 'Assert.InRange((work.DueAt - nextPaidStart.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
-          if block.count(old) != 1:
-              raise SystemExit(f'Expected one target assertion, found {block.count(old)}')
-          block = block.replace(old, new, 1)
-          path.write_text(text[:start] + block + text[end:])
-
           path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
           text = path.read_text()
           old = '- 🚧 `ProviderExtendResultStore` plant na een bevestigde extension een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.'
@@ -66,12 +42,12 @@ jobs:
           PY
 
           git diff --check
-          git diff -- src/Parkeren.Infrastructure/Visits/ProviderContinuationStartResultStore.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git diff -- src/Parkeren.Infrastructure/Visits/ProviderContinuationStartResultStore.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
       - name: Commit patch
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/Parkeren.Infrastructure/Visits/ProviderContinuationStartResultStore.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git add src/Parkeren.Infrastructure/Visits/ProviderContinuationStartResultStore.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
           git commit -m 'fix: precheck paid window after continuation start'
           git push origin HEAD:scratch/e4-continuation-precheck
