@@ -8,6 +8,8 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbContext)
     : IVisitSchedulerWorkClaimer
 {
+    private static readonly TimeSpan DefaultDeferDelay = TimeSpan.FromMinutes(1);
+
     public async Task<VisitSchedulerWork?> ClaimNextDueAsync(
         string workerId,
         DateTimeOffset now,
@@ -35,30 +37,39 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
             return null;
         }
 
-        // Serialize scheduler claims with Stop/end-time mutations for this Visit.
-        // The work row remains locked while waiting for the Visit lock, then Visit
-        // state is re-read before continuation is handed to a worker.
+        // SCHED-014 will change this to the global Visit-first lock order.
+        // For SCHED-015 we only centralize the work-type state/health decision.
         var lockKey = VisitAdvisoryLock.For(work.VisitId);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
-        // Revalidate the owning Visit while the work item is locked. Stop wins over
-        // continuation: once a Visit has left Active state, pending continuation
-        // work is cancelled instead of being handed to a worker.
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
-        if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
-        {
-            work.Cancel();
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return null;
-        }
+        var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(work.Type, visit.Status, visit.Health);
 
-        work.Claim(workerId, now);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return work;
+        switch (decision)
+        {
+            case VisitSchedulerWorkExecutionDecision.Execute:
+                work.Claim(workerId, now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return work;
+
+            case VisitSchedulerWorkExecutionDecision.Defer:
+                work.Defer(now.Add(DefaultDeferDelay));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+
+            case VisitSchedulerWorkExecutionDecision.Cancel:
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(decision), decision, "Unsupported scheduler work execution decision.");
+        }
     }
 
     public async Task ReleaseFailedAsync(

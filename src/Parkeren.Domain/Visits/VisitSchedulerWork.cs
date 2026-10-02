@@ -55,6 +55,16 @@ public sealed class VisitSchedulerWork
         ClaimedAt = claimedAt;
     }
 
+    public void Defer(DateTimeOffset dueAt)
+    {
+        if (Status != VisitSchedulerWorkStatus.Pending)
+            throw new InvalidOperationException("Only pending scheduler work can be deferred.");
+        if (dueAt <= DueAt)
+            throw new ArgumentOutOfRangeException(nameof(dueAt), "Deferred scheduler work must move to a later due time.");
+
+        DueAt = dueAt;
+    }
+
     public void Release(DateTimeOffset dueAt)
     {
         if (Status != VisitSchedulerWorkStatus.Claimed)
