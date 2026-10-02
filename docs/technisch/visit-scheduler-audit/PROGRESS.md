@@ -126,7 +126,7 @@ Aanvullende afspraken:
 ### E1 — pre-schedule volgend betaald segment
 
 - ✅ `VisitStartStore` plant een later betaald segment op T-5 van `nextPaid.Start` in plaats van exact op de betaalgrens; CI groen op commit `b1761379` (`fix: precheck free-gap coverage`).
-- 🚧 Tweede slice: `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken.
+- ✅ `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken; implementatie op `9a9511b8` en CI groen na gerichte testfix op `8f8466ae` (`fix: expect free-gap precheck in start test`).
 
 ## Volgende hoofdfasen
 

@@ -760,7 +760,7 @@ internal sealed class VisitRecoveryService(
             return;
 
         var dueAt = nextPaid.Start > confirmedAction.End
-            ? nextPaid.Start
+            ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
             : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);
         var exists = await dbContext.VisitSchedulerWork.AnyAsync(
             x => x.VisitId == item.Visit.Id &&
@@ -818,7 +818,8 @@ internal sealed class VisitRecoveryService(
                 return false;
 
             dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, paid.Start));
+                Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+                ProviderCoverageSchedule.PrecheckAt(paid.Start)));
             await dbContext.SaveChangesAsync(cancellationToken);
             return true;
         }
