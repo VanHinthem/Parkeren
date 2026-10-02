@@ -1,0 +1,36 @@
+name: temp h4 clock
+
+on:
+  push:
+    branches:
+      - scratch/h1-sched003-verification
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/h1-sched003-verification
+      - name: Apply H4 clock patch
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs')
+          text = path.read_text()
+          count = text.count('DateTimeOffset.UtcNow')
+          if count == 0:
+              raise SystemExit('No DateTimeOffset.UtcNow occurrences found')
+          text = text.replace('DateTimeOffset.UtcNow', 'timeProvider.GetUtcNow()')
+          path.write_text(text)
+      - name: Commit scratch patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs
+          git commit -m "temp: build h4 clock patch"
+          git push origin HEAD:scratch/h1-sched003-verification
