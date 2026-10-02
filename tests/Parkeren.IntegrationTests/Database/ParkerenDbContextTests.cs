@@ -3221,7 +3221,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var work = Assert.Single(await verifyContext.VisitSchedulerWork
             .Where(x => x.VisitId == visit.Id).ToListAsync(cancellationToken));
         Assert.Equal(VisitSchedulerWorkStatus.Pending, work.Status);
-        Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((work.DueAt - nextPaidStart.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
