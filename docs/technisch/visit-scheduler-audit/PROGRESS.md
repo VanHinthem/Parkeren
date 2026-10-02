@@ -11,9 +11,10 @@ Dit bestand wordt vanaf de implementatiefase bijgewerkt in dezelfde logische com
 - ✅ `VisitSchedulerWorkExecutionPolicy` toegevoegd.
 - ✅ Volledige status/health-matrix unit-getest, inclusief `StopFailed`.
 - ✅ CI groen op commit `fa697924` (`test: cover scheduler work execution policy`).
-- 🚧 `PostgresVisitSchedulerWorkClaimer` aangesloten op `Execute` / `Defer` / `Cancel` in de huidige commit.
-- 🚧 `Pending` work kan nu semantisch worden uitgesteld zonder kunstmatig claim/release-pad.
-- 📋 `ReleaseFailedAsync` moet hierna dezelfde policy gebruiken.
+- ✅ `PostgresVisitSchedulerWorkClaimer` aangesloten op `Execute` / `Defer` / `Cancel`.
+- ✅ `Pending` work kan semantisch worden uitgesteld zonder kunstmatig claim/release-pad.
+- ✅ CI groen op commit `82ea3ba6` (`fix: apply scheduler work execution policy`).
+- 🚧 `ReleaseFailedAsync` gebruikt in de huidige commit dezelfde policy; `Execute` en `Defer` releasen voor retry, alleen `Cancel` annuleert definitief.
 - 📋 Integratie-/regressietests voor claimer/retry volgen binnen A1/A2.
 
 Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt standaard **1 minuut** uitgesteld. Recovery mag eerder herbeoordelen. De delay staat op één plek in de claimer en kan later eenvoudig configureerbaar worden gemaakt als operationele tuning dat nodig maakt.

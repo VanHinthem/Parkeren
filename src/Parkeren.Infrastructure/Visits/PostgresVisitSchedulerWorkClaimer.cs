@@ -90,13 +90,25 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
                 $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
             var visit = await dbContext.Visits.AsNoTracking().SingleAsync(x => x.Id == work.VisitId, cancellationToken);
-            if (visit.Status == VisitStatus.Active && visit.Health == VisitHealth.Healthy)
+            var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(work.Type, visit.Status, visit.Health);
+
+            switch (decision)
             {
-                var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
-                work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
+                case VisitSchedulerWorkExecutionDecision.Execute:
+                case VisitSchedulerWorkExecutionDecision.Defer:
+                {
+                    var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
+                    work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
+                    break;
+                }
+
+                case VisitSchedulerWorkExecutionDecision.Cancel:
+                    work.Cancel();
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(decision), decision, "Unsupported scheduler work execution decision.");
             }
-            else
-                work.Cancel();
 
             await dbContext.SaveChangesAsync(cancellationToken);
         }
