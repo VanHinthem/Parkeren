@@ -273,7 +273,62 @@ internal sealed class VisitRecoveryService(
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
         await ReleaseClaimedSchedulerWorkAsync(cancellationToken);
+        await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);
         await ReconcileAsync(startup: true, cancellationToken: cancellationToken);
+    }
+
+    private async Task MarkStaleInProgressProviderOperationsUnknownAsync(CancellationToken cancellationToken)
+    {
+        var staleBefore = timeProvider.GetUtcNow().Subtract(TimeSpan.FromMinutes(5));
+        var candidates = await dbContext.ProviderOperations
+            .AsNoTracking()
+            .Where(x => x.Status == ProviderOperationStatus.InProgress &&
+                        x.VisitId.HasValue &&
+                        (!x.AttemptStartedAt.HasValue || x.AttemptStartedAt <= staleBefore))
+            .Select(x => new { x.Id, VisitId = x.VisitId!.Value })
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+            var operation = await dbContext.ProviderOperations
+                .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);
+            if (operation is null ||
+                operation.Status != ProviderOperationStatus.InProgress ||
+                (operation.AttemptStartedAt.HasValue && operation.AttemptStartedAt > staleBefore))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            if (operation.ProviderParkingActionId is not Guid actionId)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            var action = await dbContext.ProviderParkingActions
+                .SingleOrDefaultAsync(x => x.Id == actionId, cancellationToken);
+            if (action is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            operation.MarkUnknown("stale-in-progress");
+            if (action.State is ProviderActionState.Starting or ProviderActionState.Stopping)
+                action.MarkUnknown();
+
+            var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);
+            visit.SetHealth(VisitHealth.Reconciling);
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 
     public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) =>
