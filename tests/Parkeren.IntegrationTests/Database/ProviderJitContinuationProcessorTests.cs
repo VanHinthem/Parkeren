@@ -29,6 +29,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
 
         var now = DateTimeOffset.UtcNow;
         now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
         var boundary = now.AddMinutes(4);
         var startAt = boundary.AddHours(-4);
         var desiredEndAt = boundary.AddHours(2);
@@ -140,10 +141,18 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
 
             var remoteActions = await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken);
             Assert.Equal(2, remoteActions.Count);
-            Assert.Single(remoteActions, action =>
+            var remoteSuccessor = Assert.Single(remoteActions, action =>
                 action.ProviderActionId != remotePredecessor.ProviderActionId &&
                 string.Equals(action.Status, "scheduled", StringComparison.OrdinalIgnoreCase) &&
                 (action.Start - boundary.AddSeconds(1)).Duration() <= TimeSpan.FromSeconds(5));
+
+            var advanceToSuccessorStart = remoteSuccessor.Start - now;
+            (await http.PostAsJsonAsync("api/test/clock/advance",
+                new { Milliseconds = advanceToSuccessorStart.TotalMilliseconds }, cancellationToken)).EnsureSuccessStatusCode();
+            remoteActions = await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken);
+            Assert.Equal("active",
+                Assert.Single(remoteActions, action => action.ProviderActionId == remoteSuccessor.ProviderActionId).Status,
+                ignoreCase: true);
 
             var duplicateWork = new VisitSchedulerWork(
                 Guid.NewGuid(),
