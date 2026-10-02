@@ -277,38 +277,19 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (nextPaid.Start > latestAction.PlannedEndAt)
         {
-            if (nextPaid.Start > now)
+            var nextPaidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);
+            if (nextPaidPrecheckAt > now)
             {
-                work.Release(nextPaid.Start);
+                work.Release(nextPaidPrecheckAt);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 
-            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
-            var remoteActions = string.IsNullOrWhiteSpace(latestAction.ProviderProductId)
-                ? await parkingProvider.GetActionsAsync(cancellationToken)
-                : await parkingProvider.GetActionsForProductAsync(latestAction.ProviderProductId, cancellationToken);
-            var previous = ProviderActionMatchPolicy.FindUniqueMatch(
-                remoteActions,
-                new ProviderActionMatchCriteria(
-                    latestAction.ProviderActionId,
-                    latestAction.ProviderProductId));
-            if (previous is null ||
-                !string.Equals(previous.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-                !ProviderActionMatchPolicy.TimestampsMatch(previous.End, latestAction.PlannedEndAt))
-            {
-                if (previous?.Status is { } status &&
-                    string.Equals(status, "stopped", StringComparison.OrdinalIgnoreCase))
-                    latestAction.MarkExternallyStopped(status);
-                visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return;
-            }
+            if (latestAction.PlannedEndAt <= now)
+                latestAction.MarkCompleted(latestAction.PlannedEndAt);
 
-            latestAction.MarkCompleted(latestAction.PlannedEndAt);
             await dbContext.SaveChangesAsync(cancellationToken);
-            await ProcessInitialCoverageAsync(work, visit, nextPaid.Start, cancellationToken);
+            await ProcessInitialCoverageAsync(work, visit, latestAction.PlannedEndAt, cancellationToken);
             return;
         }
 
@@ -517,9 +498,13 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (paid.Start > now)
         {
-            work.Release(paid.Start);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return;
+            var paidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(paid.Start);
+            if (paidPrecheckAt > now)
+            {
+                work.Release(paidPrecheckAt);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
         }
 
         var actionRules = rules.Single(x => x.ValidFrom <= paid.Start &&

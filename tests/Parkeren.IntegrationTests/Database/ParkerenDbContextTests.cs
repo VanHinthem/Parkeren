@@ -3431,7 +3431,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Scheduler_skips_free_gap_and_caps_next_action_at_paid_boundary()
+    public async Task Scheduler_preschedules_next_action_inside_free_gap_precheck_window()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -3443,7 +3443,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"paid-gap-{suffix}", $"PAID-GAP-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"PG-{suffix}", $"PG{suffix}".ToUpperInvariant(), null);
-        var nextPaidStart = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var nextPaidStart = DateTimeOffset.UtcNow.AddMinutes(4);
         var firstPaidEnd = nextPaidStart.AddHours(-1);
         var nextPaidEnd = nextPaidStart.AddHours(1);
         var start = firstPaidEnd.AddHours(-1);
@@ -3459,7 +3459,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         previous.MarkStarting();
         previous.MarkActive(previousRemote.ProviderActionId, start);
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
-            VisitSchedulerWorkType.ContinueProviderCoverage, nextPaidStart);
+            VisitSchedulerWorkType.ContinueProviderCoverage, nextPaidStart.AddMinutes(-5));
         work.Claim("gap-worker", DateTimeOffset.UtcNow);
         var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
         var localPaidStart = TimeZoneInfo.ConvertTime(nextPaidStart, businessZone);
@@ -3525,7 +3525,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.ProviderParkingActions.SingleAsync(x => x.Id == previous.Id, cancellationToken)).State);
         var next = Assert.Single(await verifyContext.ProviderParkingActions
             .Where(x => x.VisitId == visit.Id && x.Id != previous.Id).ToListAsync(cancellationToken));
-        Assert.Equal(ProviderActionState.Active, next.State);
+        Assert.Equal(ProviderActionState.Scheduled, next.State);
         Assert.Equal(nextPaidStart.ToUnixTimeSeconds(), next.PlannedStartAt.ToUnixTimeSeconds());
 
         var expectedPaidEnd = nextPaidEnd;
