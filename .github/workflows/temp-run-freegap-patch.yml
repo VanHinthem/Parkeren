@@ -1,0 +1,27 @@
+name: temp run freegap patch
+
+on:
+  push:
+    branches:
+      - scratch/e5-endtime-precheck
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/e5-endtime-precheck
+          fetch-depth: 0
+      - run: python tools/temp_freegap_patch.py
+      - run: git diff --check
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'fix: preschedule coverage after free gap'
+          git push origin HEAD:scratch/e5-endtime-precheck
