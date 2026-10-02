@@ -274,6 +274,7 @@ internal sealed class VisitRecoveryService(
     {
         await ReleaseClaimedSchedulerWorkAsync(cancellationToken);
         await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);
+        await ResumeInterruptedProviderReconciliationsAsync(cancellationToken);
         await ReconcileAsync(startup: true, cancellationToken: cancellationToken);
     }
 
@@ -330,6 +331,49 @@ internal sealed class VisitRecoveryService(
             visit.SetHealth(VisitHealth.Reconciling);
 
             await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
+    private async Task ResumeInterruptedProviderReconciliationsAsync(CancellationToken cancellationToken)
+    {
+        var candidates = await dbContext.ProviderOperations
+            .AsNoTracking()
+            .Where(x => x.Status == ProviderOperationStatus.Reconciling && x.VisitId.HasValue)
+            .Select(x => new { x.Id, VisitId = x.VisitId!.Value })
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+            var operation = await dbContext.ProviderOperations
+                .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);
+            if (operation is null || operation.Status != ProviderOperationStatus.Reconciling ||
+                operation.ProviderParkingActionId is not Guid actionId)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            var action = await dbContext.ProviderParkingActions
+                .SingleOrDefaultAsync(x => x.Id == actionId, cancellationToken);
+            if (action is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            if (ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action))
+            {
+                var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);
+                visit.SetHealth(VisitHealth.Reconciling);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
         }
     }
