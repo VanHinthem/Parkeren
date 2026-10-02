@@ -267,7 +267,7 @@ internal sealed class PostgresVisitEndTimeChanger(
 
         var dueAt = currentAction is not null && nextPaid.Start <= currentAction.PlannedEndAt
             ? ProviderCoverageSchedule.PrecheckAt(currentAction.PlannedEndAt)
-            : nextPaid.Start;
+            : ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);
 
         dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
             Guid.NewGuid(),

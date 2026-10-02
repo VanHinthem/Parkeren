@@ -129,7 +129,8 @@ Aanvullende afspraken:
 - ✅ `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken; implementatie op `9a9511b8` en CI groen na gerichte testfix op `8f8466ae` (`fix: expect free-gap precheck in start test`).
 - ✅ Startup recovery herbouwt zowel vervolgcoverage na een actieve provideraction als eerste coverage na een gratis periode op T-5 van `nextPaid.Start`; CI groen op commit `9a80e929` (`fix: precheck recovered paid coverage`).
 - ✅ `ProviderExtendResultStore` plant na een bevestigde extension een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `72429032` (`fix: precheck paid window after provider extend`).
-- 🚧 `ProviderContinuationStartResultStore` plant na een bevestigde continuation-start een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.
+- ✅ `ProviderContinuationStartResultStore` plant na een bevestigde continuation-start een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d75e0e6b` (`fix: precheck paid window after continuation start`).
+- 🚧 `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.
 
 ## Volgende hoofdfasen
 
