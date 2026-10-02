@@ -1,65 +1,68 @@
 # SCHED-017 — provider timestampmatching is strenger dan bevestigd 2Park-gedrag
 
-**Status:** ⚠️ Bevinding bevestigd  
-**Prioriteit:** hoog  
-**Raakt:** initiële Start, continuation, unknown/reconciliation en discrepancy-detectie.
+**Status:** ✅ Opgelost via centrale provider matching policy  
+**Prioriteit:** hoog
 
-## Bevestigd providerfeit
+## Bevestigde observatie en besluit
 
-De live 2Park-tests in issue #71 hebben vastgelegd dat provider timestamps enkele seconden kunnen afwijken van de lokaal aangevraagde duur. Daarom is al besloten dat applicatiebeleid niet uit exacte read-back seconden mag worden afgeleid.
+Eerdere echte 2Park-tests lieten zien dat provider timestamps enkele seconden kunnen afwijken van lokaal aangevraagde waarden. Daarom gebruikt de applicatie geen exacte millisecondevergelijkingen meer als primaire provideridentiteit.
 
-## As-built matching
+Voor V1 geldt centraal een **5 seconden provider timestamp tolerance** voor Start en End. Dit is bewust een **engineering margin**, geen gemeten of gedocumenteerde 2Park-SLA. Start en End gebruiken dezelfde waarde totdat later live bewijs een onderscheid rechtvaardigt.
 
-### Directe start-readback
+## Huidig as-built matchingcontract
 
-`StartVisitProviderExecutor` accepteert een mutation na read-back alleen wanneer onder andere geldt:
+`ProviderActionMatchPolicy` centraliseert de matchingprioriteit:
 
-```text
-remote.Start == PlannedStartAt
-remote.End   == PlannedEndAt
-status       == active
-```
+1. bekende provider action-id;
+2. provider productcontext;
+3. genormaliseerd kenteken;
+4. semantisch toegestane status;
+5. Start/End binnen de centrale tolerance, voor zover de caller die timestamps kent.
 
-Dat is exacte `DateTimeOffset`-gelijkheid.
+Belangrijke veiligheidsregels:
 
-### Reconciliation
+- een bekende action-id mismatch valt nooit terug naar een andere kandidaat;
+- zonder action-id mag fallback alleen exact één unieke kandidaat accepteren;
+- locationcode versus providerlabel is geen harde identity mismatch;
+- future Start/ContinueStart mag `scheduled` als geldige providerstatus accepteren;
+- Stop blijft primair action-id driven en krijgt geen brede fallback-identificatie;
+- `ExternalProviderAction` detection blijft exact provider-id gebaseerd en koppelt onbekende IDs niet automatisch aan lokale actions.
 
-`StartVisitProviderReconciler` gebruikt `TimestampTolerance = 1 milliseconde` en vereist voor een definitieve match ook dat de eindtijd binnen die tolerantie valt. Wanneer een provider action-id bekend is, helpt die bij kandidaatselectie, maar de eindtijdcontrole blijft vrijwel exact.
+## Toepassing
 
-### Periodieke discrepancy
+De centrale semantiek wordt gebruikt voor:
 
-Ook `ReconcileActiveProviderActionsAsync` behandelt een eindtijdverschil vanaf ongeveer 1 ms als mismatch.
+- initiële Start read-back en reconciliation;
+- continuation Start;
+- Extend-precheck/read-back/reconciliation waar callercontext beschikbaar is;
+- Stop identity/read-back zonder fallback;
+- periodieke provider discrepancy-detectie;
+- startup scheduler/recovery matching;
+- scheduled wake-up en free-gap predecessorchecks;
+- initial-coverage duplicate-prevention.
 
-## Bevinding
+De oude `< 2 minuten`-heuristiek in `TwoParkProvider.StartActionAsync` is beoordeeld: deze bestond omdat de startresponse geen bruikbaar action-id opleverde en read-back een kandidaat moest zoeken. Die heuristiek is vervangen door dezelfde product/plate/status/5s unique-fallback policy.
 
-Deze matchingregels zijn aantoonbaar strenger dan het reeds waargenomen echte providercontract. Een geldige 2Park-action die enkele seconden genormaliseerd is kan daardoor:
+## Regressiebewijs
 
-- na succesvolle Start als `Unknown` worden opgeslagen;
-- tijdens reconciliation niet bevestigd worden;
-- onnodig `Reconciling` blijven;
-- later als provider discrepancy worden gemarkeerd;
-- scheduler continuation blokkeren.
+Tests dekken onder meer:
 
-Dit is extra kritisch omdat de recoveryarchitectuur terecht weigert blind opnieuw te muteren. Een te strikte matcher kan daardoor een veilige recovery bewust laten vastlopen.
+- Start/End drift binnen de tolerance als match;
+- +4 seconden End-drift als gezond in discrepancy-detectie;
+- +6 seconden End-drift als echte mismatch;
+- bekende-ID mismatch zonder fallback;
+- onbekende-ID fallback met exact één kandidaat;
+- ambigue fallback zonder automatische keuze;
+- `scheduled` future actions;
+- locationlabelverschil zonder identity mismatch;
+- Unknown/reconciliation zonder blind duplicate mutation.
 
-## Ontwerprichtingen voor later
+TwoParkMock kan de relevante timestampafwijkingen deterministisch injecteren.
 
-Nog geen fix in deze audit. Waarschijnlijk moet onderscheid worden gemaakt tussen:
+## Bewust open providerpunt
 
-- **identiteit** van een provideraction: bij voorkeur provider action-id + product + kenteken;
-- **functionele geplande grenzen**: lokale snapshot/planning;
-- **provider-observatie**: werkelijke timestamps met bekende provider-tolerantie.
+De 5 seconden zijn geen provider-SLA. Wanneer toekomstige live observaties aantonen dat de veilige tolerance anders moet zijn, kan de centrale policy op één plek worden aangepast en via dezelfde regressiesuite worden gevalideerd.
 
-Exacte timestamps zouden niet het primaire identiteitscriterium moeten zijn wanneer een provider action-id beschikbaar is.
+## Conclusie
 
-## Onduidelijkheden / open vragen
-
-1. Wat is de maximaal waargenomen/gedocumenteerde 2Park-afwijking in seconden?
-2. Normaliseert 2Park alleen de eindtijd of ook de starttijd?
-3. Kan een provider action-id ooit ontbreken terwijl de mutation toch uitgevoerd is?
-4. Welke combinatie van product, kenteken, action-id en tijdwindow is voldoende om een match ondubbelzinnig te maken?
-5. Wanneer is een tijdverschil groot genoeg om wél een echte discrepancy te openen?
-
-## Verificatiecriteria
-
-Na een oplossing moeten tests providerresponses met realistische secondenafwijking afdekken voor initial Start, scheduled continuation, timeout-reconciliation en periodic discrepancy. Een echte mismatch moet nog steeds detecteerbaar blijven.
+De eerdere milliseconde- en exacte timestampmatching is verwijderd uit de relevante identitypaden. Provideridentiteit is nu centraal, conservatief en tolerant voor de gekozen engineering margin, terwijl echte mismatches en ambiguïteit detecteerbaar blijven. Er resteert geen zelfstandig SCHED-017-gat.

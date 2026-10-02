@@ -1,50 +1,57 @@
 # SCHED-015 — generieke `Active + Healthy` gating past niet bij ieder work-type
 
-**Status:** ⚠️ Bevinding bevestigd  
-**Prioriteit:** hoog  
-**Raakt:** `StopVisit`, `LongVisitWarning` en mogelijk toekomstige scheduler-worktypes.
-
-## Samenvatting
-
-`PostgresVisitSchedulerWorkClaimer` beoordeelt vóór het claimen niet het work-type. Ieder due workitem wordt alleen geclaimd wanneer de Visit zowel `Active` als `Healthy` is. Anders wordt het work direct `Cancelled`.
-
-Dat is passend voor provider-**continuation**: bij `Reconciling` of `AttentionRequired` moet automatische nieuwe providerdekking inderdaad niet blind doorgaan. Voor andere work-types heeft dezelfde regel echter een andere betekenis.
-
-## `StopVisit`
-
-Een deferred `StopVisit` kan juist noodzakelijk zijn wanneer een Visit technisch ongezond is. Bijvoorbeeld na shortening staat er bewust een stop op een functionele eindtijd. Als health vóór die tijd verandert naar `Reconciling` of `AttentionRequired`, annuleert de claimer het Stop-work voordat `ProcessScheduledStopAsync` het kan uitvoeren.
-
-Daarmee kan providerdekking langer bestaan dan de expliciete Visit-eindtijd.
-
-## `LongVisitWarning`
-
-De processor zelf vereist alleen `VisitStatus.Active`. Toch bereikt een actieve maar niet-Healthy Visit de processor nooit: het warning-work wordt door de claimer gecanceld. Zie [SCHED-012](SCHED-012.md).
-
-## `ReleaseFailedAsync`
-
-Ook een al geclaimd workitem wordt na een processor-exception alleen opnieuw vrijgegeven wanneer de Visit `Active + Healthy` is; anders wordt het geannuleerd. Daardoor zit dezelfde generieke semantiek op retry-niveau.
+**Status:** ✅ Opgelost via centrale work-type execution policy  
+**Prioriteit:** hoog
 
 ## Gewenste invariant
 
-Claimability moet per work-type worden bepaald. Bijvoorbeeld conceptueel:
+Claimability, retry en cancellation worden bepaald door de semantiek van het scheduler-worktype. Providercontinuation, terminal Stop en Long Visit warnings mogen niet dezelfde generieke `Active + Healthy`-regel delen.
 
-- `ContinueProviderCoverage`: alleen wanneer provider-mutatie veilig is, waarschijnlijk `Active + Healthy`.
-- `StopVisit`: uitvoeren op basis van lifecycle/eindtijd, ook bij bepaalde ongezonde healthstatussen.
-- `LongVisitWarning`: functionele keuze op basis van `Active`, niet impliciet gekoppeld aan provider health.
+## Huidig as-built gedrag
 
-De exacte matrix moet tijdens het verbeterontwerp worden vastgesteld.
+`VisitSchedulerWorkExecutionPolicy` centraliseert de beslissing `Execute`, `Defer` of `Cancel` op basis van work-type, `VisitStatus` en `VisitHealth`.
 
-## Onduidelijkheden / open vragen
+### `ContinueProviderCoverage`
 
-1. Welke Visit-healthstatussen mogen `StopVisit` blokkeren, als die er überhaupt zijn?
-2. Moet `AttentionRequired` een Long Visit warning naast de attention-notificatie blijven produceren?
-3. Moet work bij een tijdelijk ongeschikte state worden `Cancelled` of juist later opnieuw worden beoordeeld?
-4. Is `Status != Active` voor alle drie work-types wel dezelfde terminale reden?
+- `Active + Healthy` -> `Execute`;
+- `Active + Reconciling|AttentionRequired|StopFailed` -> `Defer`;
+- `Starting` -> `Defer`;
+- `Stopping|Completed|Cancelled` -> `Cancel`.
 
-## Richting voor later ontwerp
+Continuation maakt daardoor geen nieuwe providerdekking wanneer providerstate technisch onzeker is.
 
-Centraliseer een expliciete work-type/state policy in plaats van één generieke claimercheck. De processor en claimer moeten dezelfde semantiek delen zodat een branch in de processor niet onbereikbaar wordt door een strengere generieke gate ervoor.
+### `StopVisit`
 
-## Verificatiecriteria
+Stop wordt niet door health geblokkeerd. Voor `Starting`, `Active` en `Stopping` geldt `Execute`; alleen terminale Visitstatussen worden gecanceld.
 
-Tests moeten per work-type minimaal `Healthy`, `Reconciling`, `AttentionRequired`, `Stopping` en terminale Visitstatussen afdekken.
+Daardoor blijft een functionele eindgrens uitvoerbaar bij `Reconciling`, `AttentionRequired` of `StopFailed`.
+
+### `LongVisitWarning`
+
+Warninggedrag volgt de Visit-lifecycle en is onafhankelijk van health:
+
+- `Starting` -> `Defer`;
+- `Active` -> `Execute`;
+- `Stopping|Completed|Cancelled` -> `Cancel`.
+
+Een tijdelijke technische healthstatus verwijdert een geplande warning dus niet permanent.
+
+## Consistente toepassing
+
+Dezelfde policy wordt gebruikt door:
+
+- runtime claiming;
+- failed-work release/retry;
+- startup recovery van achtergelaten `Claimed` work.
+
+Tijdelijk niet-uitvoerbaar work wordt voor V1 standaard één minuut gedeferd; recovery mag eerder opnieuw beoordelen.
+
+## Regressiebewijs
+
+Unit tests dekken de volledige relevante lifecycle/healthmatrix voor alle huidige work-types, inclusief `StopFailed`. Integratietests bewijzen daarnaast dat Stop prioriteit houdt en Long Visit warnings niet door health worden verloren.
+
+SCHED-003, SCHED-004 en SCHED-012 zijn tegen deze policy opnieuw geverifieerd.
+
+## Conclusie
+
+De oorspronkelijke generieke health-gate bestaat niet meer. Schedulerwork heeft nu expliciete, centraal geteste semantiek per work-type en dezelfde policy geldt bij claim, retry en recovery. Er resteert geen zelfstandig SCHED-015-gat.

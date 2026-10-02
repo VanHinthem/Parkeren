@@ -1,71 +1,48 @@
 # SCHED-014 — lock-order inversion tussen schedulerclaim en Visit-mutaties
 
-**Status:** ⚠️ Bevinding bevestigd  
-**Prioriteit:** hoog  
-**Raakt:** schedulerclaim, Stop, end-time changes en andere Visit-mutaties.
+**Status:** ✅ Opgelost en regressiegedekt  
+**Prioriteit:** hoog
 
 ## Gewenste invariant
 
-Transacties die dezelfde Visit en schedulerwork combineren moeten locks in een consistente volgorde nemen. Anders kan een correcte functionele race alsnog eindigen in een database-deadlock.
+Transacties die dezelfde Visit en schedulerwork combineren nemen locks in één consistente volgorde, zodat Stop, end-time changes, schedulerclaims en retries niet via lock-order inversion kunnen deadlocken.
 
-## As-built lockvolgorde
+## Huidig as-built gedrag
 
-`PostgresVisitSchedulerWorkClaimer.ClaimNextDueAsync` doet:
+De globale regel is nu **Visit-first**:
 
-```text
-1. SELECT scheduler work FOR UPDATE SKIP LOCKED
-2. pg_advisory_xact_lock(VisitId)
-3. Visit herlezen
-4. work claimen
-```
+1. selecteer alleen een kandidaat schedulerwork zonder eigenaarschap af te leiden;
+2. neem `pg_advisory_xact_lock(VisitId)`;
+3. neem daarna de exacte scheduler-row `FOR UPDATE`;
+4. revalideer due/status/policy onder beide locks;
+5. claim, defer of cancel pas daarna.
 
-`ReleaseFailedAsync` gebruikt dezelfde richting: eerst work-row lock, daarna Visit advisory lock.
+`PostgresVisitSchedulerWorkClaimer.ClaimNextDueAsync` gebruikt hiervoor een tweefasenclaim. De oorspronkelijke richting `work-row -> Visit-lock` bestaat daar niet meer.
 
-Andere Visit-mutaties, waaronder `PostgresStopVisitClaimer` en `PostgresVisitEndTimeChanger`, doen juist:
+`ReleaseFailedAsync` gebruikt dezelfde Visit-first volgorde en beoordeelt het work na de row lock opnieuw via de centrale execution policy.
 
-```text
-1. pg_advisory_xact_lock(VisitId)
-2. Visit/provider/schedulerstate wijzigen
-3. daarbij scheduler work rows lezen/updaten
-```
+Stop, end-time changes en andere Visit-mutaties waren al Visit-first en sluiten daardoor nu aan op dezelfde lock-order.
 
-## Bewezen risico
+Bij gelijke `DueAt` geldt bovendien een expliciete selectieprioriteit:
 
-Daarmee bestaat de klassieke lock-order inversion:
+`StopVisit -> ContinueProviderCoverage -> LongVisitWarning`.
 
-```text
-Scheduler transaction:
-  houdt work-row lock
-  wacht op Visit advisory lock
+## Regressiebewijs
 
-Stop/end-time transaction:
-  houdt Visit advisory lock
-  wacht op dezelfde work-row lock
-```
+PostgreSQL-concurrencytests dekken gericht:
 
-PostgreSQL kan deze cyclus als deadlock detecteren en één transactie aborteren. De worker heeft algemene retry/release-logica, maar een database-deadlock hoort niet als normaal synchronisatiemechanisme te fungeren.
+- twee workers die hetzelfde due work proberen te claimen;
+- schedulerclaim versus manual Stop;
+- schedulerclaim versus end-time change;
+- gelijke `DueAt` waarbij Stop semantisch wint;
+- geen duplicate claim/mutation en geen verloren schedulerwork.
 
-## Impact
+De runtime retry/release-flow gebruikt dezelfde lock-order als claiming, zodat een exception-pad de oorspronkelijke inversie niet opnieuw introduceert.
 
-- Stop-versus-continuation kan incidenteel falen/retryen op precies de kritieke boundary.
-- end-time changes kunnen een transient databasefout krijgen terwijl beide transacties op zichzelf correct zijn.
-- betrouwbaarheid wordt timingafhankelijk en moeilijker te reproduceren.
-- toekomstige multi-worker schaal vergroot het raceoppervlak.
+## Deploymentgrens
 
-## Testdekking
+V1 draait expliciet single-instance. De lock-order is desondanks multi-worker-safe op transactieniveau; horizontaal schalen vereist aanvullend het lease/liveness-contract uit SCHED-010 en is geen onderdeel van deze fix.
 
-Er zijn concurrencytests voor claims en stopgedrag, maar tijdens de audit is geen gerichte test gevonden die deze tegengestelde lockvolgorde forceert en bewijst dat geen deadlock ontstaat.
+## Conclusie
 
-## Onduidelijkheden / open vragen
-
-1. Welke lock moet architectonisch altijd eerst komen: Visit advisory lock of scheduler work row?
-2. Kunnen we due-work selecteren zonder de row lock vast te houden terwijl op de Visit-lock wordt gewacht, zonder claimveiligheid te verliezen?
-3. Willen we een expliciete deadlock-retrypolicy op infrastructuurniveau naast een consistente lockvolgorde?
-
-## Richting voor later ontwerp
-
-Eerst één globale lock-orderregel kiezen voor alle Visit-gerelateerde mutaties en die vervolgens in code en integratietests afdwingen. Geen fix binnen deze audit.
-
-## Verificatiecriteria
-
-Een deterministic concurrencytest moet Stop/end-time mutation en schedulerclaim tegen dezelfde Visit laten racen zonder deadlock, duplicate mutation of verloren work.
+De bevestigde lock-order inversion is verwijderd. Schedulerclaim, retry/release en Visit-mutaties volgen nu dezelfde Visit-first lockdiscipline en worden door gerichte PostgreSQL-racetests bewaakt. Er resteert geen zelfstandig SCHED-014-gat.

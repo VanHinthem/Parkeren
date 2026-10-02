@@ -1,55 +1,66 @@
 # SCHED-016 — TwoParkMock modelleert natuurlijke tijdsstatussen niet
 
-**Status:** ⚠️ Testmodel-bevinding bevestigd  
-**Prioriteit:** middel/hoog  
-**Raakt:** SCHED-001, SCHED-002, SCHED-011 en scheduler end-to-end bewijs.
+**Status:** ✅ Testharness gehard; provider-onbekenden blijven expliciet configureerbaar  
+**Prioriteit:** middel/hoog
 
-## Samenvatting
+## Gewenste invariant
 
-`TwoParkMock` bepaalt bij het aanmaken één keer de status:
+Scheduler-boundarytests moeten deterministisch tijd kunnen sturen en relevante providerafwijkingen kunnen simuleren zonder onbewezen live 2Park-gedrag als default in de mock vast te leggen.
 
-```text
-start > now  -> scheduled
-anders       -> active
-```
+## Huidig as-built gedrag
 
-Daarna verandert die status niet automatisch wanneer de klok de geplande start of eindtijd passeert. Een scheduled action blijft zonder expliciete testmutatie `scheduled`; een active action blijft lokaal in de mock `active` nadat `End` verstreken is.
+TwoParkMock heeft inmiddels één centrale bestuurbare `MockClock` met testendpoints voor set, advance en reset. Daardoor zijn wall-clock sleeps uit schedulerboundarytests niet nodig.
 
-## Waarom dit relevant is
+Provider-readback leidt status dynamisch af:
 
-De echte scheduler bevat juist branches die afhangen van tijdsgedreven providerstatussen:
+- vóór Start -> `scheduled`;
+- vanaf Start tot End -> `active`;
+- expliciet `stopped` blijft terminal en wordt nooit door tijd overschreven.
 
-- scheduled successor wordt later `active`;
-- predecessor eindigt natuurlijk;
-- overnight/free-gap hervatting beoordeelt de vorige remote action;
-- discrepancy-detectie interpreteert ontbrekende of niet-active actions.
+Voor gedrag ná End wordt bewust geen live-providerdefault verzonnen. Tests kunnen expliciet kiezen uit:
 
-Een integratietest tegen de huidige mock kan daarom lokale schedulerlogica groen maken terwijl de echte provider rondom de tijdsgrens ander gedrag vertoont.
+- `keep-active`;
+- `completed`;
+- `hide`.
 
-Voorbeeld: een test kan na `End` nog een remote action met status `active` terugkrijgen, omdat de mock geen natuurlijke expiratie simuleert. Dat bewijst niet dat echte 2Park dezelfde state teruggeeft.
+Zonder expliciete modus blijft de bestaande ongespecificeerde semantiek behouden totdat live 2Park-bewijs beschikbaar is.
 
-## Impact
+De mock ondersteunt daarnaast deterministische fault/read-back injection voor:
 
-Dit is geen productiebug op zichzelf, maar een betrouwbaarheidsrisico in onze bewijsvoering. Juist de scheduler is tijdgedreven; een statisch providerstatusmodel mist daardoor de belangrijkste transitions.
+- visibility delay op de mockklok;
+- Start- en End-timestamp offsets;
+- afwijkend read-back locationlabel zonder opgeslagen mutation-intent te veranderen;
+- unknown-after-write en bestaande mutation failure modes;
+- scheduled-capacity wel/niet laten meetellen;
+- capaciteit op basis van afgeleide actuele providerstate, zodat een scheduled action na klokadvance vanaf Start als actief meetelt.
 
-## Gewenste mocksemantiek
+`/api/test/reset` herstelt de klok en alle testoverrides naar hun defaults.
 
-Het mockcontract moet uiteindelijk voldoende realistisch zijn om minimaal te modelleren:
+## Regressiebewijs
 
-- `scheduled` vóór Start;
-- `active` vanaf Start tot End;
-- een expliciet gekozen natuurlijke toestand na End die aansluit bij bevestigd 2Park-gedrag;
-- stop/cancel vóór en tijdens actief parkeren;
-- zichtbaarheid/read-back volgens configureerbare providersemantiek waar nodig.
+De huidige tests bewijzen onder meer:
 
-De natuurlijke post-End-status moet eerst live worden bevestigd; zie SCHED-002.
+- klok set/advance/reset;
+- `scheduled -> active` exact op Start;
+- gestopte scheduled action blijft gestopt;
+- visibility delay volgt alleen de mockklok;
+- read-back timestamp offsets veranderen mutation-intent niet en resetten correct;
+- location code versus label kan afzonderlijk worden gesimuleerd;
+- alle expliciete post-End modi en Stop-precedence;
+- scheduled-capacitymodus en derived active capacity;
+- JIT successor wordt remote actief zonder duplicate successor bij redundant schedulerwork;
+- overnight/free-gap en recovery kunnen zonder minutenlange waits worden getest.
 
-## Onduidelijkheden / open vragen
+## Bewust open providercontract
 
-1. Welke status/zichtbaarheid heeft een echte 2Park-action na natuurlijke afloop?
-2. Moet de mock dat dynamisch berekenen bij read-back of via een achtergrondtransitie persistenteren?
-3. Hebben we voor tests een injecteerbare klok nodig in TwoParkMock om boundaries deterministic te testen?
+Nog niet hard gemeten bij echt 2Park:
+
+- natuurlijke post-End status/visibility;
+- of een toekomstige `scheduled` action al vóór Start providercapaciteit verbruikt;
+- een echte timestamp-SLA.
+
+Deze punten blijven daarom configureerbare testdimensies en worden niet als providerfeit in productielogica ingebakken.
 
 ## Conclusie
 
-De mock is bruikbaar voor mutation- en foutscenario's, maar nog onvoldoende als bewijs voor scheduler-time-boundary gedrag. Verbetering hiervan hoort vóór de uiteindelijke scheduler-hardeningtests.
+Het oorspronkelijke statische tijdsmodel is vervangen door een deterministische scheduler-testharness met dynamische tijdsstatussen en gerichte fault injection. De bekende live-contractonzekerheden blijven expliciet configureerbaar. Er resteert geen zelfstandig SCHED-016 harness-gat.
