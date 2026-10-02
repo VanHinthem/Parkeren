@@ -127,6 +127,41 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_readback_offsets_do_not_change_stored_action_intent()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+        var start = now.AddMinutes(10);
+        var end = start.AddHours(1);
+
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        var provider = new TwoParkMockProvider(http);
+        var created = await provider.StartActionAsync(
+            new ProviderParkingActionRequest("OFFSET1", start, end, "Oss"), cancellationToken);
+        Assert.Equal(start, created.Start);
+        Assert.Equal(end, created.End);
+
+        (await http.PostAsJsonAsync("api/test/readback-offsets",
+            new { StartMilliseconds = 4_000, EndMilliseconds = -4_000 }, cancellationToken)).EnsureSuccessStatusCode();
+
+        var readback = Assert.Single(await provider.GetActionsAsync(cancellationToken),
+            x => x.ProviderActionId == created.ProviderActionId);
+        Assert.Equal(start.AddSeconds(4), readback.Start);
+        Assert.Equal(end.AddSeconds(-4), readback.End);
+
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        var afterReset = await provider.StartActionAsync(
+            new ProviderParkingActionRequest("OFFSET2", start, end, "Oss"), cancellationToken);
+        var resetReadback = Assert.Single(await provider.GetActionsAsync(cancellationToken),
+            x => x.ProviderActionId == afterReset.ProviderActionId);
+        Assert.Equal(start, resetReadback.Start);
+        Assert.Equal(end, resetReadback.End);
+    }
+
+    [Fact]
     public async Task Mock_can_reject_invalid_provider_credentials()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
