@@ -51,7 +51,8 @@ internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStart
                          (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
                     cancellationToken))
                 dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                    Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, nextPaid.Start));
+                    Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+                    ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
     }
