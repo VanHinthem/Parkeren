@@ -165,15 +165,46 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                     .ProcessAsync(claimed, cancellationToken);
             }
 
-            await using var replayVerifyContext = fixture.CreateDbContext();
-            Assert.Equal(2, await replayVerifyContext.ProviderParkingActions.CountAsync(
-                x => x.VisitId == visit.Id,
-                cancellationToken));
-            Assert.Equal(VisitSchedulerWorkStatus.Pending,
-                (await replayVerifyContext.VisitSchedulerWork.SingleAsync(
-                    x => x.Id == duplicateWork.Id,
-                    cancellationToken)).Status);
-            Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
+            await using (var replayVerifyContext = fixture.CreateDbContext())
+            {
+                Assert.Equal(2, await replayVerifyContext.ProviderParkingActions.CountAsync(
+                    x => x.VisitId == visit.Id,
+                    cancellationToken));
+                Assert.Equal(VisitSchedulerWorkStatus.Pending,
+                    (await replayVerifyContext.VisitSchedulerWork.SingleAsync(
+                        x => x.Id == duplicateWork.Id,
+                        cancellationToken)).Status);
+                Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
+            }
+
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+                var persistedVisit = await context.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+                var stopResult = await scope.ServiceProvider.GetRequiredService<StopVisitFlow>().StopAsync(
+                    new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id),
+                    new StopVisitContext(new StopVisitActor(user.Id, UserRole.Visitor, true), persistedVisit),
+                    cancellationToken);
+
+                Assert.Equal(StopVisitFlowOutcome.Completed, stopResult.Outcome);
+            }
+
+            await using (var stopVerifyContext = fixture.CreateDbContext())
+            {
+                var stoppedVisit = await stopVerifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+                Assert.Equal(VisitStatus.Completed, stoppedVisit.Status);
+
+                var stoppedActions = await stopVerifyContext.ProviderParkingActions
+                    .Where(x => x.VisitId == visit.Id)
+                    .OrderBy(x => x.PlannedStartAt)
+                    .ToListAsync(cancellationToken);
+                Assert.Equal(2, stoppedActions.Count);
+                Assert.All(stoppedActions, action => Assert.Equal(ProviderActionState.Stopped, action.State));
+            }
+
+            var stoppedRemoteActions = await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken);
+            Assert.Equal(2, stoppedRemoteActions.Count);
+            Assert.All(stoppedRemoteActions, action => Assert.Equal("stopped", action.Status, ignoreCase: true));
         }
         finally
         {

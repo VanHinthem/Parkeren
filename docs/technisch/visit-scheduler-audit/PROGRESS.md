@@ -116,7 +116,8 @@ Aanvullende afspraken:
 - ✅ Directe start-readback accepteert naast `active` ook `scheduled` als geldige bevestigde providerstatus, met dezelfde centrale identity- en timestampcriteria; CI groen op commit `89fba047` (`fix: accept scheduled provider starts`).
 - ✅ `ProviderContinuationStartStore.PrepareAttemptAsync` accepteert een nog actieve predecessor vóór diens eindgrens, zodat T-5 geen exception/retry-polling meer vereist; CI groen na gerichte compilefix op commit `e0bc330a`.
 - ✅ Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde`; de bestaande guard tegen een latere provideraction blijft de single-successor invariant bewaken.
-- 🚧 Scheduler-processor end-to-end coverage toegevoegd voor T-5: één future successor wordt als `scheduled` bevestigd en redundant schedulerwork maakt geen tweede successor.
+- ✅ Scheduler-processor end-to-end coverage bewijst T-5: één future successor wordt als `scheduled` bevestigd en redundant schedulerwork maakt geen tweede successor; CI groen na gerichte test-isolatie/cleanupfixes op commit `2ebf464d`.
+- 🚧 Stop-pad wordt nu expliciet end-to-end geverifieerd: een bestaande future `scheduled` successor moet eerst veilig worden beëindigd en daarna de actieve predecessor, zonder provideraction achter te laten.
 
 ## Volgende hoofdfasen
 
