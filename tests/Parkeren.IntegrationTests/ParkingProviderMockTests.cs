@@ -222,6 +222,38 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_capacity_can_configure_scheduled_actions_and_uses_clock_activation()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/capacity", new { MaxConcurrentActions = 1, CountScheduled = false }, cancellationToken)).EnsureSuccessStatusCode();
+
+        var provider = new TwoParkMockProvider(http);
+        await provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAPSCH1", now.AddMinutes(10), now.AddMinutes(40), "Oss"), cancellationToken);
+        await provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAPSCH2", now.AddMinutes(20), now.AddMinutes(50), "Oss"), cancellationToken);
+
+        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 10 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAPACTIVE", now.AddMinutes(10), now.AddMinutes(30), "Oss"), cancellationToken));
+
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync("api/test/capacity", new { MaxConcurrentActions = 1, CountScheduled = true }, cancellationToken)).EnsureSuccessStatusCode();
+
+        await provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAPSCH3", now.AddMinutes(10), now.AddMinutes(40), "Oss"), cancellationToken);
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(
+            new ProviderParkingActionRequest("CAPSCH4", now.AddMinutes(20), now.AddMinutes(50), "Oss"), cancellationToken));
+    }
+
+    [Fact]
     public async Task Mock_state_can_be_reset_between_scenarios()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
