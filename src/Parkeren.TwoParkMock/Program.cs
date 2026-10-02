@@ -63,7 +63,26 @@ static MockParkingAction WithObservableStatus(MockParkingAction action, DateTime
     };
 }
 
+static bool ConsumesCapacity(
+    MockParkingAction action,
+    DateTimeOffset now,
+    bool countScheduledTowardCapacity,
+    MockPostEndBehavior postEndBehavior)
+{
+    if (string.Equals(action.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+        return false;
+
+    if (now < action.Start)
+        return countScheduledTowardCapacity;
+
+    if (now < action.End)
+        return true;
+
+    return postEndBehavior == MockPostEndBehavior.KeepActive;
+}
+
 var maxConcurrentActions = 5;
+var countScheduledTowardCapacity = false;
 var maxActionDuration = TimeSpan.FromHours(4);
 const string defaultProductId = "visitor";
 var remainingMinutesByProduct = new ConcurrentDictionary<string, int>(
@@ -152,7 +171,8 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.End > mockClock.UtcNow && x.LicensePlate == request.LicensePlate))
         return Results.Conflict(new { error = "Duplicate active provider action." });
 
-    if (actions.Values.Count(x => x.Status == "active" && x.End > mockClock.UtcNow) >= maxConcurrentActions)
+    var capacityNow = mockClock.UtcNow;
+    if (actions.Values.Count(x => ConsumesCapacity(x, capacityNow, countScheduledTowardCapacity, postEndBehavior)) >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");
@@ -291,6 +311,7 @@ app.MapPost("/api/test/max-action-duration", (MockMaxActionDurationRequest reque
 app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>
 {
     maxConcurrentActions = Math.Max(1, request.MaxConcurrentActions);
+    countScheduledTowardCapacity = request.CountScheduled;
     return Results.NoContent();
 });
 
@@ -320,6 +341,7 @@ app.MapPost("/api/test/reset", async () =>
     failure.Reset();
     outcome.Reset();
     maxConcurrentActions = 5;
+    countScheduledTowardCapacity = false;
     maxActionDuration = TimeSpan.FromHours(4);
     remainingMinutesByProduct.Clear();
     remainingMinutesByProduct[defaultProductId] = 1500 * 60;
@@ -428,7 +450,7 @@ public sealed class MockUnknownOutcomeState
 public sealed record MockClockSetRequest(DateTimeOffset UtcNow);
 public sealed record MockClockAdvanceRequest(double Milliseconds);
 
-public sealed record MockCapacityRequest(int MaxConcurrentActions);
+public sealed record MockCapacityRequest(int MaxConcurrentActions, bool CountScheduled = false);
 
 public sealed record MockMaxActionDurationRequest(int Minutes);
 

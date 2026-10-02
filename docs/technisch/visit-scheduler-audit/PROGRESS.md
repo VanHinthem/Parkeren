@@ -153,7 +153,8 @@ Aanvullende afspraken:
 - ✅ G4: JIT end-to-end bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert dat redundant schedulerwork geen derde provideraction maakt; CI groen t/m commit `18fc51cd`.
 - ✅ G5: provider read-back kan Start/End offsets simuleren zonder opgeslagen action-intent te wijzigen; visibility delay is eveneens klokgestuurd; CI groen op commit `a2f645c3`.
 - ✅ G6: provider read-back kan een afwijkend locationlabel teruggeven zonder de mutation-location te wijzigen; CI groen op commit `b3953e22`.
-- 🚧 G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname.
+- ✅ G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname; CI groen op commit `80ebcf7a`.
+- 🚧 G8: provider-capaciteit wordt uit mockklok/state afgeleid en scheduled actions tellen alleen mee wanneer de test dit expliciet configureert.
 
 ## Volgende hoofdfasen
 
