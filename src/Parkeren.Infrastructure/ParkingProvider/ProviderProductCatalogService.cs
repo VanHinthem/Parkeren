@@ -204,8 +204,14 @@ internal sealed class ProviderProductCatalogService(
         var previousDefault = products.SingleOrDefault(x => x.IsDefault);
         var defaultChanged = previousDefault?.Id != selected.Id;
 
-        foreach (var product in products)
-            product.SetDefault(product.Id == selected.Id);
+        if (defaultChanged && previousDefault is not null)
+        {
+            previousDefault.SetDefault(false);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (defaultChanged)
+            selected.SetDefault(true);
 
         if (previousDefault is null)
             await AssignUnboundConfigurationAsync(selected.Id, cancellationToken);
