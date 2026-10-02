@@ -1,0 +1,63 @@
+name: temp g8 scheduled capacity
+
+on:
+  push:
+    branches:
+      - scratch/g8-scheduled-capacity
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g8-scheduled-capacity
+      - name: Apply G8 patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          program = Path('src/Parkeren.TwoParkMock/Program.cs')
+          text = program.read_text()
+          text = text.replace(
+              '}\n\nvar maxConcurrentActions = 5;\n',
+              '''}\n\nstatic bool ConsumesCapacity(\n    MockParkingAction action,\n    DateTimeOffset now,\n    bool countScheduledTowardCapacity,\n    MockPostEndBehavior postEndBehavior)\n{\n    if (string.Equals(action.Status, "stopped", StringComparison.OrdinalIgnoreCase))\n        return false;\n\n    if (now < action.Start)\n        return countScheduledTowardCapacity;\n\n    if (now < action.End)\n        return true;\n\n    return postEndBehavior == MockPostEndBehavior.KeepActive;\n}\n\nvar maxConcurrentActions = 5;\nvar countScheduledTowardCapacity = false;\n''')
+          text = text.replace(
+              '    if (actions.Values.Count(x => x.Status == "active" && x.End > mockClock.UtcNow) >= maxConcurrentActions)\n        return Results.Conflict(new { error = "Provider capacity reached." });',
+              '''    var capacityNow = mockClock.UtcNow;\n    if (actions.Values.Count(x => ConsumesCapacity(x, capacityNow, countScheduledTowardCapacity, postEndBehavior)) >= maxConcurrentActions)\n        return Results.Conflict(new { error = "Provider capacity reached." });''')
+          text = text.replace(
+              'app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>\n{\n    maxConcurrentActions = Math.Max(1, request.MaxConcurrentActions);\n    return Results.NoContent();\n});',
+              '''app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>\n{\n    maxConcurrentActions = Math.Max(1, request.MaxConcurrentActions);\n    countScheduledTowardCapacity = request.CountScheduled;\n    return Results.NoContent();\n});''')
+          text = text.replace(
+              '    maxConcurrentActions = 5;\n    maxActionDuration = TimeSpan.FromHours(4);',
+              '    maxConcurrentActions = 5;\n    countScheduledTowardCapacity = false;\n    maxActionDuration = TimeSpan.FromHours(4);')
+          text = text.replace(
+              'public sealed record MockCapacityRequest(int MaxConcurrentActions);',
+              'public sealed record MockCapacityRequest(int MaxConcurrentActions, bool CountScheduled = false);')
+          program.write_text(text)
+
+          tests = Path('tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs')
+          tests_text = tests.read_text()
+          anchor = '    [Fact]\n    public async Task Mock_state_can_be_reset_between_scenarios()\n'
+          block = '''    [Fact]\n    public async Task Mock_capacity_can_configure_scheduled_actions_and_uses_clock_activation()\n    {\n        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();\n        using var http = factory.CreateClient();\n        var cancellationToken = TestContext.Current.CancellationToken;\n        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);\n\n        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/capacity", new { MaxConcurrentActions = 1, CountScheduled = false }, cancellationToken)).EnsureSuccessStatusCode();\n\n        var provider = new TwoParkMockProvider(http);\n        await provider.StartActionAsync(\n            new ProviderParkingActionRequest("CAPSCH1", now.AddMinutes(10), now.AddMinutes(40), "Oss"), cancellationToken);\n        await provider.StartActionAsync(\n            new ProviderParkingActionRequest("CAPSCH2", now.AddMinutes(20), now.AddMinutes(50), "Oss"), cancellationToken);\n\n        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 10 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();\n        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(\n            new ProviderParkingActionRequest("CAPACTIVE", now.AddMinutes(10), now.AddMinutes(30), "Oss"), cancellationToken));\n\n        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/capacity", new { MaxConcurrentActions = 1, CountScheduled = true }, cancellationToken)).EnsureSuccessStatusCode();\n\n        await provider.StartActionAsync(\n            new ProviderParkingActionRequest("CAPSCH3", now.AddMinutes(10), now.AddMinutes(40), "Oss"), cancellationToken);\n        await Assert.ThrowsAsync<HttpRequestException>(() => provider.StartActionAsync(\n            new ProviderParkingActionRequest("CAPSCH4", now.AddMinutes(20), now.AddMinutes(50), "Oss"), cancellationToken));\n    }\n\n'''
+          if anchor not in tests_text:
+              raise SystemExit('capacity test anchor not found')
+          tests.write_text(tests_text.replace(anchor, block + anchor, 1))
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          progress_text = progress.read_text()
+          progress_text = progress_text.replace(
+              '- 🚧 G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname.',
+              '- ✅ G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname; CI groen op commit `80ebcf7a`.\n- 🚧 G8: provider-capaciteit wordt uit mockklok/state afgeleid en scheduled actions tellen alleen mee wanneer de test dit expliciet configureert.')
+          progress.write_text(progress_text)
+      - name: Commit scratch patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Parkeren.TwoParkMock/Program.cs tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m "temp: build g8 scheduled capacity patch"
+          git push origin HEAD:scratch/g8-scheduled-capacity
