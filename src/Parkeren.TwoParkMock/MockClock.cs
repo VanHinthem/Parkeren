@@ -9,7 +9,7 @@ internal sealed class MockClock
     public void Advance(TimeSpan duration)
     {
         if (duration < TimeSpan.Zero)
-  throw new ArgumentOutOfRangeException(nameof(duration));
+            throw new ArgumentOutOfRangeException(nameof(duration));
         fixedUtcNow = UtcNow.Add(duration);
     }
 
