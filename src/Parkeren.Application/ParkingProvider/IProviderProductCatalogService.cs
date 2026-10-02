@@ -24,6 +24,10 @@ public interface IProviderProductCatalogService
     Task<ProviderProductSyncResult> SynchronizeAsync(
         CancellationToken cancellationToken = default);
 
+    Task<ProviderProductSyncResult> SynchronizeForAdminAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken = default);
+
     Task<ProviderProductSummary?> GetDefaultAsync(
         CancellationToken cancellationToken = default);
 
@@ -31,6 +35,11 @@ public interface IProviderProductCatalogService
         CancellationToken cancellationToken = default);
 
     Task<bool> SetDefaultAsync(
+        Guid productId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> SetDefaultForAdminAsync(
+        Guid actorUserId,
         Guid productId,
         CancellationToken cancellationToken = default);
 }
