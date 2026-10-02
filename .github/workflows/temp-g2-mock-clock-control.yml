@@ -1,0 +1,161 @@
+name: temp g2 mock clock control
+
+on:
+  push:
+    branches:
+      - scratch/g1-mock-clock
+  workflow_dispatch:
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g1-mock-clock
+      - name: Add deterministic mock clock control
+        shell: python
+        run: |
+          from pathlib import Path
+
+          clock = Path('src/Parkeren.TwoParkMock/MockClock.cs')
+          clock.write_text('''internal sealed class MockClock
+          {
+              private DateTimeOffset? fixedUtcNow;
+
+              public DateTimeOffset UtcNow => fixedUtcNow ?? DateTimeOffset.UtcNow;
+
+              public void Set(DateTimeOffset utcNow) => fixedUtcNow = utcNow.ToUniversalTime();
+
+              public void Advance(TimeSpan duration)
+              {
+                  if (duration < TimeSpan.Zero)
+                      throw new ArgumentOutOfRangeException(nameof(duration));
+                  fixedUtcNow = UtcNow.Add(duration);
+              }
+
+              public void Reset() => fixedUtcNow = null;
+          }
+          '''.replace('          ', ''))
+
+          program = Path('src/Parkeren.TwoParkMock/Program.cs')
+          text = program.read_text()
+          marker = '''app.MapPost("/api/test/reset", async () =>
+          {
+          '''
+          endpoints = '''app.MapPost("/api/test/clock/set", (MockClockSetRequest request) =>
+          {
+              mockClock.Set(request.UtcNow);
+              return Results.Ok(new { utcNow = mockClock.UtcNow });
+          });
+
+          app.MapPost("/api/test/clock/advance", (MockClockAdvanceRequest request) =>
+          {
+              if (request.Milliseconds < 0)
+                  return Results.BadRequest(new { error = "Clock advance must be non-negative." });
+              mockClock.Advance(TimeSpan.FromMilliseconds(request.Milliseconds));
+              return Results.Ok(new { utcNow = mockClock.UtcNow });
+          });
+
+          app.MapPost("/api/test/clock/reset", () =>
+          {
+              mockClock.Reset();
+              return Results.Ok(new { utcNow = mockClock.UtcNow });
+          });
+
+          '''
+          if text.count(marker) != 1:
+              raise SystemExit(f'Expected reset marker once, found {text.count(marker)}')
+          text = text.replace(marker, endpoints + marker)
+          reset_marker = '''    omitCreatedActionBody = false;
+              await PersistActionsAsync();
+          '''
+          reset_replacement = '''    omitCreatedActionBody = false;
+              mockClock.Reset();
+              await PersistActionsAsync();
+          '''
+          if text.count(reset_marker) != 1:
+              raise SystemExit(f'Expected reset body marker once, found {text.count(reset_marker)}')
+          text = text.replace(reset_marker, reset_replacement)
+          record_marker = 'public sealed record MockCapacityRequest(int MaxConcurrentActions);\n'
+          records = '''public sealed record MockClockSetRequest(DateTimeOffset UtcNow);
+          public sealed record MockClockAdvanceRequest(double Milliseconds);
+
+          '''
+          if text.count(record_marker) != 1:
+              raise SystemExit(f'Expected record marker once, found {text.count(record_marker)}')
+          text = text.replace(record_marker, records + record_marker)
+          program.write_text(text)
+
+          tests = Path('tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs')
+          text = tests.read_text()
+          end_marker = '''    [Fact]
+              public async Task Mock_can_inject_provider_failure()
+          '''
+          insert = '''    [Fact]
+              public async Task Mock_clock_can_be_set_advanced_and_reset()
+              {
+                  await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+                  using var http = factory.CreateClient();
+                  var cancellationToken = TestContext.Current.CancellationToken;
+                  var fixedNow = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+
+                  var set = await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = fixedNow }, cancellationToken);
+                  set.EnsureSuccessStatusCode();
+                  var balanceAtSet = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+                  Assert.Equal(fixedNow, balanceAtSet!.RetrievedAt);
+
+                  var advance = await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 90_000 }, cancellationToken);
+                  advance.EnsureSuccessStatusCode();
+                  var balanceAfterAdvance = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+                  Assert.Equal(fixedNow.AddSeconds(90), balanceAfterAdvance!.RetrievedAt);
+
+                  var reset = await http.PostAsync("api/test/clock/reset", null, cancellationToken);
+                  reset.EnsureSuccessStatusCode();
+                  var balanceAfterReset = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+                  Assert.InRange(balanceAfterReset!.RetrievedAt, DateTimeOffset.UtcNow.AddSeconds(-5), DateTimeOffset.UtcNow.AddSeconds(5));
+              }
+
+              [Fact]
+              public async Task Mock_reset_also_resets_clock_to_realtime()
+              {
+                  await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+                  using var http = factory.CreateClient();
+                  var cancellationToken = TestContext.Current.CancellationToken;
+                  var fixedNow = new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+                  (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = fixedNow }, cancellationToken)).EnsureSuccessStatusCode();
+                  (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+
+                  var balance = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+                  Assert.InRange(balance!.RetrievedAt, DateTimeOffset.UtcNow.AddSeconds(-5), DateTimeOffset.UtcNow.AddSeconds(5));
+              }
+
+          '''
+          if text.count(end_marker) != 1:
+              raise SystemExit(f'Expected final test marker once, found {text.count(end_marker)}')
+          text = text.replace(end_marker, insert + end_marker)
+          final = '\n}\n'
+          response_record = '\n\ninternal sealed record MockBalanceResponse(int RemainingPaidMinutes, DateTimeOffset RetrievedAt);\n'
+          if not text.endswith(final):
+              raise SystemExit('Unexpected test file ending')
+          text = text[:-len(final)] + final + response_record
+          tests.write_text(text)
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = progress.read_text()
+          old = '- 🚧 G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen, nog zonder functionele gedragswijziging.\n'
+          new = '- ✅ G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen; CI groen op commit `8b0f09e5` (`refactor: centralize twopark mock clock`).\n- 🚧 G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok.\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected G1 progress once, found {text.count(old)}')
+          progress.write_text(text.replace(old, new))
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.TwoParkMock/MockClock.cs src/Parkeren.TwoParkMock/Program.cs tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'feat: add twopark mock clock control' || exit 0
+          git push
