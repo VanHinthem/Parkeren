@@ -150,7 +150,10 @@ Aanvullende afspraken:
 - ✅ G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen; CI groen op commit `8b0f09e5` (`refactor: centralize twopark mock clock`).
 - ✅ G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok; CI groen op commit `08b6cb3f` (`feat: add twopark mock clock control`).
 - ✅ G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld; CI groen op commit `d848fc22` (`feat: derive twopark mock action status`).
-- 🚧 G4: de bestaande JIT end-to-endtest bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert daarna opnieuw dat redundant schedulerwork geen derde provideraction maakt.
+- ✅ G4: JIT end-to-end bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert dat redundant schedulerwork geen derde provideraction maakt; CI groen t/m commit `18fc51cd`.
+- ✅ G5: provider read-back kan Start/End offsets simuleren zonder opgeslagen action-intent te wijzigen; visibility delay is eveneens klokgestuurd; CI groen op commit `a2f645c3`.
+- ✅ G6: provider read-back kan een afwijkend locationlabel teruggeven zonder de mutation-location te wijzigen; CI groen op commit `b3953e22`.
+- 🚧 G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname.
 
 ## Volgende hoofdfasen
 
