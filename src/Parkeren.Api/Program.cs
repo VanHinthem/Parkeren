@@ -1121,7 +1121,7 @@ app.MapPost("/api/admin/provider/products/sync", async (
 
     try
     {
-        return Results.Ok(await productCatalog.SynchronizeAsync(cancellationToken));
+        return Results.Ok(await productCatalog.SynchronizeForAdminAsync(authenticated.User.Id, cancellationToken));
     }
     catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
     {
@@ -1144,7 +1144,7 @@ app.MapPut("/api/admin/provider/products/{productId:guid}/default", async (
     if (authenticated.User.Role != UserRole.Admin)
         return Results.Forbid();
 
-    return await productCatalog.SetDefaultAsync(productId, cancellationToken)
+    return await productCatalog.SetDefaultForAdminAsync(authenticated.User.Id, productId, cancellationToken)
         ? Results.NoContent()
         : Results.BadRequest(new { error = "Alleen een beschikbaar providerproduct kan default worden gemaakt." });
 });
