@@ -1,0 +1,64 @@
+name: temp g7 post end
+
+on:
+  push:
+    branches:
+      - scratch/g7-post-end
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g7-post-end
+      - name: Apply G7 patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          program = Path('src/Parkeren.TwoParkMock/Program.cs')
+          text = program.read_text()
+          text = text.replace(
+              'static MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now)\n{',
+              'static MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now, MockPostEndBehavior postEndBehavior)\n{')
+          text = text.replace(
+              '    // Post-End provider semantics are intentionally not inferred until live 2Park behavior is known.\n    return action;\n}',
+              '    // Post-End provider semantics are only simulated when a test explicitly selects a mode.\n    return postEndBehavior switch\n    {\n        MockPostEndBehavior.KeepActive => action with { Status = "active" },\n        MockPostEndBehavior.Completed => action with { Status = "completed" },\n        _ => action\n    };\n}')
+          text = text.replace(
+              'string? readbackLocation = null;\nvar forcedValidationError = false;',
+              'string? readbackLocation = null;\nvar postEndBehavior = MockPostEndBehavior.Unspecified;\nvar forcedValidationError = false;')
+          text = text.replace(
+              '        .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)\n        .Select(x => WithObservableStatus(x, now))',
+              '        .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)\n        .Where(x => postEndBehavior != MockPostEndBehavior.Hide ||\n                    string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase) ||\n                    now < x.End)\n        .Select(x => WithObservableStatus(x, now, postEndBehavior))')
+          text = text.replace(
+              'app.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>',
+              '''app.MapPost("/api/test/post-end-behavior", (MockPostEndBehaviorRequest request) =>\n{\n    var parsed = request.Behavior?.Trim().ToLowerInvariant() switch\n    {\n        null or "" or "none" => MockPostEndBehavior.Unspecified,\n        "keep-active" => MockPostEndBehavior.KeepActive,\n        "completed" => MockPostEndBehavior.Completed,\n        "hide" => MockPostEndBehavior.Hide,\n        _ => (MockPostEndBehavior?)null\n    };\n\n    if (!parsed.HasValue)\n        return Results.BadRequest(new { error = "Unknown post-End behavior." });\n\n    postEndBehavior = parsed.Value;\n    return Results.NoContent();\n});\n\napp.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>''')
+          text = text.replace(
+              '    readbackLocation = null;\n    forcedValidationError = false;',
+              '    readbackLocation = null;\n    postEndBehavior = MockPostEndBehavior.Unspecified;\n    forcedValidationError = false;')
+          text = text.replace(
+              'public sealed record MockReadbackLocationRequest(string? Location);\n\npublic sealed record MockValidationErrorRequest(bool Enabled);',
+              '''public sealed record MockReadbackLocationRequest(string? Location);\n\npublic sealed record MockPostEndBehaviorRequest(string? Behavior);\n\npublic enum MockPostEndBehavior\n{\n    Unspecified = 0,\n    KeepActive = 1,\n    Completed = 2,\n    Hide = 3\n}\n\npublic sealed record MockValidationErrorRequest(bool Enabled);''')
+          program.write_text(text)
+
+          test = Path('tests/Parkeren.IntegrationTests/ParkingProvider/TwoParkMockPostEndBehaviorTests.cs')
+          test.write_text('''using System.Net.Http.Json;\nusing Microsoft.AspNetCore.Mvc.Testing;\nusing Parkeren.Application.ParkingProvider;\nusing Parkeren.Infrastructure.ParkingProvider;\n\nnamespace Parkeren.IntegrationTests.ParkingProvider;\n\npublic sealed class TwoParkMockPostEndBehaviorTests\n{\n    [Fact]\n    public async Task Post_end_behavior_is_only_applied_when_explicitly_configured()\n    {\n        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();\n        using var http = factory.CreateClient();\n        var cancellationToken = TestContext.Current.CancellationToken;\n        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);\n        var end = now.AddHours(1);\n\n        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n\n        var provider = new TwoParkMockProvider(http);\n        var created = await provider.StartActionAsync(\n            new ProviderParkingActionRequest("POSTEND1", now, end, "Oss"),\n            cancellationToken);\n\n        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 2 * 60 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();\n\n        var defaultReadback = Assert.Single(await provider.GetActionsAsync(cancellationToken),\n            action => action.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("active", defaultReadback.Status, ignoreCase: true);\n\n        (await http.PostAsJsonAsync("api/test/post-end-behavior", new { Behavior = "completed" }, cancellationToken)).EnsureSuccessStatusCode();\n        var completed = Assert.Single(await provider.GetActionsAsync(cancellationToken),\n            action => action.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("completed", completed.Status, ignoreCase: true);\n\n        (await http.PostAsJsonAsync("api/test/post-end-behavior", new { Behavior = "keep-active" }, cancellationToken)).EnsureSuccessStatusCode();\n        var active = Assert.Single(await provider.GetActionsAsync(cancellationToken),\n            action => action.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("active", active.Status, ignoreCase: true);\n\n        (await http.PostAsJsonAsync("api/test/post-end-behavior", new { Behavior = "hide" }, cancellationToken)).EnsureSuccessStatusCode();\n        Assert.DoesNotContain(await provider.GetActionsAsync(cancellationToken),\n            action => action.ProviderActionId == created.ProviderActionId);\n    }\n\n    [Fact]\n    public async Task Explicit_stop_wins_over_post_end_hide_mode()\n    {\n        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();\n        using var http = factory.CreateClient();\n        var cancellationToken = TestContext.Current.CancellationToken;\n        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);\n\n        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n\n        var provider = new TwoParkMockProvider(http);\n        var created = await provider.StartActionAsync(\n            new ProviderParkingActionRequest("POSTEND2", now, now.AddHours(1), "Oss"),\n            cancellationToken);\n        await provider.StopActionAsync(created.ProviderActionId, cancellationToken);\n\n        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 2 * 60 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();\n        (await http.PostAsJsonAsync("api/test/post-end-behavior", new { Behavior = "hide" }, cancellationToken)).EnsureSuccessStatusCode();\n\n        var stopped = Assert.Single(await provider.GetActionsAsync(cancellationToken),\n            action => action.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("stopped", stopped.Status, ignoreCase: true);\n    }\n}\n''')
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          progress_text = progress.read_text()
+          progress_text = progress_text.replace(
+              '- 🚧 G4: de bestaande JIT end-to-endtest bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert daarna opnieuw dat redundant schedulerwork geen derde provideraction maakt.',
+              '- ✅ G4: JIT end-to-end bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert dat redundant schedulerwork geen derde provideraction maakt; CI groen t/m commit `18fc51cd`.\n- ✅ G5: provider read-back kan Start/End offsets simuleren zonder opgeslagen action-intent te wijzigen; visibility delay is eveneens klokgestuurd; CI groen op commit `a2f645c3`.\n- ✅ G6: provider read-back kan een afwijkend locationlabel teruggeven zonder de mutation-location te wijzigen; CI groen op commit `b3953e22`.\n- 🚧 G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname.')
+          progress.write_text(progress_text)
+      - name: Commit scratch patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Parkeren.TwoParkMock/Program.cs tests/Parkeren.IntegrationTests/ParkingProvider/TwoParkMockPostEndBehaviorTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m "temp: build g7 post-end patch"
+          git push origin HEAD:scratch/g7-post-end
