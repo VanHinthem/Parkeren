@@ -650,20 +650,67 @@ internal sealed class VisitRecoveryService(
     private async Task ReleaseClaimedSchedulerWorkAsync(CancellationToken cancellationToken)
     {
         var claimedWork = await dbContext.VisitSchedulerWork
+            .AsNoTracking()
             .Where(x => x.Status == VisitSchedulerWorkStatus.Claimed)
+            .Select(x => new { x.Id, x.VisitId })
             .ToListAsync(cancellationToken);
 
-        foreach (var work in claimedWork)
+        foreach (var candidate in claimedWork)
         {
-            var dueAt = work.DueAt;
-            if (work.ClaimedAt is DateTimeOffset claimedAt && dueAt <= claimedAt)
-                dueAt = claimedAt.AddTicks(1);
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            work.Release(dueAt);
-        }
+            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
 
-        if (claimedWork.Count > 0)
+            var work = await dbContext.VisitSchedulerWork
+                .FromSqlInterpolated($"SELECT w.*, w.xmin FROM visit_scheduler_work AS w WHERE w.\"Id\" = {candidate.Id} FOR UPDATE")
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (work is null || work.Status != VisitSchedulerWorkStatus.Claimed)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            var visit = await dbContext.Visits.AsNoTracking()
+                .SingleAsync(x => x.Id == work.VisitId, cancellationToken);
+            var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(
+                work.Type, visit.Status, visit.Health);
+            var claimedAt = work.ClaimedAt
+                ?? throw new InvalidOperationException("Claimed scheduler work has no claim time.");
+
+            switch (decision)
+            {
+                case VisitSchedulerWorkExecutionDecision.Execute:
+                {
+                    var dueAt = work.DueAt > claimedAt
+                        ? work.DueAt
+                        : claimedAt.AddTicks(1);
+                    work.Release(dueAt);
+                    break;
+                }
+
+                case VisitSchedulerWorkExecutionDecision.Defer:
+                {
+                    var dueAt = timeProvider.GetUtcNow()
+                        .Add(VisitSchedulerWorkExecutionPolicy.DefaultDeferDelay);
+                    work.Release(dueAt > claimedAt ? dueAt : claimedAt.AddTicks(1));
+                    break;
+                }
+
+                case VisitSchedulerWorkExecutionDecision.Cancel:
+                    work.Cancel();
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(decision), decision, "Unsupported scheduler work execution decision.");
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 
     private async Task RebuildSchedulerAsync(

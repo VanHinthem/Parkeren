@@ -121,7 +121,7 @@ Aanvullende afspraken:
 - ✅ Bestaande continuation-recovery dekt Unknown/restart zonder tweede provideraction; gecombineerd met de JIT replay-test is duplicate-prevention voor de kernflow gedekt.
 - ⏸️ Klokgestuurde `scheduled -> active` providertransitie en activation-boundary bewijs worden afgerond in fase G / SCHED-016, omdat TwoParkMock status nu alleen bij creatie bepaalt.
 
-## Fase E — free-gap / overnight continuation — SCHED-002
+## Fase E — free-gap / overnight continuation — SCHED-002 ✅ AFGEROND
 
 ### E1 — pre-schedule volgend betaald segment
 
@@ -134,12 +134,19 @@ Aanvullende afspraken:
 
 ### E2 — future successor over gratis periode
 
-- 🚧 `VisitSchedulerWorkProcessor` maakt binnen T-5 vóór het volgende betaalde segment de future successor direct aan; een verstreken predecessor wordt lokaal afgerond zonder afhankelijkheid van remote `active` na natuurlijke expiratie.
+- ✅ `VisitSchedulerWorkProcessor` maakt binnen T-5 vóór het volgende betaalde segment de future successor direct aan; recovery dupliceert die scheduled successor niet. CI groen na gerichte herstel/testfixes t/m `6cc9bf05`.
+
+## Fase F — recovery hardening — SCHED-009 + SCHED-010
+
+### F1/F2 — deploymentcontract en claimed-work recovery
+
+- ✅ V1 single-instance deploymentcontract vastgelegd; CI groen op commit `79ce2d04` (`docs: define single-instance scheduler deployment`).
+- 🚧 Startup recovery verwerkt achtergelaten `Claimed` schedulerwork per Visit onder de SCHED-014 lock-order en via de SCHED-015 execution policy; tijdelijke defer gebruikt dezelfde centrale delay als runtime claiming.
 
 ## Volgende hoofdfasen
 
-- 🚧 Fase E — SCHED-002 free-gap / overnight continuation.
-- 📋 Fase F — SCHED-009/010 algemene recovery hardening.
+- ✅ Fase E — SCHED-002 free-gap / overnight continuation.
+- 🚧 Fase F — SCHED-009/010 algemene recovery hardening.
 - 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.
 - 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.
 - 📋 Fase I — SCHED-018 observability als laatste.

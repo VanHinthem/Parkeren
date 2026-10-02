@@ -8,8 +8,6 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbContext)
     : IVisitSchedulerWorkClaimer
 {
-    private static readonly TimeSpan DefaultDeferDelay = TimeSpan.FromMinutes(1);
-
     public async Task<VisitSchedulerWork?> ClaimNextDueAsync(
         string workerId,
         DateTimeOffset now,
@@ -64,7 +62,7 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
                 return work;
 
             case VisitSchedulerWorkExecutionDecision.Defer:
-                work.Defer(now.Add(DefaultDeferDelay));
+                work.Defer(now.Add(VisitSchedulerWorkExecutionPolicy.DefaultDeferDelay));
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return null;

@@ -9,6 +9,8 @@ public enum VisitSchedulerWorkExecutionDecision
 
 public static class VisitSchedulerWorkExecutionPolicy
 {
+    public static readonly TimeSpan DefaultDeferDelay = TimeSpan.FromMinutes(1);
+
     public static VisitSchedulerWorkExecutionDecision Evaluate(
         VisitSchedulerWorkType workType,
         VisitStatus visitStatus,
