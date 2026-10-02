@@ -48,8 +48,7 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
             return new ProviderStartPreparation(existing, action, true, attemptStartedNow);
         }
 
-        if (startAt > DateTimeOffset.UtcNow ||
-            await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id &&
+        if (await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id &&
                 x.State != ProviderActionState.Completed && x.State != ProviderActionState.Stopped,
                 cancellationToken) ||
             await dbContext.ProviderOperations.AnyAsync(x => x.VisitId == visit.Id &&
