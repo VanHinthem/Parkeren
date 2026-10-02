@@ -109,7 +109,7 @@ Aanvullende afspraken:
 - ✅ Initial-coverage duplicate-prevention gebruikt centrale productcontext, kenteken-normalisatie en 5-seconden Start-tolerance en blijft bewust een conservatieve `Any`-guard; CI groen op commit `ef04e4d3` (`fix: align initial coverage duplicate guard`).
 - ✅ Overige strict known-action-id read-backs zijn geïnventariseerd en blijven bewust lokaal waar zij geen fallback/timestampheuristiek bevatten en semantische validatie al door de bovenliggende flow gebeurt.
 
-## Fase D — JIT scheduled continuation — SCHED-001
+## Fase D — JIT scheduled continuation — SCHED-001 — kern ✅ AFGEROND
 
 ### D1/D2 — future continuation en scheduled providerstart
 
@@ -117,13 +117,20 @@ Aanvullende afspraken:
 - ✅ `ProviderContinuationStartStore.PrepareAttemptAsync` accepteert een nog actieve predecessor vóór diens eindgrens, zodat T-5 geen exception/retry-polling meer vereist; CI groen na gerichte compilefix op commit `e0bc330a`.
 - ✅ Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde`; de bestaande guard tegen een latere provideraction blijft de single-successor invariant bewaken.
 - ✅ Scheduler-processor end-to-end coverage bewijst T-5: één future successor wordt als `scheduled` bevestigd en redundant schedulerwork maakt geen tweede successor; CI groen na gerichte test-isolatie/cleanupfixes op commit `2ebf464d`.
-- 🚧 Stop-pad wordt nu expliciet end-to-end geverifieerd: een bestaande future `scheduled` successor moet eerst veilig worden beëindigd en daarna de actieve predecessor, zonder provideraction achter te laten.
+- ✅ Stop-pad end-to-end bewezen: de future `scheduled` successor en actieve predecessor worden beide veilig gestopt zonder open provideraction achter te laten; CI groen op commit `f581a135` (`test: cover stopping scheduled jit successor`).
+- ✅ Bestaande continuation-recovery dekt Unknown/restart zonder tweede provideraction; gecombineerd met de JIT replay-test is duplicate-prevention voor de kernflow gedekt.
+- ⏸️ Klokgestuurde `scheduled -> active` providertransitie en activation-boundary bewijs worden afgerond in fase G / SCHED-016, omdat TwoParkMock status nu alleen bij creatie bepaalt.
+
+## Fase E — free-gap / overnight continuation — SCHED-002
+
+### E1 — pre-schedule volgend betaald segment
+
+- 🚧 Eerste slice: `VisitStartStore` plant een later betaald segment op T-5 van `nextPaid.Start` in plaats van exact op de betaalgrens. De overige schedulingpaden volgen na groene CI.
 
 ## Volgende hoofdfasen
 
-- 🚧 Fase D — SCHED-001 JIT scheduled continuation.
-- 📋 Fase E — SCHED-002 free-gap / overnight continuation.
+- 🚧 Fase E — SCHED-002 free-gap / overnight continuation.
 - 📋 Fase F — SCHED-009/010 algemene recovery hardening.
-- 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness.
+- 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.
 - 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.
 - 📋 Fase I — SCHED-018 observability als laatste.
