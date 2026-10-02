@@ -24,30 +24,32 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          # Recovery code: every recovered future paid segment must wake at T-5.
           path = Path('src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs')
           text = path.read_text()
-          old = '''        var dueAt = nextPaid.Start > confirmedAction.End
-              ? nextPaid.Start
-              : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);'''
-          new = '''        var dueAt = nextPaid.Start > confirmedAction.End
-              ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
-              : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one active-action recovery dueAt block, found {text.count(old)}')
-          text = text.replace(old, new, 1)
 
-          old = '''            dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                  Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, paid.Start));'''
-          new = '''            dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                  Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
-                  ProviderCoverageSchedule.PrecheckAt(paid.Start)));'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one free-start recovery scheduling block, found {text.count(old)}')
-          text = text.replace(old, new, 1)
+          rebuild_marker = 'private async Task RebuildSchedulerAsync('
+          rebuild_start = text.index(rebuild_marker)
+          rebuild_end = text.index('private async Task<bool> RebuildFreeStartWorkAsync(', rebuild_start)
+          rebuild = text[rebuild_start:rebuild_end]
+          old = '? nextPaid.Start'
+          new = '? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)'
+          if rebuild.count(old) != 1:
+              raise SystemExit(f'Expected one active-action nextPaid due expression, found {rebuild.count(old)}')
+          rebuild = rebuild.replace(old, new, 1)
+          text = text[:rebuild_start] + rebuild + text[rebuild_end:]
+
+          free_marker = 'private async Task<bool> RebuildFreeStartWorkAsync('
+          free_start = text.index(free_marker)
+          free_end = text.index('public async Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(', free_start)
+          free = text[free_start:free_end]
+          old = 'VisitSchedulerWorkType.ContinueProviderCoverage, paid.Start));'
+          new = 'VisitSchedulerWorkType.ContinueProviderCoverage,\n                ProviderCoverageSchedule.PrecheckAt(paid.Start)));'
+          if free.count(old) != 1:
+              raise SystemExit(f'Expected one free-start paid.Start schedule, found {free.count(old)}')
+          free = free.replace(old, new, 1)
+          text = text[:free_start] + free + text[free_end:]
           path.write_text(text)
 
-          # Existing restart test: scope the assertion replacement to this one test method.
           path = Path('tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs')
           text = path.read_text()
           marker = 'public async Task Restart_rebuilds_missing_work_at_next_paid_window()'
@@ -62,7 +64,6 @@ jobs:
           text = text[:start] + block + text[end:]
           path.write_text(text)
 
-          # Record only the slice that is already CI-green.
           path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
           text = path.read_text()
           old = '- 🚧 Tweede slice: `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken.'
