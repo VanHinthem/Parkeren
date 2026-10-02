@@ -96,8 +96,9 @@ Aanvullende afspraken:
 - ✅ Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; CI groen op commit `8ffaa755` (`fix: centralize provider action matching`).
 - ✅ Directe start-readback en `StartVisitProviderReconciler` aangesloten op de centrale policy; CI groen op commit `417afe53` (`fix: apply provider match policy to starts`).
 - ✅ Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
-- 🚧 Extend precheck, directe extend-readback en `ContinueVisitProviderReconciler` aangesloten op dezelfde centrale action-id/product/status/timestamp-semantiek; gerichte tolerance-tests toegevoegd.
-- 🚧 Matchcriteria ondersteunen onbekende caller-context expliciet: kenteken/status/timestamps worden alleen toegepast wanneer de caller die informatie bezit; een bekende action-id valt nooit terug naar een andere kandidaat.
+- ✅ Extend precheck, directe extend-readback en `ContinueVisitProviderReconciler` aangesloten op dezelfde centrale action-id/product/status/timestamp-semantiek; CI groen op commit `08c7d831` (`fix: apply provider match policy to extensions`).
+- ✅ Matchcriteria ondersteunen onbekende caller-context expliciet: kenteken/status/timestamps worden alleen toegepast wanneer de caller die informatie bezit; een bekende action-id valt nooit terug naar een andere kandidaat.
+- 🚧 Stop read-back en Stop reconciliation gebruiken dezelfde centrale action-id/product identity; Stop blijft strikt action-id driven en krijgt geen semantische fallback-identificatie.
 
 ## Volgende hoofdfasen
 

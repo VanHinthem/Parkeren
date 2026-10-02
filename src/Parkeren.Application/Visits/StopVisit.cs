@@ -138,8 +138,11 @@ public sealed class StopVisitProviderExecutor(
                 var currentActions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
                     ? await provider.GetActionsAsync(cancellationToken)
                     : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-                var current = currentActions.SingleOrDefault(x =>
-                    x.ProviderActionId == preparation.Action.ProviderActionId);
+                var current = Parkeren.Application.ParkingProvider.ProviderActionMatchPolicy.FindUniqueMatch(
+                    currentActions,
+                    new Parkeren.Application.ParkingProvider.ProviderActionMatchCriteria(
+                        preparation.Action.ProviderActionId,
+                        preparation.Action.ProviderProductId));
 
                 if (current is null)
                 {
@@ -168,8 +171,11 @@ public sealed class StopVisitProviderExecutor(
             var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-            var remaining = actions.SingleOrDefault(x =>
-                x.ProviderActionId == preparation.Action.ProviderActionId);
+            var remaining = Parkeren.Application.ParkingProvider.ProviderActionMatchPolicy.FindUniqueMatch(
+                actions,
+                new Parkeren.Application.ParkingProvider.ProviderActionMatchCriteria(
+                    preparation.Action.ProviderActionId,
+                    preparation.Action.ProviderProductId));
             if (remaining is not null &&
                 !string.Equals(remaining.Status, "stopped", StringComparison.OrdinalIgnoreCase))
             {
@@ -230,8 +236,11 @@ public sealed class StopVisitProviderReconciler(
         var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
             : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-        var current = actions.SingleOrDefault(x =>
-            x.ProviderActionId == preparation.Action.ProviderActionId);
+        var current = Parkeren.Application.ParkingProvider.ProviderActionMatchPolicy.FindUniqueMatch(
+            actions,
+            new Parkeren.Application.ParkingProvider.ProviderActionMatchCriteria(
+                preparation.Action.ProviderActionId,
+                preparation.Action.ProviderProductId));
 
         Parkeren.Application.ParkingProvider.ProviderParkingAction? confirmed = null;
         if (current is not null &&
