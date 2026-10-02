@@ -64,21 +64,25 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
                 .ProcessAsync(claimed, ct);
         }
 
-        await using var verify = fixture.CreateDbContext();
-        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
-        var persistedWork = await verify.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, ct);
-        var operation = await verify.ProviderOperations.SingleAsync(x => x.OperationId == work.Id, ct);
+        await using (var verify = fixture.CreateDbContext())
+        {
+            var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+            var persistedWork = await verify.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, ct);
+            var operation = await verify.ProviderOperations.SingleAsync(x => x.OperationId == work.Id, ct);
 
-        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
-        Assert.Equal(VisitEndReason.DesiredEndReached, persistedVisit.EndReason);
-        Assert.NotNull(persistedVisit.ActualEndAt);
-        Assert.InRange(
-            (persistedVisit.ActualEndAt.Value - boundary).Duration(),
-            TimeSpan.Zero,
-            TimeSpan.FromMilliseconds(1));
-        Assert.Equal(VisitSchedulerWorkStatus.Completed, persistedWork.Status);
-        Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
-        Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
+            Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+            Assert.Equal(VisitEndReason.DesiredEndReached, persistedVisit.EndReason);
+            Assert.NotNull(persistedVisit.ActualEndAt);
+            Assert.InRange(
+                (persistedVisit.ActualEndAt.Value - boundary).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.Equal(VisitSchedulerWorkStatus.Completed, persistedWork.Status);
+            Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
+            Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
+        }
+
+        await ClearVisitStateAsync(ct);
     }
 
     [Fact]
@@ -126,16 +130,20 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
                 .CompleteWithoutProviderActionAsync(claim, actualEndAt, ct);
         }
 
-        await using var verify = fixture.CreateDbContext();
-        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        await using (var verify = fixture.CreateDbContext())
+        {
+            var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
 
-        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
-        Assert.Equal(VisitEndReason.ManualStop, persistedVisit.EndReason);
-        Assert.NotNull(persistedVisit.ActualEndAt);
-        Assert.InRange(
-            (persistedVisit.ActualEndAt.Value - actualEndAt).Duration(),
-            TimeSpan.Zero,
-            TimeSpan.FromMilliseconds(1));
+            Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+            Assert.Equal(VisitEndReason.ManualStop, persistedVisit.EndReason);
+            Assert.NotNull(persistedVisit.ActualEndAt);
+            Assert.InRange(
+                (persistedVisit.ActualEndAt.Value - actualEndAt).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+        }
+
+        await ClearVisitStateAsync(ct);
     }
 
     private ServiceProvider BuildServices()
