@@ -6,6 +6,33 @@ namespace Parkeren.Domain.Tests;
 public sealed class VisitSchedulerWorkTests
 {
     [Fact]
+    public void Stop_work_can_carry_terminal_end_reason()
+    {
+        var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            VisitSchedulerWorkType.StopVisit,
+            dueAt,
+            VisitEndReason.MaxPaidParkingDurationReached);
+
+        Assert.Equal(VisitEndReason.MaxPaidParkingDurationReached, work.EndReason);
+    }
+
+    [Fact]
+    public void Non_stop_work_rejects_terminal_end_reason()
+    {
+        var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
+
+        Assert.Throws<ArgumentException>(() => new VisitSchedulerWork(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            dueAt,
+            VisitEndReason.DesiredEndReached));
+    }
+
+    [Fact]
     public void Defer_moves_pending_work_to_later_due_time()
     {
         var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");

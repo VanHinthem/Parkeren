@@ -19,15 +19,23 @@ public sealed class VisitSchedulerWork
 {
     private VisitSchedulerWork() { }
 
-    public VisitSchedulerWork(Guid id, Guid visitId, VisitSchedulerWorkType type, DateTimeOffset dueAt)
+    public VisitSchedulerWork(
+        Guid id,
+        Guid visitId,
+        VisitSchedulerWorkType type,
+        DateTimeOffset dueAt,
+        VisitEndReason? endReason = null)
     {
         if (id == Guid.Empty) throw new ArgumentException("Scheduler work id is required.", nameof(id));
         if (visitId == Guid.Empty) throw new ArgumentException("Visit id is required.", nameof(visitId));
+        if (endReason is not null && type != VisitSchedulerWorkType.StopVisit)
+            throw new ArgumentException("Only StopVisit scheduler work can carry a Visit end reason.", nameof(endReason));
 
         Id = id;
         VisitId = visitId;
         Type = type;
         DueAt = dueAt;
+        EndReason = endReason;
         Status = VisitSchedulerWorkStatus.Pending;
         CreatedAt = DateTimeOffset.UtcNow;
     }
@@ -36,6 +44,7 @@ public sealed class VisitSchedulerWork
     public Guid VisitId { get; private set; }
     public VisitSchedulerWorkType Type { get; private set; }
     public DateTimeOffset DueAt { get; private set; }
+    public VisitEndReason? EndReason { get; private set; }
     public VisitSchedulerWorkStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ClaimedAt { get; private set; }

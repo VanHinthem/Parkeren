@@ -34,10 +34,26 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 
 ### B1 — SCHED-013 Visit end reason
 
-- 🚧 `VisitEndReason` toegevoegd met `ManualStop`, `DesiredEndReached`, `MaxVisitElapsedDurationReached` en `MaxPaidParkingDurationReached`.
-- 🚧 `Visit.BeginStopping(reason)` legt de reden persistent vast; bestaande parameterloze `BeginStopping()` blijft compatibel en betekent `ManualStop`.
-- 🚧 Domeintests dekken expliciete reden en immutable lifecycle-semantiek.
-- 📋 Na groen: centrale `VisitTerminalBoundaryCalculator`.
+- ✅ `VisitEndReason` toegevoegd met `ManualStop`, `DesiredEndReached`, `MaxVisitElapsedDurationReached` en `MaxPaidParkingDurationReached`.
+- ✅ `Visit.BeginStopping(reason)` legt de reden persistent vast; bestaande parameterloze `BeginStopping()` blijft compatibel en betekent `ManualStop`.
+- ✅ Domeintests dekken expliciete reden en immutable lifecycle-semantiek.
+- ✅ CI groen op commit `baee2000` (`feat: add visit end reason`).
+
+### B2 — centrale terminal boundary
+
+- ✅ `VisitTerminalBoundaryCalculator` bepaalt de vroegste functionele grens uit DesiredEndAt, MaxVisitElapsedDuration en MaxPaidParkingDuration.
+- ✅ Paid-time gebruikt versioned parkeerregels; gratis/overnight tijd telt niet mee.
+- ✅ Tie-break vastgelegd als `MaxPaid -> MaxElapsed -> DesiredEnd`.
+- ✅ Unit tests dekken desired/elapsed/paid, overnight, tie-break en onbeperkte Visits.
+- ✅ CI groen na gerichte testfixes op commit `91b93086`.
+
+### B3 — terminal scheduler work
+
+- 🚧 `VisitSchedulerWork.EndReason` toegevoegd; alleen `StopVisit` work mag een eindreden dragen.
+- 🚧 `VisitTerminalWorkPlanner.EnsureAsync` bewaakt idempotent precies één actuele terminale Stop-taak en vervangt alleen pending obsolete work.
+- 🚧 Claimed terminal work wordt nooit stil vervangen.
+- 🚧 Domein- en PostgreSQL-integratietests toegevoegd voor metadata, idempotentie, replacement en claimed conflict.
+- 📋 Na groen: terminal planning aansluiten op Visit start en end-time change.
 
 ## Volgende hoofdfasen
 
