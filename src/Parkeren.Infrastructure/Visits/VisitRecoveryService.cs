@@ -66,7 +66,11 @@ internal sealed class VisitRecoveryService(
 
             foreach (var action in actions)
             {
-                var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == action.ProviderActionId);
+                var remote = ProviderActionMatchPolicy.FindUniqueMatch(
+                    remoteActions,
+                    new ProviderActionMatchCriteria(
+                        action.ProviderActionId,
+                        action.ProviderProductId));
                 var productId = visit.ProviderProductId;
                 var mismatch = false;
 
@@ -120,7 +124,7 @@ internal sealed class VisitRecoveryService(
                         await discrepancyService.ResolveAsync(missingKey, observedAt, cancellationToken);
                         await discrepancyService.ResolveAsync(statusKey, observedAt, cancellationToken);
 
-                        if ((remote.End - action.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+                        if (!ProviderActionMatchPolicy.TimestampsMatch(remote.End, action.PlannedEndAt))
                         {
                             await discrepancyService.ObserveAsync(
                                 new ProviderDiscrepancyObservation(
@@ -147,7 +151,7 @@ internal sealed class VisitRecoveryService(
                 {
                     mismatch = remote is null ||
                                !string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-                               (remote.End - action.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1);
+                               !ProviderActionMatchPolicy.TimestampsMatch(remote.End, action.PlannedEndAt);
                 }
 
                 if (remote is not null &&

@@ -166,6 +166,156 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Provider_end_drift_within_central_tolerance_does_not_create_discrepancy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var remoteProduct = new ProviderProduct("tolerance-product", "Tolerance product", "OSS_J");
+        var localProduct = await GetOrCreateProductAsync(remoteProduct, cancellationToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"disc-tol-ok-{suffix}", $"DISC-TOL-OK-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"DTO-{suffix}", $"DTO{suffix}".ToUpperInvariant(), null);
+        var start = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var end = start.AddHours(1);
+        var providerActionId = $"provider-tol-ok-{suffix}";
+
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            start,
+            end,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true),
+            localProduct.Id,
+            remoteProduct.Id,
+            remoteProduct.Location);
+        visit.Activate();
+
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(),
+            visit.Id,
+            start,
+            end,
+            remoteProduct.Id,
+            remoteProduct.Location);
+        action.MarkStarting();
+        action.MarkActive(providerActionId, start, "active");
+
+        var provider = new StaticParkingProvider(
+            remoteProduct,
+            [new ProviderParkingAction(
+                providerActionId,
+                vehicle.NormalizedLicensePlate,
+                start,
+                end.AddSeconds(4),
+                "OSS Zone J",
+                "active",
+                remoteProduct.Id)]);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await RunProviderCheckAsync(provider, cancellationToken);
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Empty(await verify.ProviderDiscrepancies.AsNoTracking()
+                .Where(x => x.ProviderParkingActionId == action.Id)
+                .ToListAsync(cancellationToken));
+            var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            Assert.Equal(VisitHealth.Healthy, persistedVisit.Health);
+        }
+        finally
+        {
+            await CleanupVisitAsync(visit.Id, user.Id, vehicle.Id, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Provider_end_drift_outside_central_tolerance_creates_end_discrepancy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var remoteProduct = new ProviderProduct("tolerance-product", "Tolerance product", "OSS_J");
+        var localProduct = await GetOrCreateProductAsync(remoteProduct, cancellationToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"disc-tol-bad-{suffix}", $"DISC-TOL-BAD-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"DTB-{suffix}", $"DTB{suffix}".ToUpperInvariant(), null);
+        var start = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var end = start.AddHours(1);
+        var providerActionId = $"provider-tol-bad-{suffix}";
+
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            start,
+            end,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true),
+            localProduct.Id,
+            remoteProduct.Id,
+            remoteProduct.Location);
+        visit.Activate();
+
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(),
+            visit.Id,
+            start,
+            end,
+            remoteProduct.Id,
+            remoteProduct.Location);
+        action.MarkStarting();
+        action.MarkActive(providerActionId, start, "active");
+
+        var provider = new StaticParkingProvider(
+            remoteProduct,
+            [new ProviderParkingAction(
+                providerActionId,
+                vehicle.NormalizedLicensePlate,
+                start,
+                end.AddSeconds(6),
+                "OSS Zone J",
+                "active",
+                remoteProduct.Id)]);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await RunProviderCheckAsync(provider, cancellationToken);
+
+            await using var verify = fixture.CreateDbContext();
+            var discrepancy = Assert.Single(await verify.ProviderDiscrepancies.AsNoTracking()
+                .Where(x => x.ProviderParkingActionId == action.Id)
+                .ToListAsync(cancellationToken));
+            Assert.Equal(ProviderDiscrepancyType.ProviderActionEndMismatch, discrepancy.Type);
+            Assert.Equal(ProviderDiscrepancyStatus.Open, discrepancy.Status);
+            var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            Assert.Equal(VisitHealth.AttentionRequired, persistedVisit.Health);
+        }
+        finally
+        {
+            await CleanupVisitAsync(visit.Id, user.Id, vehicle.Id, cancellationToken);
+        }
+    }
+
     private async Task<ParkingProviderProduct> GetOrCreateProductAsync(
         ProviderProduct remoteProduct,
         CancellationToken cancellationToken)
@@ -240,5 +390,44 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
             .ExecuteDeleteAsync(cancellationToken);
         await context.Users.Where(x => x.Id == userId)
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    private sealed class StaticParkingProvider(
+        ProviderProduct product,
+        IReadOnlyList<ProviderParkingAction> actions) : IParkingProvider
+    {
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProviderCategory>>([]);
+
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(product);
+
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderBalance(0m, ProviderBalanceUnit.Unknown, DateTimeOffset.UtcNow));
+
+        public Task<IReadOnlyList<ProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(actions);
+
+        public Task<IReadOnlyList<ProviderParkingAction>> GetActionsForProductAsync(
+            string productId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProviderParkingAction>>(
+                string.Equals(productId, product.Id, StringComparison.Ordinal) ? actions : []);
+
+        public Task<ProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderParkingAction> ExtendActionAsync(
+            string providerActionId,
+            DateTimeOffset newEnd,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task StopActionAsync(
+            string providerActionId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }
