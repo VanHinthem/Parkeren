@@ -61,7 +61,6 @@ internal sealed class AdministrationService(
             dbContext.UserPolicyOverrides.Add(adminPolicy);
         }
         await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         await auditWriter.WriteAsync(
             actorUserId,
             "UserCreated",
@@ -69,6 +68,7 @@ internal sealed class AdministrationService(
             user.Id.ToString(),
             new { user.Username, Role = user.Role.ToString(), user.IsActive },
             cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new CreateUserResult(user.Id, user.Username, user.Role, user.IsActive);
     }
 
@@ -87,7 +87,6 @@ internal sealed class AdministrationService(
             throw new InvalidOperationException("Een gebruiker met een actieve Visit kan niet worden gedeactiveerd.");
 
         if (isActive) user.Activate(); else user.Deactivate();
-        await dbContext.SaveChangesAsync(cancellationToken);
         await auditWriter.WriteAsync(
             actorUserId,
             isActive ? "UserActivated" : "UserDeactivated",
@@ -206,7 +205,6 @@ internal sealed class AdministrationService(
 
         var vehicle = new Vehicle(Guid.NewGuid(), normalized, normalized, string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim());
         dbContext.Vehicles.Add(vehicle);
-        await dbContext.SaveChangesAsync(cancellationToken);
         await auditWriter.WriteAsync(
             actorUserId,
             "VehicleCreated",
@@ -232,7 +230,6 @@ internal sealed class AdministrationService(
             throw new InvalidOperationException("Een voertuig met een actieve Visit kan niet worden gedeactiveerd.");
 
         if (isActive) vehicle.Activate(); else vehicle.Deactivate();
-        await dbContext.SaveChangesAsync(cancellationToken);
         await auditWriter.WriteAsync(
             actorUserId,
             isActive ? "VehicleActivated" : "VehicleDeactivated",
