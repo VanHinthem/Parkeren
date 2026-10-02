@@ -103,7 +103,10 @@ Aanvullende afspraken:
 - ✅ `TwoParkProvider.StartActionAsync` gebruikt dezelfde unique-fallback policy met product, genormaliseerd kenteken, `active|scheduled` en 5-seconden Start/End-tolerance; CI groen op commit `7d176ec8` (`fix: align twopark start readback matching`).
 - ✅ Actieve provider-action discrepancy-detectie gebruikt centrale action-id/product identity en de centrale 5-seconden End-tolerance; integratietests dekken ±4 seconden als gezond en +6 seconden als `ProviderActionEndMismatch`; CI groen na gerichte testfixes op commit `5cf172bc`.
 - ✅ `ExternalProviderAction` detectie blijft bewust exact action-id gebaseerd; er is geen fallback-koppeling voor onbekende provider IDs toegevoegd.
-- 🚧 Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd.
+- ✅ Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd; CI groen op commit `adf59937` (`fix: align scheduler recovery matching`).
+- ✅ `ReconcileScheduledCancelAsync` blijft bewust product-scoped en strikt bekend-action-id + `stopped` status; omdat dit Stop-semantiek is en geen lokale timestamp/fallbackheuristiek bevat, is geen cosmetische policy-conversie nodig.
+- 🚧 `VisitSchedulerWorkProcessor` gebruikt voor scheduled wake-up, free-gap predecessorcheck en aansluitende continuation centrale action-id/product identity; de twee bestaande provider-End checks gebruiken de centrale 5-seconden tolerance in plaats van 1 ms.
+- 📋 De no-id duplicate guard bij initial coverage wordt apart beoordeeld: daar is blokkeren bij mogelijke duplicate veiliger dan automatisch dezelfde unique-match-semantiek toepassen.
 
 ## Volgende hoofdfasen
 

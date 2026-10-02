@@ -118,7 +118,11 @@ internal sealed class VisitSchedulerWorkProcessor(
             var remoteActions = string.IsNullOrWhiteSpace(latestAction.ProviderProductId)
                 ? await parkingProvider.GetActionsAsync(cancellationToken)
                 : await parkingProvider.GetActionsForProductAsync(latestAction.ProviderProductId, cancellationToken);
-            var remote = remoteActions.SingleOrDefault(x => x.ProviderActionId == latestAction.ProviderActionId);
+            var remote = ProviderActionMatchPolicy.FindUniqueMatch(
+                remoteActions,
+                new ProviderActionMatchCriteria(
+                    latestAction.ProviderActionId,
+                    latestAction.ProviderProductId));
             if (remote is null)
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
@@ -284,10 +288,14 @@ internal sealed class VisitSchedulerWorkProcessor(
             var remoteActions = string.IsNullOrWhiteSpace(latestAction.ProviderProductId)
                 ? await parkingProvider.GetActionsAsync(cancellationToken)
                 : await parkingProvider.GetActionsForProductAsync(latestAction.ProviderProductId, cancellationToken);
-            var previous = remoteActions.SingleOrDefault(x => x.ProviderActionId == latestAction.ProviderActionId);
+            var previous = ProviderActionMatchPolicy.FindUniqueMatch(
+                remoteActions,
+                new ProviderActionMatchCriteria(
+                    latestAction.ProviderActionId,
+                    latestAction.ProviderProductId));
             if (previous is null ||
                 !string.Equals(previous.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-                (previous.End - latestAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+                !ProviderActionMatchPolicy.TimestampsMatch(previous.End, latestAction.PlannedEndAt))
             {
                 if (previous?.Status is { } status &&
                     string.Equals(status, "stopped", StringComparison.OrdinalIgnoreCase))
@@ -330,11 +338,14 @@ internal sealed class VisitSchedulerWorkProcessor(
             var providerActions = string.IsNullOrWhiteSpace(latestAction.ProviderProductId)
                 ? await parkingProvider.GetActionsAsync(cancellationToken)
                 : await parkingProvider.GetActionsForProductAsync(latestAction.ProviderProductId, cancellationToken);
-            var previousAtProvider = providerActions.SingleOrDefault(x =>
-                x.ProviderActionId == latestAction.ProviderActionId);
+            var previousAtProvider = ProviderActionMatchPolicy.FindUniqueMatch(
+                providerActions,
+                new ProviderActionMatchCriteria(
+                    latestAction.ProviderActionId,
+                    latestAction.ProviderProductId));
             if (previousAtProvider is null ||
                 !string.Equals(previousAtProvider.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-                (previousAtProvider.End - latestAction.PlannedEndAt).Duration() >= TimeSpan.FromMilliseconds(1))
+                !ProviderActionMatchPolicy.TimestampsMatch(previousAtProvider.End, latestAction.PlannedEndAt))
             {
                 if (previousAtProvider?.Status is { } providerStatus &&
                     string.Equals(providerStatus, "stopped", StringComparison.OrdinalIgnoreCase))
