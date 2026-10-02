@@ -80,7 +80,7 @@ internal sealed class ProviderStartResultStore(
                     cancellationToken))
                 {
                     var dueAt = nextPaid.Start > preparation.Action.PlannedEndAt
-                        ? nextPaid.Start
+                        ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
                         : ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt);
                     dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
                         Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, dueAt));
