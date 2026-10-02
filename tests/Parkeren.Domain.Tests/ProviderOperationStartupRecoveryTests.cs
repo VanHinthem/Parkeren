@@ -65,4 +65,39 @@ public sealed class ProviderOperationStartupRecoveryTests
         Assert.Equal(ProviderActionState.Active, action.State);
         Assert.Equal(ProviderActionHealth.Healthy, action.Health);
     }
+    [Fact]
+    public void Interrupted_start_reconciliation_resumes_as_unknown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), now.AddMinutes(-10), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkUnknown();
+        action.BeginReconciliation();
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+        operation.MarkUnknown("timeout");
+        operation.BeginReconciliation();
+
+        var changed = ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action);
+
+        Assert.True(changed);
+        Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
+        Assert.Equal(ProviderActionHealth.Unknown, action.Health);
+    }
+
+    [Fact]
+    public void Pending_operation_is_left_unchanged_for_normal_replay()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), now, now.AddHours(1));
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.ContinueStart);
+
+        var changed = ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action);
+
+        Assert.False(changed);
+        Assert.Equal(ProviderOperationStatus.Pending, operation.Status);
+        Assert.Equal(ProviderActionState.Planned, action.State);
+        Assert.Equal(ProviderActionHealth.Healthy, action.Health);
+    }
+
 }
