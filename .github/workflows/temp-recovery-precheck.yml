@@ -1,0 +1,85 @@
+name: temp recovery precheck patch
+
+on:
+  push:
+    branches:
+      - scratch/fix-provider-start-precheck-test
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/fix-provider-start-precheck-test
+          fetch-depth: 0
+
+      - name: Patch recovery precheck semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Recovery code: every recovered future paid segment must wake at T-5.
+          path = Path('src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs')
+          text = path.read_text()
+          old = '''        var dueAt = nextPaid.Start > confirmedAction.End
+              ? nextPaid.Start
+              : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);'''
+          new = '''        var dueAt = nextPaid.Start > confirmedAction.End
+              ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
+              : ProviderCoverageSchedule.PrecheckAt(confirmedAction.End);'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one active-action recovery dueAt block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = '''            dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                  Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, paid.Start));'''
+          new = '''            dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
+                  Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+                  ProviderCoverageSchedule.PrecheckAt(paid.Start)));'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one free-start recovery scheduling block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          # Existing restart test: scope the assertion replacement to this one test method.
+          path = Path('tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs')
+          text = path.read_text()
+          marker = 'public async Task Restart_rebuilds_missing_work_at_next_paid_window()'
+          start = text.index(marker)
+          end = text.index('\n    [Fact]', start + len(marker))
+          block = text[start:end]
+          old = 'Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
+          new = 'Assert.InRange((work.DueAt - nextPaidStart.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
+          if block.count(old) != 1:
+              raise SystemExit(f'Expected one recovery assertion in target test, found {block.count(old)}')
+          block = block.replace(old, new, 1)
+          text = text[:start] + block + text[end:]
+          path.write_text(text)
+
+          # Record only the slice that is already CI-green.
+          path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = path.read_text()
+          old = '- 🚧 Tweede slice: `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken.'
+          new = '- ✅ `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken; implementatie op `9a9511b8` en CI groen na gerichte testfix op `8f8466ae` (`fix: expect free-gap precheck in start test`).'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one Phase E second-slice progress line, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          git diff --check
+          git diff -- src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'fix: precheck recovered paid coverage'
+          git push origin HEAD:scratch/fix-provider-start-precheck-test
