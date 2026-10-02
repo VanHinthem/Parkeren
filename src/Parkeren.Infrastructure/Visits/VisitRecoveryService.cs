@@ -279,7 +279,8 @@ internal sealed class VisitRecoveryService(
 
     private async Task MarkStaleInProgressProviderOperationsUnknownAsync(CancellationToken cancellationToken)
     {
-        var staleBefore = timeProvider.GetUtcNow().Subtract(TimeSpan.FromMinutes(5));
+        var now = timeProvider.GetUtcNow();
+        var staleBefore = now.Subtract(ProviderOperationStartupRecovery.AttemptLease);
         var candidates = await dbContext.ProviderOperations
             .AsNoTracking()
             .Where(x => x.Status == ProviderOperationStatus.InProgress &&
@@ -319,9 +320,11 @@ internal sealed class VisitRecoveryService(
                 continue;
             }
 
-            operation.MarkUnknown("stale-in-progress");
-            if (action.State is ProviderActionState.Starting or ProviderActionState.Stopping)
-                action.MarkUnknown();
+            if (!ProviderOperationStartupRecovery.MarkStaleInProgressUnknown(operation, action, now))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
 
             var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);
             visit.SetHealth(VisitHealth.Reconciling);
