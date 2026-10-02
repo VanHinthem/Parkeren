@@ -98,7 +98,9 @@ Aanvullende afspraken:
 - ✅ Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
 - ✅ Extend precheck, directe extend-readback en `ContinueVisitProviderReconciler` aangesloten op dezelfde centrale action-id/product/status/timestamp-semantiek; CI groen op commit `08c7d831` (`fix: apply provider match policy to extensions`).
 - ✅ Matchcriteria ondersteunen onbekende caller-context expliciet: kenteken/status/timestamps worden alleen toegepast wanneer de caller die informatie bezit; een bekende action-id valt nooit terug naar een andere kandidaat.
-- 🚧 Stop read-back en Stop reconciliation gebruiken dezelfde centrale action-id/product identity; Stop blijft strikt action-id driven en krijgt geen semantische fallback-identificatie.
+- ✅ Stop read-back en Stop reconciliation gebruiken dezelfde centrale action-id/product identity; Stop blijft strikt action-id driven zonder fallback; CI groen op commit `797021ec` (`fix: apply provider match policy to stops`).
+- ✅ Beoordeeld waarom `TwoParkProvider.StartActionAsync` `< 2 minuten` gebruikte: de startresponse levert geen bruikbaar action-id op, waardoor de adapter via read-back een fallback-kandidaat moest zoeken; de 2-minutenwaarde was een heuristische zoekwindow, geen 2Park-SLA.
+- 🚧 `TwoParkProvider.StartActionAsync` gebruikt nu dezelfde unique-fallback policy met product, genormaliseerd kenteken, `active|scheduled` en 5-seconden Start/End-tolerance; gerichte adaptertests toegevoegd voor binnen tolerance, buiten tolerance en ambiguïteit.
 
 ## Volgende hoofdfasen
 

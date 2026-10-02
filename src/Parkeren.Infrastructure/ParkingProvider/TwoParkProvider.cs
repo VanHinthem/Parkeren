@@ -226,10 +226,15 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         }, cancellationToken);
 
         var actions = await GetActionsForProductAsync(selectedProductId, cancellationToken);
-        var match = actions
-            .Where(x => string.Equals(x.LicensePlate, NormalizePlate(request.LicensePlate), StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(x => x.Start)
-            .FirstOrDefault(x => (x.Start - request.Start).Duration() < TimeSpan.FromMinutes(2));
+        var match = ProviderActionMatchPolicy.FindUniqueMatch(
+            actions,
+            new ProviderActionMatchCriteria(
+                ProviderActionId: null,
+                ProviderProductId: selectedProductId,
+                LicensePlate: request.LicensePlate,
+                AllowedStatuses: ["active", "scheduled"],
+                ExpectedStart: request.Start,
+                ExpectedEnd: request.End));
 
         if (match is null)
             throw new InvalidOperationException("2Park start was accepted but could not be verified by read-back.");
