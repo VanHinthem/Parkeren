@@ -17,8 +17,9 @@ jobs:
         with:
           ref: scratch/g8-scheduled-capacity
       - name: Apply G8 patch
-        shell: python
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -108,7 +109,9 @@ jobs:
               "- ✅ G7: expliciete post-End testmodi (`keep-active`, `completed`, `hide`) zonder default provideraanname; CI groen op commit `80ebcf7a`.\n- 🚧 G8: provider-capaciteit wordt uit mockklok/state afgeleid en scheduled actions tellen alleen mee wanneer de test dit expliciet configureert.\n",
               "G7 progress")
           progress_path.write_text(progress)
+          PY
       - name: Commit patch
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
