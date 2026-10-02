@@ -37,13 +37,14 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         var user = new User(Guid.NewGuid(), $"gap-recovery-{suffix}", $"GAP-RECOVERY-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"GR-{suffix[..2]}-{suffix[2..4]}", $"GR{suffix[..4]}", null);
 
-        ParkingProviderProduct product;
-        await using (var productContext = fixture.CreateDbContext())
-        {
-            product = await productContext.ParkingProviderProducts
-                .AsNoTracking()
-                .SingleAsync(x => x.ProviderProductId == "visitor", cancellationToken);
-        }
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(),
+            $"free-gap-{suffix}",
+            $"Free Gap {suffix}",
+            null,
+            null,
+            "Oss",
+            now);
 
         var visit = new Visit(
             Guid.NewGuid(),
@@ -123,6 +124,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 
         await using (var seedContext = fixture.CreateDbContext())
         {
+            seedContext.ParkingProviderProducts.Add(product);
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
@@ -209,6 +211,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.ParkingRuleSets
                 .Where(x => x.Id == paidBeforeGap.Id || x.Id == freeGap.Id || x.Id == paidAfterGap.Id || x.Id == freeTail.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.ParkingProviderProducts
+                .Where(x => x.Id == product.Id)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.Vehicles
                 .Where(x => x.Id == vehicle.Id)
