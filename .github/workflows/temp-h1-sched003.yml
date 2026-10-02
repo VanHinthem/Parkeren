@@ -1,0 +1,77 @@
+name: temp h1 sched003 verification
+
+on:
+  push:
+    branches:
+      - scratch/h1-sched003-verification
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/h1-sched003-verification
+      - name: Apply H1 verification
+        shell: python
+        run: |
+          from pathlib import Path
+
+          sched = Path('docs/technisch/visit-scheduler-audit/SCHED-003.md')
+          sched.write_text('''# SCHED-003 — handmatig stoppen versus continuation
+
+**Status:** ✅ Regressie geverifieerd na scheduler hardening  
+**Afhankelijkheden:** SCHED-014, SCHED-015  
+**Scenario:** een gebruiker/beheerder stopt een Visit terwijl continuation pending, claimed of extern in-flight is.
+
+## Gewenste invariant
+
+Stop moet altijd winnen. Na een stopclaim mag geen provideraction de Visit zelfstandig overleven en een in-flight continuation mag niet leiden tot blijvende nieuwe dekking.
+
+## As-built na hardening
+
+`PostgresStopVisitClaimer` en schedulerclaim/retry gebruiken nu dezelfde Visit-first lock-order. De stopclaim zet de Visit naar `Stopping`, annuleert nog relevante pending schedulerwork en maakt de duurzame Stop-operation aan voordat providercleanup verdergaat.
+
+De centrale `VisitSchedulerWorkExecutionPolicy` geeft terminal `StopVisit` work voorrang op continuation en voorkomt dat tijdelijke health-state terminal cleanup definitief annuleert.
+
+`StopVisitFlow` blijft alle open provideractions afhandelen totdat geen niet-terminale action meer resteert. Dat omvat zowel de actieve predecessor als een reeds aangemaakte future `scheduled` successor. `StopVisitFinalizer` rondt de Visit pas af wanneer alle provideractions terminal zijn.
+
+De continuation-keten behoudt daarnaast de mutation guard en herlaadt Visit-state na externe calls. Als Stop tijdens een in-flight continuation wint, mag de result/recoveryflow de Visit niet terugzetten naar `Active`.
+
+## Regressiebewijs
+
+Na de hardening is het scenario opnieuw afgedekt door de combinatie van:
+
+- PostgreSQL-racetests voor schedulerclaim versus manual Stop uit fase A2 (`4023c6e3`);
+- centrale work execution policy uit fase A1, inclusief terminale Stop-semantiek;
+- de JIT end-to-endtest waarin exact één future scheduled successor wordt gemaakt;
+- `f581a135` (`test: cover stopping scheduled jit successor`), die expliciet bewijst dat de scheduled successor eerst wordt gestopt en daarna de actieve predecessor, waarna geen open provideraction achterblijft;
+- startup/recovery hardening uit fase F, waardoor achtergelaten claims en provideroperations geen nieuw continuation-pad kunnen openen vóór recovery klaar is.
+
+## Open providerpunten
+
+Geen zelfstandig SCHED-003-gat resteert. Onbevestigd 2Park post-End gedrag en scheduled-capacity blijven providercontractvragen en veranderen de Stop-invariant niet: een lokaal bekende open provideraction van een stoppende Visit moet terminal worden afgehandeld.
+
+## Conclusie
+
+SCHED-003 is na de scheduler-hardening regressie-gevalideerd. De eerder gedeelde risico's uit SCHED-014 en SCHED-015 zijn opgelost en de specifieke scheduled-successor Stop-flow is end-to-end bewezen. Manual Stop blijft leidend boven continuation.
+''')
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = progress.read_text()
+          text = text.replace(
+              '- 🚧 G8: provider-capaciteit wordt uit mockklok/state afgeleid en scheduled actions tellen alleen mee wanneer de test dit expliciet configureert.',
+              '- ✅ G8: provider-capaciteit wordt uit mockklok/state afgeleid; scheduled actions tellen alleen mee wanneer de test dit expliciet configureert; CI groen op commit `110ebce5`.\n\n### Fase G resultaat\n\n- ✅ Mock-capabilities voor SCHED-016 afgerond: deterministische klok, `scheduled -> active`, visibility delay, timestamp offsets, locationlabel, post-End fault modes en configureerbare scheduled-capacity.\n- ✅ Fase G als harness/capability-fase afgerond; resterende integrale SCHED-016 boundarymatrix wordt in fase H scenario-voor-scenario gekoppeld aan SCHED-001 t/m SCHED-012.\n\n## Fase H — scenario-regressie SCHED-001 t/m SCHED-012 🚧\n\n- ✅ H1 / SCHED-003: manual Stop versus continuation opnieuw geverifieerd tegen de geharde lock-order, execution policy en scheduled-successor Stop-test.\n- 🚧 Volgende: SCHED-004 shortening met scheduled successor en terminal work.')
+          text = text.replace('- 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.', '- 🚧 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.')
+          progress.write_text(text)
+      - name: Commit scratch patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/technisch/visit-scheduler-audit/SCHED-003.md docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m "temp: build h1 sched003 verification"
+          git push origin HEAD:scratch/h1-sched003-verification
