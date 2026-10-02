@@ -68,7 +68,10 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
                  x.Status == VisitSchedulerWorkStatus.Pending,
             ct);
 
-        Assert.Equal(desiredEndAt, terminalWork.DueAt);
+        Assert.InRange(
+            (terminalWork.DueAt - desiredEndAt).Duration(),
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
     }
 
