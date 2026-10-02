@@ -1,0 +1,45 @@
+name: temp f3 stale provider operation patch
+
+on:
+  push:
+    branches:
+      - scratch/f2-claimed-recovery
+  workflow_dispatch:
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/f2-claimed-recovery
+      - name: Patch F3
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs')
+          text = path.read_text()
+          old = '''    public async Task RecoverAsync(CancellationToken cancellationToken = default)\n    {\n        await ReleaseClaimedSchedulerWorkAsync(cancellationToken);\n        await ReconcileAsync(startup: true, cancellationToken: cancellationToken);\n    }\n'''
+          new = '''    public async Task RecoverAsync(CancellationToken cancellationToken = default)\n    {\n        await ReleaseClaimedSchedulerWorkAsync(cancellationToken);\n        await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);\n        await ReconcileAsync(startup: true, cancellationToken: cancellationToken);\n    }\n\n    private async Task MarkStaleInProgressProviderOperationsUnknownAsync(CancellationToken cancellationToken)\n    {\n        var staleBefore = timeProvider.GetUtcNow().Subtract(TimeSpan.FromMinutes(5));\n        var candidates = await dbContext.ProviderOperations\n            .AsNoTracking()\n            .Where(x => x.Status == ProviderOperationStatus.InProgress &&\n                        x.VisitId.HasValue &&\n                        (!x.AttemptStartedAt.HasValue || x.AttemptStartedAt <= staleBefore))\n            .Select(x => new { x.Id, VisitId = x.VisitId!.Value })\n            .ToListAsync(cancellationToken);\n\n        foreach (var candidate in candidates)\n        {\n            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);\n            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);\n            await dbContext.Database.ExecuteSqlInterpolatedAsync(\n                $\"SELECT pg_advisory_xact_lock({lockKey})\", cancellationToken);\n\n            var operation = await dbContext.ProviderOperations\n                .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);\n            if (operation is null ||\n                operation.Status != ProviderOperationStatus.InProgress ||\n                (operation.AttemptStartedAt.HasValue && operation.AttemptStartedAt > staleBefore))\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            if (operation.ProviderParkingActionId is not Guid actionId)\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            var action = await dbContext.ProviderParkingActions\n                .SingleOrDefaultAsync(x => x.Id == actionId, cancellationToken);\n            if (action is null)\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            operation.MarkUnknown(\"stale-in-progress\");\n            if (action.State is ProviderActionState.Starting or ProviderActionState.Stopping)\n                action.MarkUnknown();\n\n            var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);\n            visit.SetHealth(VisitHealth.Reconciling);\n\n            await dbContext.SaveChangesAsync(cancellationToken);\n            await transaction.CommitAsync(cancellationToken);\n        }\n    }\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected RecoverAsync block exactly once, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          p = progress.read_text()
+          oldp = '- 🚧 Startup recovery verwerkt achtergelaten `Claimed` schedulerwork per Visit onder de SCHED-014 lock-order en via de SCHED-015 execution policy; tijdelijke defer gebruikt dezelfde centrale delay als runtime claiming.\n'
+          newp = '- ✅ Startup recovery verwerkt achtergelaten `Claimed` schedulerwork per Visit onder de SCHED-014 lock-order en via de SCHED-015 execution policy; tijdelijke defer gebruikt dezelfde centrale delay als runtime claiming; CI groen op commit `d8f48c26` (`fix: recover claimed scheduler work by policy`).\n- 🚧 Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; er wordt nooit blind opnieuw gemuteerd.\n'
+          if p.count(oldp) != 1:
+              raise SystemExit(f'Expected progress marker exactly once, found {p.count(oldp)}')
+          progress.write_text(p.replace(oldp, newp))
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'fix: recover stale provider operations' || exit 0
+          git push
