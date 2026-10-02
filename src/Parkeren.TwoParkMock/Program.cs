@@ -43,7 +43,7 @@ static IReadOnlyCollection<MockParkingAction> LoadPersistedActions(string? path)
     return JsonSerializer.Deserialize<MockParkingAction[]>(json) ?? Array.Empty<MockParkingAction>();
 }
 
-static MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now)
+static MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now, MockPostEndBehavior postEndBehavior)
 {
     if (string.Equals(action.Status, "stopped", StringComparison.OrdinalIgnoreCase))
         return action;
@@ -54,8 +54,13 @@ static MockParkingAction WithObservableStatus(MockParkingAction action, DateTime
     if (now < action.End)
         return action.Status == "active" ? action : action with { Status = "active" };
 
-    // Post-End provider semantics are intentionally not inferred until live 2Park behavior is known.
-    return action;
+    // Post-End provider semantics are only simulated when a test explicitly selects a mode.
+    return postEndBehavior switch
+    {
+        MockPostEndBehavior.KeepActive => action with { Status = "active" },
+        MockPostEndBehavior.Completed => action with { Status = "completed" },
+        _ => action
+    };
 }
 
 var maxConcurrentActions = 5;
@@ -68,6 +73,7 @@ var visibilityDelay = TimeSpan.Zero;
 var readbackStartOffset = TimeSpan.Zero;
 var readbackEndOffset = TimeSpan.Zero;
 string? readbackLocation = null;
+var postEndBehavior = MockPostEndBehavior.Unspecified;
 var forcedValidationError = false;
 var rejectDuplicateActiveActions = false;
 var omitCreatedActionBody = false;
@@ -110,7 +116,10 @@ app.MapGet("/api/actions", (string? productId) =>
     var now = mockClock.UtcNow;
     return Results.Ok(actions.Values
         .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)
-        .Select(x => WithObservableStatus(x, now))
+        .Where(x => postEndBehavior != MockPostEndBehavior.Hide ||
+                    string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase) ||
+                    now < x.End)
+        .Select(x => WithObservableStatus(x, now, postEndBehavior))
         .Select(x => x with
         {
             Start = x.Start + readbackStartOffset,
@@ -243,6 +252,24 @@ app.MapPost("/api/test/readback-location", (MockReadbackLocationRequest request)
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/post-end-behavior", (MockPostEndBehaviorRequest request) =>
+{
+    var parsed = request.Behavior?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "none" => MockPostEndBehavior.Unspecified,
+        "keep-active" => MockPostEndBehavior.KeepActive,
+        "completed" => MockPostEndBehavior.Completed,
+        "hide" => MockPostEndBehavior.Hide,
+        _ => (MockPostEndBehavior?)null
+    };
+
+    if (!parsed.HasValue)
+        return Results.BadRequest(new { error = "Unknown post-End behavior." });
+
+    postEndBehavior = parsed.Value;
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>
 {
     validCredentials = request.Valid;
@@ -301,6 +328,7 @@ app.MapPost("/api/test/reset", async () =>
     readbackStartOffset = TimeSpan.Zero;
     readbackEndOffset = TimeSpan.Zero;
     readbackLocation = null;
+    postEndBehavior = MockPostEndBehavior.Unspecified;
     forcedValidationError = false;
     rejectDuplicateActiveActions = false;
     omitCreatedActionBody = false;
@@ -413,6 +441,16 @@ public sealed record MockVisibilityDelayRequest(int Milliseconds);
 public sealed record MockReadbackOffsetsRequest(double StartMilliseconds, double EndMilliseconds);
 
 public sealed record MockReadbackLocationRequest(string? Location);
+
+public sealed record MockPostEndBehaviorRequest(string? Behavior);
+
+public enum MockPostEndBehavior
+{
+    Unspecified = 0,
+    KeepActive = 1,
+    Completed = 2,
+    Hide = 3
+}
 
 public sealed record MockValidationErrorRequest(bool Enabled);
 
