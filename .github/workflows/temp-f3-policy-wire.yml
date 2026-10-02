@@ -1,0 +1,41 @@
+name: temp f3 policy wire
+
+on:
+  push:
+    branches:
+      - scratch/f2-claimed-recovery
+  workflow_dispatch:
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/f2-claimed-recovery
+      - name: Wire startup recovery policy
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs')
+          text = path.read_text()
+          old1 = '        var staleBefore = timeProvider.GetUtcNow().Subtract(TimeSpan.FromMinutes(5));\n'
+          new1 = '        var now = timeProvider.GetUtcNow();\n        var staleBefore = now.Subtract(ProviderOperationStartupRecovery.AttemptLease);\n'
+          if text.count(old1) != 1:
+              raise SystemExit(f'Expected staleBefore line once, found {text.count(old1)}')
+          text = text.replace(old1, new1)
+          old2 = '''            operation.MarkUnknown("stale-in-progress");\n            if (action.State is ProviderActionState.Starting or ProviderActionState.Stopping)\n                action.MarkUnknown();\n\n            var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);\n'''
+          new2 = '''            if (!ProviderOperationStartupRecovery.MarkStaleInProgressUnknown(operation, action, now))\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);\n'''
+          if text.count(old2) != 1:
+              raise SystemExit(f'Expected transition block once, found {text.count(old2)}')
+          path.write_text(text.replace(old2, new2))
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs
+          git commit -m 'fix: use startup provider recovery policy' || exit 0
+          git push
