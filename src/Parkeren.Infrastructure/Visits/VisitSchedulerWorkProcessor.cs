@@ -133,9 +133,9 @@ internal sealed class VisitSchedulerWorkProcessor(
 
             if (string.Equals(remote.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
             {
-                var wakeAt = latestAction.PlannedStartAt > DateTimeOffset.UtcNow
+                var wakeAt = latestAction.PlannedStartAt > timeProvider.GetUtcNow()
                     ? latestAction.PlannedStartAt
-                    : DateTimeOffset.UtcNow.AddMinutes(1);
+                    : timeProvider.GetUtcNow().AddMinutes(1);
                 work.Release(wakeAt);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
@@ -157,7 +157,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                             x.PlannedEndAt < latestAction.PlannedStartAt)
                 .OrderByDescending(x => x.PlannedEndAt)
                 .FirstOrDefaultAsync(cancellationToken);
-            if (predecessor is not null && predecessor.PlannedEndAt < DateTimeOffset.UtcNow)
+            if (predecessor is not null && predecessor.PlannedEndAt < timeProvider.GetUtcNow())
                 predecessor.MarkCompleted(predecessor.PlannedEndAt);
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -174,7 +174,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             return;
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = timeProvider.GetUtcNow();
         if (await dbContext.ProviderOperations.AnyAsync(
                 x => x.OperationId == work.Id &&
                      x.ProviderParkingActionId == latestAction.Id &&
@@ -442,7 +442,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         VisitSchedulerWork work, Visit visit, DateTimeOffset? fromAt,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = timeProvider.GetUtcNow();
         var desiredEndAt = ProviderCoverageSchedule.PlanningEndAt(visit, now);
         if (desiredEndAt <= now)
         {
@@ -568,7 +568,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         Visit visit,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = timeProvider.GetUtcNow();
         if (visit.Status is VisitStatus.Completed or VisitStatus.Cancelled)
         {
             work.Complete(now);
