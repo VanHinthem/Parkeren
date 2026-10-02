@@ -19,6 +19,7 @@ public sealed class VisitTests
         var visit = CreateVisit();
         Assert.Equal(VisitStatus.Starting, visit.Status);
         Assert.Equal(VisitHealth.Healthy, visit.Health);
+        Assert.Null(visit.EndReason);
         Assert.True(visit.OccupiesCapacity);
     }
 
@@ -30,7 +31,32 @@ public sealed class VisitTests
         visit.BeginStopping();
         visit.Complete(visit.StartAt.AddHours(1));
         Assert.Equal(VisitStatus.Completed, visit.Status);
+        Assert.Equal(VisitEndReason.ManualStop, visit.EndReason);
         Assert.False(visit.OccupiesCapacity);
+    }
+
+    [Fact]
+    public void Begin_stopping_records_explicit_end_reason()
+    {
+        var visit = CreateVisit();
+        visit.Activate();
+
+        visit.BeginStopping(VisitEndReason.MaxPaidParkingDurationReached);
+
+        Assert.Equal(VisitStatus.Stopping, visit.Status);
+        Assert.Equal(VisitEndReason.MaxPaidParkingDurationReached, visit.EndReason);
+    }
+
+    [Fact]
+    public void End_reason_cannot_be_replaced_after_stopping_has_started()
+    {
+        var visit = CreateVisit();
+        visit.Activate();
+        visit.BeginStopping(VisitEndReason.DesiredEndReached);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            visit.BeginStopping(VisitEndReason.ManualStop));
+        Assert.Equal(VisitEndReason.DesiredEndReached, visit.EndReason);
     }
 
     [Fact]
@@ -109,5 +135,4 @@ public sealed class VisitTests
 
         Assert.Null(visit.DesiredEndAt);
     }
-
 }

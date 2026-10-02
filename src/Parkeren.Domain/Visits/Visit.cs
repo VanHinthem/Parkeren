@@ -49,6 +49,7 @@ public sealed class Visit
     public DateTimeOffset? ActualEndAt { get; private set; }
     public VisitStatus Status { get; private set; }
     public VisitHealth Health { get; private set; }
+    public VisitEndReason? EndReason { get; private set; }
     public EffectiveParkingPolicySnapshot PolicySnapshot { get; private set; } = null!;
     public Guid? ProviderProductId { get; private set; }
     public string? ProviderProductExternalId { get; private set; }
@@ -86,16 +87,24 @@ public sealed class Visit
         DesiredEndAt = desiredEndAt;
     }
 
-    public void BeginStopping()
+    public void BeginStopping() => BeginStopping(VisitEndReason.ManualStop);
+
+    public void BeginStopping(VisitEndReason endReason)
     {
         if (Status is not VisitStatus.Starting and not VisitStatus.Active)
             throw new InvalidOperationException($"Cannot stop Visit in {Status} state.");
+        if (EndReason is not null)
+            throw new InvalidOperationException("Visit end reason is already set.");
+
+        EndReason = endReason;
         Status = VisitStatus.Stopping;
     }
 
     public void Complete(DateTimeOffset actualEndAt)
     {
         EnsureStatus(VisitStatus.Stopping);
+        if (EndReason is null)
+            throw new InvalidOperationException("Stopping Visit has no end reason.");
         if (actualEndAt < StartAt) throw new ArgumentOutOfRangeException(nameof(actualEndAt));
         ActualEndAt = actualEndAt;
         Status = VisitStatus.Completed;
