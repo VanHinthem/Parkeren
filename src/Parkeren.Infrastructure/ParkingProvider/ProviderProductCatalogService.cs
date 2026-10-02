@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.Administration;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.ParkingProvider;
 using Parkeren.Infrastructure.Persistence;
@@ -7,7 +8,8 @@ namespace Parkeren.Infrastructure.ParkingProvider;
 
 internal sealed class ProviderProductCatalogService(
     ParkerenDbContext dbContext,
-    IParkingProvider provider) : IProviderProductCatalogService
+    IParkingProvider provider,
+    IAdminAuditWriter auditWriter) : IProviderProductCatalogService
 {
     private const long CatalogLockKey = 0x50524F44; // PROD
 
@@ -20,8 +22,18 @@ internal sealed class ProviderProductCatalogService(
             .Select(x => ToSummary(x))
             .ToListAsync(cancellationToken);
 
-    public async Task<ProviderProductSyncResult> SynchronizeAsync(
-        CancellationToken cancellationToken = default)
+    public Task<ProviderProductSyncResult> SynchronizeAsync(
+        CancellationToken cancellationToken = default) =>
+        SynchronizeInternalAsync(null, cancellationToken);
+
+    public Task<ProviderProductSyncResult> SynchronizeForAdminAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken = default) =>
+        SynchronizeInternalAsync(actorUserId, cancellationToken);
+
+    private async Task<ProviderProductSyncResult> SynchronizeInternalAsync(
+        Guid? actorUserId,
+        CancellationToken cancellationToken)
     {
         var remoteProducts = await provider.GetProductsAsync(cancellationToken);
         var duplicateIds = remoteProducts
@@ -88,7 +100,26 @@ internal sealed class ProviderProductCatalogService(
             autoSelected = true;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (actorUserId.HasValue)
+        {
+            await auditWriter.WriteAsync(
+                actorUserId.Value,
+                "ProviderProductsSynchronized",
+                "ParkingProviderProductCatalog",
+                null,
+                new
+                {
+                    ProviderProductCount = existing.Count,
+                    AvailableProductCount = existing.Count(x => x.IsAvailable),
+                    DefaultAutoSelected = autoSelected
+                },
+                cancellationToken);
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
 
         return new ProviderProductSyncResult(
@@ -137,9 +168,21 @@ internal sealed class ProviderProductCatalogService(
         throw new InvalidOperationException("No default parking product is configured.");
     }
 
-    public async Task<bool> SetDefaultAsync(
+    public Task<bool> SetDefaultAsync(
         Guid productId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SetDefaultInternalAsync(null, productId, cancellationToken);
+
+    public Task<bool> SetDefaultForAdminAsync(
+        Guid actorUserId,
+        Guid productId,
+        CancellationToken cancellationToken = default) =>
+        SetDefaultInternalAsync(actorUserId, productId, cancellationToken);
+
+    private async Task<bool> SetDefaultInternalAsync(
+        Guid? actorUserId,
+        Guid productId,
+        CancellationToken cancellationToken)
     {
         if (productId == Guid.Empty)
             return false;
@@ -158,14 +201,37 @@ internal sealed class ProviderProductCatalogService(
             return false;
         }
 
-        var hadDefault = products.Any(x => x.IsDefault);
+        var previousDefault = products.SingleOrDefault(x => x.IsDefault);
+        var defaultChanged = previousDefault?.Id != selected.Id;
+
         foreach (var product in products)
             product.SetDefault(product.Id == selected.Id);
 
-        if (!hadDefault)
+        if (previousDefault is null)
             await AssignUnboundConfigurationAsync(selected.Id, cancellationToken);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (actorUserId.HasValue && defaultChanged)
+        {
+            await auditWriter.WriteAsync(
+                actorUserId.Value,
+                "ProviderProductDefaultChanged",
+                "ParkingProviderProduct",
+                selected.Id.ToString(),
+                new
+                {
+                    PreviousDefaultProductId = previousDefault?.Id,
+                    PreviousDefaultProviderProductId = previousDefault?.ProviderProductId,
+                    ProductId = selected.Id,
+                    selected.ProviderProductId,
+                    selected.Name
+                },
+                cancellationToken);
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
