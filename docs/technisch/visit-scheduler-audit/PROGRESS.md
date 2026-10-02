@@ -130,7 +130,11 @@ Aanvullende afspraken:
 - ✅ Startup recovery herbouwt zowel vervolgcoverage na een actieve provideraction als eerste coverage na een gratis periode op T-5 van `nextPaid.Start`; CI groen op commit `9a80e929` (`fix: precheck recovered paid coverage`).
 - ✅ `ProviderExtendResultStore` plant na een bevestigde extension een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `72429032` (`fix: precheck paid window after provider extend`).
 - ✅ `ProviderContinuationStartResultStore` plant na een bevestigde continuation-start een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d75e0e6b` (`fix: precheck paid window after continuation start`).
-- 🚧 `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.
+- ✅ `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d2fa0b25` (`fix: precheck paid window after end-time change`).
+
+### E2 — future successor over gratis periode
+
+- 🚧 `VisitSchedulerWorkProcessor` maakt binnen T-5 vóór het volgende betaalde segment de future successor direct aan; een verstreken predecessor wordt lokaal afgerond zonder afhankelijkheid van remote `active` na natuurlijke expiratie.
 
 ## Volgende hoofdfasen
 
