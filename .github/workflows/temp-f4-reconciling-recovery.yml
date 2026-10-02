@@ -1,10 +1,13 @@
 name: temp f4 reconciling recovery patch
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - scratch/f2-claimed-recovery
 permissions:
   contents: write
 jobs:
   patch:
+    if: github.event.head_commit.message == 'chore: trigger f4 patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
