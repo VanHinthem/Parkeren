@@ -1,0 +1,69 @@
+name: temp f4 reconciling recovery patch
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/f2-claimed-recovery
+      - name: Patch F4
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('src/Parkeren.Domain/Visits/ProviderOperation.cs')
+          s = p.read_text()
+          old = '    public void BeginReconciliation() { if (Status != ProviderOperationStatus.Unknown) throw new InvalidOperationException(); Status = ProviderOperationStatus.Reconciling; }\n'
+          new = old + '    public void ResumeUnknownAfterInterruptedReconciliation() { if (Status != ProviderOperationStatus.Reconciling) throw new InvalidOperationException("Only a reconciling operation can resume as Unknown after restart."); Status = ProviderOperationStatus.Unknown; }\n'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+
+          p = Path('src/Parkeren.Domain/Visits/ProviderParkingAction.cs')
+          s = p.read_text()
+          old = '    public void BeginReconciliation() { if (Health != ProviderActionHealth.Unknown) throw new InvalidOperationException("Only an unknown provider action can be reconciled."); Health = ProviderActionHealth.Reconciling; }\n'
+          new = old + '    public void ResumeUnknownAfterInterruptedReconciliation() { if (Health != ProviderActionHealth.Reconciling) throw new InvalidOperationException("Only a reconciling provider action can resume as Unknown after restart."); Health = ProviderActionHealth.Unknown; }\n'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+
+          p = Path('src/Parkeren.Domain/Visits/ProviderOperationStartupRecovery.cs')
+          s = p.read_text()
+          marker = '    public static bool MarkStaleInProgressUnknown(\n'
+          insert = '''    public static bool ResumeInterruptedReconciliation(\n        ProviderOperation operation,\n        ProviderParkingAction action)\n    {\n        ArgumentNullException.ThrowIfNull(operation);\n        ArgumentNullException.ThrowIfNull(action);\n\n        if (operation.Status != ProviderOperationStatus.Reconciling)\n            return false;\n\n        if (operation.ProviderParkingActionId != action.Id)\n            throw new InvalidOperationException("Provider operation does not reference the supplied provider action.");\n\n        operation.ResumeUnknownAfterInterruptedReconciliation();\n        if (action.Health == ProviderActionHealth.Reconciling)\n            action.ResumeUnknownAfterInterruptedReconciliation();\n\n        return true;\n    }\n\n'''
+          assert s.count(marker) == 1
+          p.write_text(s.replace(marker, insert + marker))
+
+          p = Path('src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs')
+          s = p.read_text()
+          old = '''        await ReleaseClaimedSchedulerWorkAsync(cancellationToken);\n        await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);\n        await ReconcileAsync(startup: true, cancellationToken: cancellationToken);\n'''
+          new = '''        await ReleaseClaimedSchedulerWorkAsync(cancellationToken);\n        await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);\n        await ResumeInterruptedProviderReconciliationsAsync(cancellationToken);\n        await ReconcileAsync(startup: true, cancellationToken: cancellationToken);\n'''
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          marker = '    public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) =>\n'
+          insert = '''    private async Task ResumeInterruptedProviderReconciliationsAsync(CancellationToken cancellationToken)\n    {\n        var candidates = await dbContext.ProviderOperations\n            .AsNoTracking()\n            .Where(x => x.Status == ProviderOperationStatus.Reconciling && x.VisitId.HasValue)\n            .Select(x => new { x.Id, VisitId = x.VisitId!.Value })\n            .ToListAsync(cancellationToken);\n\n        foreach (var candidate in candidates)\n        {\n            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);\n            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);\n            await dbContext.Database.ExecuteSqlInterpolatedAsync(\n                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);\n\n            var operation = await dbContext.ProviderOperations\n                .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);\n            if (operation is null || operation.Status != ProviderOperationStatus.Reconciling ||\n                operation.ProviderParkingActionId is not Guid actionId)\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            var action = await dbContext.ProviderParkingActions\n                .SingleOrDefaultAsync(x => x.Id == actionId, cancellationToken);\n            if (action is null)\n            {\n                await transaction.CommitAsync(cancellationToken);\n                continue;\n            }\n\n            if (ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action))\n            {\n                var visit = await dbContext.Visits.SingleAsync(x => x.Id == candidate.VisitId, cancellationToken);\n                visit.SetHealth(VisitHealth.Reconciling);\n                await dbContext.SaveChangesAsync(cancellationToken);\n            }\n\n            await transaction.CommitAsync(cancellationToken);\n        }\n    }\n\n'''
+          assert s.count(marker) == 1
+          p.write_text(s.replace(marker, insert + marker))
+
+          p = Path('tests/Parkeren.Domain.Tests/ProviderOperationStartupRecoveryTests.cs')
+          s = p.read_text()
+          marker = '\n}\n'
+          insert = '''\n    [Fact]\n    public void Interrupted_start_reconciliation_resumes_as_unknown()\n    {\n        var now = DateTimeOffset.UtcNow;\n        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), now.AddMinutes(-10), now.AddHours(1));\n        action.MarkStarting();\n        action.MarkUnknown();\n        action.BeginReconciliation();\n        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.Start);\n        operation.BeginAttempt();\n        operation.MarkUnknown("timeout");\n        operation.BeginReconciliation();\n\n        var changed = ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action);\n\n        Assert.True(changed);\n        Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);\n        Assert.Equal(ProviderActionHealth.Unknown, action.Health);\n    }\n\n    [Fact]\n    public void Pending_operation_is_left_unchanged_for_normal_replay()\n    {\n        var now = DateTimeOffset.UtcNow;\n        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(), now, now.AddHours(1));\n        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), action.VisitId, action.Id, ProviderOperationType.ContinueStart);\n\n        var changed = ProviderOperationStartupRecovery.ResumeInterruptedReconciliation(operation, action);\n\n        Assert.False(changed);\n        Assert.Equal(ProviderOperationStatus.Pending, operation.Status);\n        Assert.Equal(ProviderActionState.Planned, action.State);\n        Assert.Equal(ProviderActionHealth.Healthy, action.Health);\n    }\n'''
+          assert s.endswith(marker)
+          p.write_text(s[:-len(marker)] + insert + marker)
+
+          p = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          s = p.read_text()
+          old = '- 🚧 Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; er wordt nooit blind opnieuw gemuteerd.\n'
+          new = '- ✅ Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; CI groen na compilefix op `2de98742`.\n- 🚧 `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald.\n'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/Parkeren.Domain/Visits/ProviderOperation.cs src/Parkeren.Domain/Visits/ProviderParkingAction.cs src/Parkeren.Domain/Visits/ProviderOperationStartupRecovery.cs src/Parkeren.Infrastructure/Visits/VisitRecoveryService.cs tests/Parkeren.Domain.Tests/ProviderOperationStartupRecoveryTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m "fix: resume interrupted provider reconciliation"
+          git push origin HEAD:scratch/f2-claimed-recovery
