@@ -56,6 +56,21 @@ Gebruik voor productie een andere Compose projectnaam/configuratie en deel nooit
 
 De app-container heeft een multi-stage build. Node bouwt `Parkeren.Web`; `dist` wordt als `wwwroot` in ASP.NET Core opgenomen. API en PWA draaien daarmee uit dezelfde container.
 
+## Productiedeployment en scheduler
+
+V1 ondersteunt **exact één actieve `Parkeren.Api`-instance**. Die instance bevat ook `VisitSchedulerWorker`.
+
+Daarom gelden voor productie de volgende correctness-regels:
+
+- draai exact één `app`-container;
+- gebruik geen `docker compose --scale app=N` met `N > 1`;
+- gebruik geen rolling deployment waarbij oude en nieuwe app-instances tegelijk actief zijn;
+- een update/restart vervangt de bestaande app-instance in plaats van er tijdelijk een tweede naast te starten.
+
+De scheduler gebruikt database-locking voor concurrency binnen de actieve applicatie, maar V1 heeft bewust geen distributed scheduler lease/heartbeat voor meerdere app-instances. Startup recovery mag daardoor achtergelaten `Claimed` scheduler-work behandelen als state van de vorige, niet meer actieve procesinstantie.
+
+Zodra horizontale schaal, replicas of overlappende zero-downtime deployments gewenst worden, moet het scheduler deployment- en recoverycontract eerst opnieuw worden ontworpen voordat dat als ondersteund geldt.
+
 ## CI
 
 GitHub Actions valideert .NET restore/build/test en frontend install/build/test.
