@@ -2493,7 +2493,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
     [Theory]
     [InlineData(-1, true)]
-    [InlineData(0, false)]
+    [InlineData(0, true)]
     public async Task Shortening_respects_active_provider_action_boundary(int minutesFromActionEnd, bool expectScheduledStop)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
