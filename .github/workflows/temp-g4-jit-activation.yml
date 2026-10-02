@@ -1,0 +1,44 @@
+name: temp g4 jit activation proof
+on:
+  push:
+    branches: [scratch/g3-observable-status]
+    paths: ['.github/workflows/temp-g4-jit-activation.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g3-observable-status
+      - name: Patch G4
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tests/Parkeren.IntegrationTests/Database/ProviderJitContinuationProcessorTests.cs')
+          s = p.read_text()
+          old = '''        var now = DateTimeOffset.UtcNow;\n        now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);\n        var boundary = now.AddMinutes(4);'''
+          new = '''        var now = DateTimeOffset.UtcNow;\n        now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n        var boundary = now.AddMinutes(4);'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          old2 = '''            Assert.Single(remoteActions, action =>\n                action.ProviderActionId != remotePredecessor.ProviderActionId &&\n                string.Equals(action.Status, "scheduled", StringComparison.OrdinalIgnoreCase) &&\n                (action.Start - boundary.AddSeconds(1)).Duration() <= TimeSpan.FromSeconds(5));\n\n            var duplicateWork = new VisitSchedulerWork('''
+          new2 = '''            var remoteSuccessor = Assert.Single(remoteActions, action =>\n                action.ProviderActionId != remotePredecessor.ProviderActionId &&\n                string.Equals(action.Status, "scheduled", StringComparison.OrdinalIgnoreCase) &&\n                (action.Start - boundary.AddSeconds(1)).Duration() <= TimeSpan.FromSeconds(5));\n\n            var advanceToSuccessorStart = remoteSuccessor.Start - now;\n            (await http.PostAsJsonAsync("api/test/clock/advance",\n                new { Milliseconds = advanceToSuccessorStart.TotalMilliseconds }, cancellationToken)).EnsureSuccessStatusCode();\n            remoteActions = await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken);\n            Assert.Equal("active",\n                Assert.Single(remoteActions, action => action.ProviderActionId == remoteSuccessor.ProviderActionId).Status,\n                ignoreCase: true);\n\n            var duplicateWork = new VisitSchedulerWork('''
+          assert old2 in s
+          s = s.replace(old2, new2, 1)
+          p.write_text(s)
+
+          p = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          s = p.read_text()
+          old = '''- 🚧 G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld.'''
+          new = '''- ✅ G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld; CI groen op commit `d848fc22` (`feat: derive twopark mock action status`).\n- 🚧 G4: de bestaande JIT end-to-endtest bestuurt de mockklok over de successor-startgrens, bewijst remote `scheduled -> active` en verifieert daarna opnieuw dat redundant schedulerwork geen derde provideraction maakt.'''
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/Parkeren.IntegrationTests/Database/ProviderJitContinuationProcessorTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m "test: cover jit successor activation boundary"
+          git push origin HEAD:scratch/g3-observable-status
