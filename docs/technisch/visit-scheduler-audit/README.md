@@ -2,7 +2,7 @@
 
 **Status:** inhoudelijke audit afgerond; verbeterontwerp en fixes nog open  
 **Auditdatum:** 2 oktober 2026  
-**Scope:** scheduler, continuation, stop, recovery, Visit-eindgrenzen en tijdgestuurde scheduler-work
+**Scope:** scheduler, continuation, stop, recovery, Visit-eindgrenzen, tijdgestuurde scheduler-work en observability
 
 Deze audit toetst de actuele implementatie op `main` aan het functionele model, de technische flow, bestaande tests en reeds uitgevoerde echte 2Park-tests. Tijdens deze audit is **geen productielogica gewijzigd**.
 
@@ -13,6 +13,7 @@ Doel is eerst het hele systeembeeld te hebben, zodat gerelateerde bevindingen ge
 - `README.md` — statusboard, hoofdbevindingen, relaties en latere verbeterclusters.
 - `SCHED-001.md` t/m `SCHED-012.md` — de oorspronkelijke functionele audit-scenario's.
 - `SCHED-013.md` t/m `SCHED-017.md` — gedeelde systeembevindingen die tijdens de scenario-audit zichtbaar zijn geworden.
+- `SCHED-018.md` — als laatste verbeterpunt: persistente Visit-scheduler observability/audit trail; de definitieve eventcatalogus wordt pas vastgesteld nadat de schedulerflows stabiel zijn.
 
 Per document staat waar relevant een sectie **Onduidelijkheden / open vragen**. Die punten zijn bewust niet ingevuld met aannames.
 
@@ -39,6 +40,7 @@ Per scenario is gekeken naar:
 | ✅ Audit afgerond | Geen zelfstandige afwijking gevonden; document kan wel afhankelijkheden naar andere bevindingen hebben. |
 | 🧪 Testbewijs aanvullen | Geen concrete productiefout gevonden, maar bewijs is nog onvoldoende volledig. |
 | ❓ Open architectuur/providerpunt | Correct gedrag hangt af van een expliciete nog onbewezen aanname of extern contract. |
+| 📋 Gepland verbeterpunt | Bewust als latere ontwerp-/implementatiestap ingepland; details volgen nadat afhankelijke schedulerflows stabiel zijn. |
 
 ## Auditstatus
 
@@ -61,6 +63,7 @@ Per scenario is gekeken naar:
 | SCHED-015 | Generieke `Active + Healthy` gating per work-type onjuist | ⚠️ | **hoog** | [SCHED-015](SCHED-015.md) |
 | SCHED-016 | TwoParkMock modelleert tijdsstatussen onvoldoende | ⚠️ testmodel | middel/hoog | [SCHED-016](SCHED-016.md) |
 | SCHED-017 | Timestampmatching strenger dan live 2Park-gedrag | ⚠️ | **hoog** | [SCHED-017](SCHED-017.md) |
+| SCHED-018 | Persistente scheduler observability per Visit | 📋 | laatste verbeterstap | [SCHED-018](SCHED-018.md) |
 
 ## Kritieke hoofdbevindingen
 
@@ -87,6 +90,10 @@ Schedulerclaim gebruikt work-row → Visit advisory lock. Stop/end-time-mutaties
 ### 6. Onze mock kan de belangrijkste tijdsgrenzen nog niet echt bewijzen
 
 TwoParkMock zet `scheduled`/`active` alleen bij creatie en laat statuses niet vanzelf met de tijd overgaan. Daardoor kunnen scheduler-boundary tests een onrealistisch providerbeeld gebruiken. Zie SCHED-016.
+
+### 7. Schedulerbesluiten moeten na stabilisatie per Visit reconstrueerbaar zijn
+
+Gewone serverlogs zijn onvoldoende om achteraf betrouwbaar te verklaren waarom een scheduleractie is gepland, uitgesteld, geannuleerd, gereconciled of afgerond. SCHED-018 legt daarom een persistente Visit-gerelateerde scheduler timeline vast als laatste verbeterstap. De eventcatalogus wordt bewust pas definitief gemaakt wanneer de uiteindelijke state machine en flows bekend zijn.
 
 ## Wat juist sterk is in de huidige implementatie
 
@@ -118,6 +125,7 @@ De verbeterfase moet deze bouwstenen behouden en vooral de semantiek ertussen co
 | Work-type state policy | SCHED-015 | 003, 004, 012 |
 | Realistische provider test harness | SCHED-016 | 001, 002, 009, 011 |
 | Recovery/deploymentmodel | SCHED-010 | 009, 014 |
+| Visit scheduler observability | SCHED-018 | uiteindelijke flows van 001 t/m 017 |
 
 ## Aanbevolen volgorde ná deze audit
 
@@ -129,10 +137,11 @@ Nog **geen codewijziging** op basis van één los SCHED-item. Eerst een gezamenl
 4. uniforme lock-order (`SCHED-014`);
 5. recovery/deploymentaanname (`SCHED-009`, `010`);
 6. TwoParkMock en integrale boundary-tests (`SCHED-016`);
-7. daarna scenario voor scenario regressieverificatie van SCHED-001 t/m SCHED-012.
+7. scenario voor scenario regressieverificatie van SCHED-001 t/m SCHED-012;
+8. **als laatste:** persistente Visit-scheduler observability/audit trail ontwerpen en implementeren (`SCHED-018`), inclusief gezamenlijk vaststellen welke betekenisvolle scheduler-events persistent worden vastgelegd.
 
 ## Algemene auditconclusie
 
 De backend bevat veel goede reliability-mechanismen, vooral rond durable provideroperations, recovery en Stop. Het huidige geheel verdient echter nog geen V1-betrouwbaarheidsvink door enkele systeemoverstijgende inconsistenties rond lifecycle, scheduled timing, provider-matching, lock-order en work-type gating.
 
-De audit is inhoudelijk afgerond. De volgende stap is een **geconsolideerd technisch verbeterontwerp**, waarna fixes in samenhang kunnen worden geïmplementeerd en per SCHED-item geverifieerd.
+De audit is inhoudelijk afgerond. De volgende stap is een **geconsolideerd technisch verbeterontwerp**, waarna fixes in samenhang kunnen worden geïmplementeerd en per SCHED-item geverifieerd. Persistente scheduler-observability volgt bewust pas nadat die uiteindelijke flows stabiel zijn.
