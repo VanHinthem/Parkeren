@@ -6,6 +6,7 @@ var app = builder.Build();
 
 var statePath = builder.Configuration["TwoParkMock:StatePath"];
 var stateGate = new SemaphoreSlim(1, 1);
+var mockClock = new MockClock();
 var actions = new ConcurrentDictionary<string, MockParkingAction>(
     LoadPersistedActions(statePath).ToDictionary(x => x.Id, StringComparer.Ordinal));
 
@@ -78,7 +79,7 @@ app.MapGet("/api/balance", async (string? productId) =>
     return Results.Ok(new
     {
         remainingPaidMinutes = remainingMinutes,
-        retrievedAt = DateTimeOffset.UtcNow
+        retrievedAt = mockClock.UtcNow
     });
 });
 
@@ -89,7 +90,7 @@ app.MapGet("/api/actions", (string? productId) =>
         return Results.NotFound();
 
     return Results.Ok(actions.Values
-        .Where(x => x.ProductId == selectedProductId && DateTimeOffset.UtcNow >= x.VisibleAt)
+        .Where(x => x.ProductId == selectedProductId && mockClock.UtcNow >= x.VisibleAt)
         .OrderBy(x => x.Start));
 });
 
@@ -113,15 +114,15 @@ app.MapPost("/api/actions", async (MockActionRequest request) =>
     if ((request.End - request.Start).TotalMinutes > remainingMinutes)
         return Results.Conflict(new { error = "Insufficient provider balance." });
 
-    if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.End > DateTimeOffset.UtcNow && x.LicensePlate == request.LicensePlate))
+    if (rejectDuplicateActiveActions && actions.Values.Any(x => x.Status == "active" && x.End > mockClock.UtcNow && x.LicensePlate == request.LicensePlate))
         return Results.Conflict(new { error = "Duplicate active provider action." });
 
-    if (actions.Values.Count(x => x.Status == "active" && x.End > DateTimeOffset.UtcNow) >= maxConcurrentActions)
+    if (actions.Values.Count(x => x.Status == "active" && x.End > mockClock.UtcNow) >= maxConcurrentActions)
         return Results.Conflict(new { error = "Provider capacity reached." });
 
     var id = Guid.NewGuid().ToString("N");
-    var status = request.Start > DateTimeOffset.UtcNow ? "scheduled" : "active";
-    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, DateTimeOffset.UtcNow + visibilityDelay, selectedProductId);
+    var status = request.Start > mockClock.UtcNow ? "scheduled" : "active";
+    var action = new MockParkingAction(id, request.LicensePlate, request.Start, request.End, request.Location, status, mockClock.UtcNow + visibilityDelay, selectedProductId);
     actions[id] = action;
     await PersistActionsAsync();
     if (await outcome.ApplyAsync()) return Results.StatusCode(outcome.StatusCode);
