@@ -7,15 +7,15 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: trigger f4 patch'
+    if: github.event.head_commit.message == 'chore: trigger f4 patch 2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: scratch/f2-claimed-recovery
       - name: Patch F4
-        shell: python
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           p = Path('src/Parkeren.Domain/Visits/ProviderOperation.cs')
@@ -63,6 +63,7 @@ jobs:
           new = '- ✅ Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; CI groen na compilefix op `2de98742`.\n- 🚧 `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald.\n'
           assert s.count(old) == 1
           p.write_text(s.replace(old, new))
+          PY
       - name: Commit patch
         run: |
           git config user.name github-actions[bot]
