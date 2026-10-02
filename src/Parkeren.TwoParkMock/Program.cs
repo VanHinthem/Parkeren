@@ -65,6 +65,8 @@ var remainingMinutesByProduct = new ConcurrentDictionary<string, int>(
     new[] { new KeyValuePair<string, int>(defaultProductId, 1500 * 60) });
 var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
+var readbackStartOffset = TimeSpan.Zero;
+var readbackEndOffset = TimeSpan.Zero;
 var forcedValidationError = false;
 var rejectDuplicateActiveActions = false;
 var omitCreatedActionBody = false;
@@ -108,6 +110,11 @@ app.MapGet("/api/actions", (string? productId) =>
     return Results.Ok(actions.Values
         .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)
         .Select(x => WithObservableStatus(x, now))
+        .Select(x => x with
+        {
+            Start = x.Start + readbackStartOffset,
+            End = x.End + readbackEndOffset
+        })
         .OrderBy(x => x.Start));
 });
 
@@ -221,6 +228,13 @@ app.MapPost("/api/test/visibility-delay", (MockVisibilityDelayRequest request) =
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/readback-offsets", (MockReadbackOffsetsRequest request) =>
+{
+    readbackStartOffset = TimeSpan.FromMilliseconds(request.StartMilliseconds);
+    readbackEndOffset = TimeSpan.FromMilliseconds(request.EndMilliseconds);
+    return Results.NoContent();
+});
+
 app.MapPost("/api/test/authentication", (MockAuthenticationRequest request) =>
 {
     validCredentials = request.Valid;
@@ -276,6 +290,8 @@ app.MapPost("/api/test/reset", async () =>
     remainingMinutesByProduct[defaultProductId] = 1500 * 60;
     validCredentials = true;
     visibilityDelay = TimeSpan.Zero;
+    readbackStartOffset = TimeSpan.Zero;
+    readbackEndOffset = TimeSpan.Zero;
     forcedValidationError = false;
     rejectDuplicateActiveActions = false;
     omitCreatedActionBody = false;
@@ -384,6 +400,8 @@ public sealed record MockBalanceRequest(int RemainingPaidMinutes);
 public sealed record MockAuthenticationRequest(bool Valid);
 
 public sealed record MockVisibilityDelayRequest(int Milliseconds);
+
+public sealed record MockReadbackOffsetsRequest(double StartMilliseconds, double EndMilliseconds);
 
 public sealed record MockValidationErrorRequest(bool Enabled);
 
