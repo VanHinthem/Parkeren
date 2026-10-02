@@ -30,7 +30,7 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ CI groen op commit `4023c6e3` (`test: cover scheduler locking races`).
 - ✅ SCHED-014 afgerond.
 
-## Fase B — terminale Visit lifecycle
+## Fase B — terminale Visit lifecycle ✅ AFGEROND
 
 ### B1 — SCHED-013 Visit end reason
 
@@ -67,13 +67,37 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ CI groen op commit `76103a03` (`fix: finalize visits at terminal boundary`).
 - ✅ PostgreSQL-integratietests dekken automatische `EndReason` + boundary-`ActualEndAt` en behoud van `ManualStop` + echte stoptijd.
 - ✅ Test-cleanup hersteld; volledige CI groen op commit `b810214e`.
-- 🚧 Startup terminal recovery herbouwt ontbrekende/verouderde terminale Stop-work vóór de scheduler claim-loop wordt vrijgegeven.
-- 🚧 Recoverytests dekken ontbrekende overdue terminal work (direct claimbaar) en vervanging van obsolete pending terminal work.
-- 📋 Na groen: fase B eindcontrole; als die schoon is fase B sluiten en nieuwe chat starten voor fase C.
+- ✅ Startup terminal recovery herbouwt ontbrekende/verouderde terminale Stop-work vóór de scheduler claim-loop wordt vrijgegeven.
+- ✅ Recoverytests dekken ontbrekende overdue terminal work (direct claimbaar) en vervanging van obsolete pending terminal work.
+- ✅ Volledige CI groen op commit `203d562a` (`fix: rebuild terminal work during recovery`).
+
+## Fase C — provider identity/matching — SCHED-017, deel SCHED-009
+
+### C1 — centrale `ProviderActionMatchPolicy`
+
+V1-besluit provider timestamp tolerance: **5 seconden**. Dit is bewust een **engineering margin**, geen gemeten 2Park-SLA. Start en End gebruiken dezelfde tolerance tenzij later live 2Park-bewijs een onderscheid rechtvaardigt.
+
+Matchingprioriteit:
+
+1. bekende provider action-id;
+2. provider productcontext;
+3. genormaliseerd kenteken;
+4. semantisch geldige status;
+5. Start/End binnen de centrale tolerance.
+
+Aanvullende afspraken:
+
+- Stop blijft primair action-id driven; geen onnodige fallback-identificatie toevoegen.
+- Eerst beoordelen waarom `TwoParkProvider.StartActionAsync` nu `< 2 minuten` gebruikt voordat die logica wordt vervangen.
+- `ExternalProviderAction` detection niet automatisch fallback-matchen wanneer het provider action-id onbekend is.
+- Locationcode versus providerlabel is geen harde identity mismatch.
+- Zonder bekend provider action-id mag fallback alleen één unieke kandidaat accepteren.
+
+- 🚧 Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; callers zijn in deze slice bewust nog niet omgebouwd.
 
 ## Volgende hoofdfasen
 
-- 📋 Fase C — SCHED-017/009 provider identity/matching.
+- 🚧 Fase C — SCHED-017/009 provider identity/matching.
 - 📋 Fase D — SCHED-001 JIT scheduled continuation.
 - 📋 Fase E — SCHED-002 free-gap / overnight continuation.
 - 📋 Fase F — SCHED-009/010 algemene recovery hardening.

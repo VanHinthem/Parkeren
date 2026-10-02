@@ -166,9 +166,13 @@ Locatiecode versus providerlabel is geen harde identity mismatch.
 
 Fallback zonder provider action-id mag alleen een **unieke** kandidaat accepteren.
 
-### C2. Concrete tolerance vastleggen
+Stop blijft primair action-id driven; C1 voegt daar geen onnodige fallback-identificatie aan toe. `ExternalProviderAction` detection blijft bij onbekend action-id eveneens action-id-gebaseerd en wordt niet automatisch semantisch fallback-gematcht.
 
-Vóór deze codecommit moet één concrete timestamp-tolerantie worden gekozen. De gekozen waarde wordt centraal configureerbaar/constant gehouden en niet verspreid hardcoded.
+### C2. Concrete tolerance vastgelegd
+
+V1 gebruikt centraal **5 seconden** voor zowel Start als End. Dit is een **engineering margin**, geen gemeten 2Park-SLA. Alleen nieuw live 2Park-bewijs kan aanleiding zijn om Start en End later verschillend te behandelen.
+
+De bestaande `< 2 minuten` read-back in `TwoParkProvider.StartActionAsync` wordt niet blind vervangen: eerst wordt beoordeeld waarom die adapterlogica bestaat en welk contract daar nodig is.
 
 ### C3. Start/read-back en reconciler aansluiten
 
@@ -384,14 +388,12 @@ Sommige slices kunnen tijdens uitvoering iets kleiner worden als een wijziging a
 
 Deze punten zijn bewust niet verzonnen en moeten op het juiste moment expliciet worden besloten:
 
-1. provider timestamp tolerance — vóór fase C;
-2. scheduled activation grace — vóór fase D;
-3. echte 2Park post-End status/visibility — vóór een realistische vaste mocksemantiek daarvoor;
-4. of scheduled actions meetellen voor provider-capaciteit — vóór definitieve capacitytests;
-5. concrete defer-delay voor tijdelijk niet-uitvoerbaar schedulerwork — tijdens fase A;
-6. eventueel PostgreSQL `40P01` retry-aantal/backoff als defensieve laag — tijdens fase A2.
+1. scheduled activation grace — vóór fase D;
+2. echte 2Park post-End status/visibility — vóór een realistische vaste mocksemantiek daarvoor;
+3. of scheduled actions meetellen voor provider-capaciteit — vóór definitieve capacitytests;
+4. eventueel PostgreSQL `40P01` retry-aantal/backoff als defensieve laag — tijdens fase A2.
 
-Deze open operationele parameters blokkeren de architectuur niet, maar worden nooit lokaal met verschillende waarden hardcoded.
+De provider timestamp tolerance en de defer-delay zijn inmiddels gekozen en centraal vastgelegd. Open operationele parameters worden nooit lokaal met verschillende waarden hardcoded.
 
 ## Definition of Done scheduler hardening
 
