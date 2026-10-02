@@ -1,0 +1,47 @@
+name: temp free-gap recovery product patch
+
+on:
+  push:
+    branches:
+      - scratch/free-gap-recovery-product
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/free-gap-recovery-product
+      - name: Patch test fixture isolation
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tests/Parkeren.IntegrationTests/Database/ProviderFreeGapRecoveryTests.cs')
+          s = p.read_text()
+          old = '''        ParkingProviderProduct product;\n        await using (var productContext = fixture.CreateDbContext())\n        {\n            product = await productContext.ParkingProviderProducts\n                .AsNoTracking()\n                .SingleAsync(x => x.ProviderProductId == "visitor", cancellationToken);\n        }\n'''
+          new = '''        var product = new ParkingProviderProduct(\n            Guid.NewGuid(),\n            $"free-gap-{suffix}",\n            $"Free Gap {suffix}",\n            null,\n            null,\n            "Oss",\n            now);\n'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one product lookup, found {s.count(old)}')
+          s = s.replace(old, new)
+          old_seed = '''            seedContext.Users.Add(user);\n            seedContext.Vehicles.Add(vehicle);\n'''
+          new_seed = '''            seedContext.ParkingProviderProducts.Add(product);\n            seedContext.Users.Add(user);\n            seedContext.Vehicles.Add(vehicle);\n'''
+          if s.count(old_seed) != 1:
+              raise SystemExit(f'expected one seed anchor, found {s.count(old_seed)}')
+          s = s.replace(old_seed, new_seed)
+          old_cleanup = '''            await cleanupContext.Vehicles\n                .Where(x => x.Id == vehicle.Id)\n                .ExecuteDeleteAsync(cancellationToken);\n'''
+          new_cleanup = '''            await cleanupContext.ParkingProviderProducts\n                .Where(x => x.Id == product.Id)\n                .ExecuteDeleteAsync(cancellationToken);\n            await cleanupContext.Vehicles\n                .Where(x => x.Id == vehicle.Id)\n                .ExecuteDeleteAsync(cancellationToken);\n'''
+          if s.count(old_cleanup) != 1:
+              raise SystemExit(f'expected one cleanup anchor, found {s.count(old_cleanup)}')
+          s = s.replace(old_cleanup, new_cleanup)
+          p.write_text(s)
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/Parkeren.IntegrationTests/Database/ProviderFreeGapRecoveryTests.cs
+          git commit -m "fix: isolate free-gap recovery product"
+          git push origin HEAD:scratch/free-gap-recovery-product
