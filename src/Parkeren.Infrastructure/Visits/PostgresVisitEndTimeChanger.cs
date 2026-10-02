@@ -184,23 +184,6 @@ internal sealed class PostgresVisitEndTimeChanger(
                 foreach (var work in obsoleteWork)
                     work.Cancel();
 
-                var activeActionNeedsStop = await dbContext.ProviderParkingActions.AnyAsync(
-                    x => x.VisitId == visit.Id &&
-                         x.State == ProviderActionState.Active &&
-                         x.PlannedEndAt > newEndAt,
-                    cancellationToken);
-                if (activeActionNeedsStop &&
-                    !await dbContext.VisitSchedulerWork.AnyAsync(
-                        x => x.VisitId == visit.Id &&
-                             x.Type == VisitSchedulerWorkType.StopVisit &&
-                             x.Status == VisitSchedulerWorkStatus.Pending &&
-                             x.DueAt == newEndAt,
-                        cancellationToken))
-                {
-                    dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
-                        Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.StopVisit, newEndAt));
-                }
-
                 if (previousDesiredEndAt is DateTimeOffset previousEndAt &&
                     newEndAt > previousEndAt &&
                     applicableRuleSets is not null)
@@ -212,6 +195,12 @@ internal sealed class PostgresVisitEndTimeChanger(
                         cancellationToken);
                 }
             }
+
+            var terminalRuleSets = applicableRuleSets ??
+                await LoadTerminalRuleSetsAsync(visit, cancellationToken);
+            await new VisitTerminalWorkPlanner(dbContext)
+                .EnsureAsync(visit, terminalRuleSets, cancellationToken);
+
             change.MarkApplied();
             if (existing is null)
                 dbContext.VisitEndTimeChanges.Add(change);
@@ -230,6 +219,7 @@ internal sealed class PostgresVisitEndTimeChanger(
         await transaction.CommitAsync(cancellationToken);
         return new ChangeVisitEndTimeResult(visit, change, false);
     }
+
     private async Task EnsureContinuationWorkAsync(
         Visit visit,
         DateTimeOffset newEndAt,
@@ -285,6 +275,18 @@ internal sealed class PostgresVisitEndTimeChanger(
             VisitSchedulerWorkType.ContinueProviderCoverage,
             dueAt));
     }
+
+    private Task<List<ParkingRuleSet>> LoadTerminalRuleSetsAsync(
+        Visit visit,
+        CancellationToken cancellationToken) =>
+        dbContext.ParkingRuleSets
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x =>
+                (visit.ProviderProductId == null || x.ProviderProductId == visit.ProviderProductId) &&
+                (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
 
     private static DateTimeOffset? NormalizeTimestamp(DateTimeOffset? value)
     {
