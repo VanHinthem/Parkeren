@@ -71,7 +71,7 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ Recoverytests dekken ontbrekende overdue terminal work (direct claimbaar) en vervanging van obsolete pending terminal work.
 - ✅ Volledige CI groen op commit `203d562a` (`fix: rebuild terminal work during recovery`).
 
-## Fase C — provider identity/matching — SCHED-017, deel SCHED-009
+## Fase C — provider identity/matching — SCHED-017, deel SCHED-009 ✅ AFGEROND
 
 ### C1 — centrale `ProviderActionMatchPolicy`
 
@@ -106,12 +106,20 @@ Aanvullende afspraken:
 - ✅ Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd; CI groen op commit `adf59937` (`fix: align scheduler recovery matching`).
 - ✅ `ReconcileScheduledCancelAsync` blijft bewust product-scoped en strikt bekend-action-id + `stopped` status; omdat dit Stop-semantiek is en geen lokale timestamp/fallbackheuristiek bevat, is geen cosmetische policy-conversie nodig.
 - ✅ `VisitSchedulerWorkProcessor` gebruikt voor scheduled wake-up, free-gap predecessorcheck en aansluitende continuation centrale action-id/product identity; de twee provider-End checks gebruiken de centrale 5-seconden tolerance; CI groen op commit `5dedf4ba` (`fix: align scheduler provider matching`).
-- 🚧 Initial-coverage duplicate-prevention gebruikt centrale productcontext, kenteken-normalisatie en 5-seconden Start-tolerance. Dit blijft bewust een conservatieve `Any`-guard: één of meer mogelijke duplicates blokkeren de providerstart; `FindUniqueMatch` is hier niet passend omdat de kandidaat niet wordt gebruikt maar een dubbele mutatie moet worden voorkomen.
+- ✅ Initial-coverage duplicate-prevention gebruikt centrale productcontext, kenteken-normalisatie en 5-seconden Start-tolerance en blijft bewust een conservatieve `Any`-guard; CI groen op commit `ef04e4d3` (`fix: align initial coverage duplicate guard`).
+- ✅ Overige strict known-action-id read-backs zijn geïnventariseerd en blijven bewust lokaal waar zij geen fallback/timestampheuristiek bevatten en semantische validatie al door de bovenliggende flow gebeurt.
+
+## Fase D — JIT scheduled continuation — SCHED-001
+
+### D1/D2 — future continuation en scheduled providerstart
+
+- 🚧 Directe start-readback accepteert naast `active` ook `scheduled` als geldige bevestigde providerstatus, met dezelfde centrale identity- en timestampcriteria. Gerichte unit test toegevoegd voor een future scheduled action.
+- 📋 `ProviderContinuationStartStore.PrepareAttemptAsync` vanaf het T-5 JIT-venster laten voorbereiden zonder te eisen dat de predecessor al geëindigd is.
+- 📋 Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde` en maximaal één scheduled successor per Visit.
 
 ## Volgende hoofdfasen
 
-- 🚧 Fase C — SCHED-017/009 provider identity/matching.
-- 📋 Fase D — SCHED-001 JIT scheduled continuation.
+- 🚧 Fase D — SCHED-001 JIT scheduled continuation.
 - 📋 Fase E — SCHED-002 free-gap / overnight continuation.
 - 📋 Fase F — SCHED-009/010 algemene recovery hardening.
 - 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness.

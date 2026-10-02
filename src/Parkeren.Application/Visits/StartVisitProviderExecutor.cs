@@ -108,7 +108,7 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
                     action.ProviderActionId,
                     request.ProductId,
                     request.LicensePlate,
-                    ["active"],
+                    ["active", "scheduled"],
                     preparation.Action.PlannedStartAt,
                     preparation.Action.PlannedEndAt));
 

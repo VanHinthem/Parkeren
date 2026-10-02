@@ -31,6 +31,25 @@ public sealed class StartVisitProviderMatchingPolicyTests
     }
 
     [Fact]
+    public async Task Direct_readback_accepts_scheduled_future_action()
+    {
+        var start = DateTimeOffset.Parse("2026-10-02T12:05:00+00:00");
+        var end = start.AddHours(1);
+        var preparation = CreateInProgressPreparation(start, end);
+        var response = new ProviderAction("provider-1", "TK01HF", start, end, "OSS_J", "scheduled");
+        var readback = new ProviderAction("provider-1", "TK-01-HF", start.AddSeconds(2), end.AddSeconds(-2), "OSS Zone J", "scheduled");
+        var provider = new StartReadbackProvider(response, [readback]);
+
+        var result = await new StartVisitProviderExecutor(provider, new NoopResultStore()).ExecuteAsync(
+            preparation,
+            new ProviderStartRequest("TK01HF", "OSS_J", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Same(readback, result.ProviderAction);
+    }
+
+    [Fact]
     public async Task Direct_readback_rejects_timestamp_drift_outside_tolerance()
     {
         var start = DateTimeOffset.Parse("2026-10-02T12:00:00+00:00");
