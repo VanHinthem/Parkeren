@@ -94,8 +94,10 @@ Aanvullende afspraken:
 - Zonder bekend provider action-id mag fallback alleen één unieke kandidaat accepteren.
 
 - ✅ Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; CI groen op commit `8ffaa755` (`fix: centralize provider action matching`).
-- 🚧 Directe start-readback en `StartVisitProviderReconciler` aangesloten op de centrale policy; gerichte tests toegevoegd voor kentekennormalisatie en 5-seconden Start/End-tolerance.
-- 🚧 Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
+- ✅ Directe start-readback en `StartVisitProviderReconciler` aangesloten op de centrale policy; CI groen op commit `417afe53` (`fix: apply provider match policy to starts`).
+- ✅ Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
+- 🚧 Extend precheck, directe extend-readback en `ContinueVisitProviderReconciler` aangesloten op dezelfde centrale action-id/product/status/timestamp-semantiek; gerichte tolerance-tests toegevoegd.
+- 🚧 Matchcriteria ondersteunen onbekende caller-context expliciet: kenteken/status/timestamps worden alleen toegepast wanneer de caller die informatie bezit; een bekende action-id valt nooit terug naar een andere kandidaat.
 
 ## Volgende hoofdfasen
 

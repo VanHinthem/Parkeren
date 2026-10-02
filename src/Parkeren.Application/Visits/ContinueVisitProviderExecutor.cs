@@ -41,7 +41,6 @@ public sealed class ContinueVisitProviderExecutor(
     IProviderExtendResultStore resultStore,
     IProviderExtendMutationGuard? mutationGuard = null)
 {
-    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
     public async Task<ProviderExtendExecution> ExecuteAsync(
         ProviderExtendPreparation preparation,
         CancellationToken cancellationToken = default)
@@ -88,8 +87,11 @@ public sealed class ContinueVisitProviderExecutor(
             var currentActions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-            var currentAction = currentActions.SingleOrDefault(x =>
-                x.ProviderActionId == preparation.Action.ProviderActionId);
+            var currentAction = ProviderActionMatchPolicy.FindUniqueMatch(
+                currentActions,
+                new ProviderActionMatchCriteria(
+                    preparation.Action.ProviderActionId,
+                    preparation.Action.ProviderProductId));
 
             if (currentAction is null)
             {
@@ -109,7 +111,7 @@ public sealed class ContinueVisitProviderExecutor(
                 return new(preparation, currentAction, true);
             }
 
-            if (TimestampsMatch(currentAction.End, preparation.ProviderEndAt))
+            if (ProviderActionMatchPolicy.TimestampsMatch(currentAction.End, preparation.ProviderEndAt))
             {
                 await resultStore.RecordConfirmedAsync(preparation, currentAction, cancellationToken);
                 return new(preparation, currentAction, false);
@@ -138,10 +140,13 @@ public sealed class ContinueVisitProviderExecutor(
             var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-            var confirmed = actions.SingleOrDefault(x =>
-                x.ProviderActionId == preparation.Action.ProviderActionId &&
-                string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
-                x.End == preparation.ProviderEndAt);
+            var confirmed = ProviderActionMatchPolicy.FindUniqueMatch(
+                actions,
+                new ProviderActionMatchCriteria(
+                    preparation.Action.ProviderActionId,
+                    preparation.Action.ProviderProductId,
+                    AllowedStatuses: ["active"],
+                    ExpectedEnd: preparation.ProviderEndAt));
 
             if (confirmed is null)
             {
@@ -175,9 +180,6 @@ public sealed class ContinueVisitProviderExecutor(
             return new(preparation, null, false, true);
         }
     }
-
-    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
-        (left - right).Duration() < TimestampTolerance;
 }
 
 
@@ -185,8 +187,6 @@ public sealed class ContinueVisitProviderReconciler(
     IParkingProvider provider,
     IProviderExtendResultStore resultStore)
 {
-    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
-
     public async Task<ProviderAction?> ReconcileAsync(
         ProviderExtendPreparation preparation,
         CancellationToken cancellationToken = default)
@@ -204,10 +204,13 @@ public sealed class ContinueVisitProviderReconciler(
         var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
             : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-        var match = actions.SingleOrDefault(x =>
-            x.ProviderActionId == preparation.Action.ProviderActionId &&
-            string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
-            TimestampsMatch(x.End, requestedEndAt));
+        var match = ProviderActionMatchPolicy.FindUniqueMatch(
+            actions,
+            new ProviderActionMatchCriteria(
+                preparation.Action.ProviderActionId,
+                preparation.Action.ProviderProductId,
+                AllowedStatuses: ["active"],
+                ExpectedEnd: requestedEndAt));
 
         if (match is null)
             return null;
@@ -216,7 +219,4 @@ public sealed class ContinueVisitProviderReconciler(
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
         return match;
     }
-
-    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
-        (left - right).Duration() < TimestampTolerance;
 }

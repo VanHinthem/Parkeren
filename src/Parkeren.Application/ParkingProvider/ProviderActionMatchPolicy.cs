@@ -3,8 +3,8 @@ namespace Parkeren.Application.ParkingProvider;
 public sealed record ProviderActionMatchCriteria(
     string? ProviderActionId,
     string? ProviderProductId,
-    string LicensePlate,
-    IReadOnlyCollection<string> AllowedStatuses,
+    string? LicensePlate = null,
+    IReadOnlyCollection<string>? AllowedStatuses = null,
     DateTimeOffset? ExpectedStart = null,
     DateTimeOffset? ExpectedEnd = null);
 
@@ -23,8 +23,6 @@ public static class ProviderActionMatchPolicy
     {
         ArgumentNullException.ThrowIfNull(actions);
         ArgumentNullException.ThrowIfNull(criteria);
-        ArgumentException.ThrowIfNullOrWhiteSpace(criteria.LicensePlate);
-        ArgumentNullException.ThrowIfNull(criteria.AllowedStatuses);
 
         var candidates = actions.Where(action => Matches(action, criteria)).Take(2).ToArray();
         return candidates.Length == 1 ? candidates[0] : null;
@@ -45,10 +43,12 @@ public static class ProviderActionMatchPolicy
             !string.Equals(action.ProductId, criteria.ProviderProductId, StringComparison.Ordinal))
             return false;
 
-        if (!LicensePlatesMatch(action.LicensePlate, criteria.LicensePlate))
+        if (!string.IsNullOrWhiteSpace(criteria.LicensePlate) &&
+            !LicensePlatesMatch(action.LicensePlate, criteria.LicensePlate))
             return false;
 
-        if (!criteria.AllowedStatuses.Any(status =>
+        if (criteria.AllowedStatuses is { Count: > 0 } &&
+            !criteria.AllowedStatuses.Any(status =>
                 string.Equals(action.Status, status, StringComparison.OrdinalIgnoreCase)))
             return false;
 
