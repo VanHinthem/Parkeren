@@ -37,14 +37,29 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         var user = new User(Guid.NewGuid(), $"gap-recovery-{suffix}", $"GAP-RECOVERY-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"GR-{suffix[..2]}-{suffix[2..4]}", $"GR{suffix[..4]}", null);
 
-        var product = new ParkingProviderProduct(
-            Guid.NewGuid(),
-            $"free-gap-{suffix}",
-            $"Free Gap {suffix}",
-            null,
-            null,
-            "Oss",
-            now);
+        ParkingProviderProduct product;
+        var createdProduct = false;
+        await using (var productContext = fixture.CreateDbContext())
+        {
+            product = await productContext.ParkingProviderProducts
+                .AsNoTracking()
+                .SingleOrDefaultAsync(x => x.ProviderProductId == "visitor", cancellationToken)
+                ?? new ParkingProviderProduct(
+                    Guid.NewGuid(),
+                    "visitor",
+                    "Bezoekersparkeren",
+                    "oss",
+                    "Oss",
+                    "OSS_J",
+                    now);
+
+            if (!await productContext.ParkingProviderProducts.AnyAsync(x => x.Id == product.Id, cancellationToken))
+            {
+                productContext.ParkingProviderProducts.Add(product);
+                await productContext.SaveChangesAsync(cancellationToken);
+                createdProduct = true;
+            }
+        }
 
         var visit = new Visit(
             Guid.NewGuid(),
@@ -124,7 +139,6 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 
         await using (var seedContext = fixture.CreateDbContext())
         {
-            seedContext.ParkingProviderProducts.Add(product);
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
@@ -212,9 +226,12 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             await cleanupContext.ParkingRuleSets
                 .Where(x => x.Id == paidBeforeGap.Id || x.Id == freeGap.Id || x.Id == paidAfterGap.Id || x.Id == freeTail.Id)
                 .ExecuteDeleteAsync(cancellationToken);
-            await cleanupContext.ParkingProviderProducts
-                .Where(x => x.Id == product.Id)
-                .ExecuteDeleteAsync(cancellationToken);
+            if (createdProduct)
+            {
+                await cleanupContext.ParkingProviderProducts
+                    .Where(x => x.Id == product.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
             await cleanupContext.Vehicles
                 .Where(x => x.Id == vehicle.Id)
                 .ExecuteDeleteAsync(cancellationToken);
