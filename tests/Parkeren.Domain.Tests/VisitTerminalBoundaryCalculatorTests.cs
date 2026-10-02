@@ -133,7 +133,7 @@ public sealed class VisitTerminalBoundaryCalculatorTests
             startAt,
             desiredEndAt,
             EffectiveParkingPolicySnapshot.Capture(
-                new EffectiveParkingPolicy(maxPaid, maxElapsed, allowVisitExtension: true)));
+                new EffectiveParkingPolicy(maxPaid, maxElapsed, AllowVisitExtension: true)));
 
     private static ParkingRuleSet CreateWeekdayRules(DateTimeOffset validFrom) =>
         new(
