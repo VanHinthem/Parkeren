@@ -6,6 +6,7 @@ import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage
 import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminSystemDiagnosticsPage } from "./AdminSystemDiagnosticsPage";
+import { AdminSystemAuditPage } from "./AdminSystemAuditPage";
 import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
 import { AdminUsagePage } from "./AdminUsagePage";
@@ -171,9 +172,18 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             )
           ) : section.path === "/beheer/systeem" ? (
             currentPath === "/beheer/systeem" ? (
-              <AdminSystemPage />
+              <>
+                <section className="admin-portal__panel admin-portal__placeholder">
+                  <h2>Beheeraudit</h2>
+                  <p>Bekijk recente administratieve mutaties met actor, target en veilige context.</p>
+                  <p><a href="/beheer/systeem/audit">Auditlog openen</a></p>
+                </section>
+                <AdminSystemPage />
+              </>
             ) : currentPath === "/beheer/systeem/diagnostiek" ? (
               <AdminSystemDiagnosticsPage />
+            ) : currentPath === "/beheer/systeem/audit" ? (
+              <AdminSystemAuditPage />
             ) : (
               <section className="admin-portal__panel admin-portal__placeholder">
                 <h2>{section.title}</h2>
