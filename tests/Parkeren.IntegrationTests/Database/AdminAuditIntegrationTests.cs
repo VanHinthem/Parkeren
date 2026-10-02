@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -62,9 +63,11 @@ public sealed class AdminAuditIntegrationTests(PostgreSqlFixture fixture)
             Assert.Equal("User", audit.TargetType);
             Assert.Equal(visitor.Id.ToString(), audit.TargetId);
             Assert.NotNull(audit.ContextJson);
-            Assert.Contains($"\"username\":\"{visitor.Username}\"", audit.ContextJson);
-            Assert.Contains("\"maxPaidParkingDurationMode\":\"Unlimited\"", audit.ContextJson);
-            Assert.Contains("\"maxVisitElapsedDurationMode\":\"Unlimited\"", audit.ContextJson);
+
+            using var context = JsonDocument.Parse(audit.ContextJson);
+            Assert.Equal(visitor.Username, context.RootElement.GetProperty("username").GetString());
+            Assert.Equal("Unlimited", context.RootElement.GetProperty("maxPaidParkingDurationMode").GetString());
+            Assert.Equal("Unlimited", context.RootElement.GetProperty("maxVisitElapsedDurationMode").GetString());
         }
         finally
         {
@@ -108,7 +111,9 @@ public sealed class AdminAuditIntegrationTests(PostgreSqlFixture fixture)
             Assert.Equal("User", audit.TargetType);
             Assert.Equal(visitor.Id.ToString(), audit.TargetId);
             Assert.NotNull(audit.ContextJson);
-            Assert.Contains($"\"username\":\"{visitor.Username}\"", audit.ContextJson);
+
+            using var context = JsonDocument.Parse(audit.ContextJson);
+            Assert.Equal(visitor.Username, context.RootElement.GetProperty("username").GetString());
             Assert.False(audit.ContextJson.Contains(newPin, StringComparison.Ordinal));
             Assert.False(audit.ContextJson.Contains("pin", StringComparison.OrdinalIgnoreCase));
             Assert.False(audit.ContextJson.Contains("hash", StringComparison.OrdinalIgnoreCase));
