@@ -917,6 +917,31 @@ app.MapGet("/api/admin/system/diagnostics", async (
     return Results.Ok(await diagnostics.GetAsync(cancellationToken));
 });
 
+app.MapGet("/api/admin/system/audit", async (
+    Guid? actorUserId,
+    string? action,
+    string? targetType,
+    string? targetId,
+    DateTimeOffset? from,
+    DateTimeOffset? to,
+    int? limit,
+    IAdminAuditQueryService audit,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    if (from.HasValue && to.HasValue && to.Value < from.Value)
+        return Results.BadRequest(new { error = "Tot-datum mag niet voor van-datum liggen." });
+
+    return Results.Ok(await audit.GetEventsAsync(
+        authenticated.User.Id,
+        new AdminAuditQuery(actorUserId, action, targetType, targetId, from, to, limit ?? 100),
+        cancellationToken));
+});
+
 app.MapPut("/api/admin/system/default-policy", async (
     AdminDefaultPolicyUpdateRequest request,
     IAdministrationService administration,
