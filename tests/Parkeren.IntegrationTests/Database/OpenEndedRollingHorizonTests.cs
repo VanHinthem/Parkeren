@@ -33,6 +33,13 @@ public sealed class OpenEndedRollingHorizonTests(PostgreSqlFixture fixture)
             null,
             "TEST",
             now);
+        var ruleSet = new ParkingRuleSet(
+            Guid.NewGuid(),
+            now.AddDays(-1),
+            now.AddDays(30),
+            TimeSpan.FromHours(4),
+            Array.Empty<PaidWindow>());
+        ruleSet.AssignProviderProduct(product.Id);
         var visit = new Visit(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -59,6 +66,7 @@ public sealed class OpenEndedRollingHorizonTests(PostgreSqlFixture fixture)
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.ParkingProviderProducts.Add(product);
+            seedContext.ParkingRuleSets.Add(ruleSet);
             seedContext.Visits.Add(visit);
             seedContext.VisitSchedulerWork.Add(work);
             await seedContext.SaveChangesAsync(cancellationToken);
@@ -119,6 +127,7 @@ public sealed class OpenEndedRollingHorizonTests(PostgreSqlFixture fixture)
             await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
