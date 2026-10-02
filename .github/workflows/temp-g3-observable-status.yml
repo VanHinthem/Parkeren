@@ -1,0 +1,57 @@
+name: temp g3 observable status
+
+on:
+  push:
+    branches:
+      - scratch/g3-observable-status
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g3-observable-status
+      - name: Apply G3 patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          program = Path('src/Parkeren.TwoParkMock/Program.cs')
+          text = program.read_text()
+          old = '''static IReadOnlyCollection<MockParkingAction> LoadPersistedActions(string? path)\n{\n    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))\n        return Array.Empty<MockParkingAction>();\n\n    var json = File.ReadAllText(path);\n    return JsonSerializer.Deserialize<MockParkingAction[]>(json) ?? Array.Empty<MockParkingAction>();\n}\n'''
+          new = old + '''\nstatic MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now)\n{\n    if (string.Equals(action.Status, "stopped", StringComparison.OrdinalIgnoreCase))\n        return action;\n\n    if (now < action.Start)\n        return action.Status == "scheduled" ? action : action with { Status = "scheduled" };\n\n    if (now < action.End)\n        return action.Status == "active" ? action : action with { Status = "active" };\n\n    // Post-End provider semantics are intentionally not inferred until live 2Park behavior is known.\n    return action;\n}\n'''
+          if text.count(old) != 1:
+              raise SystemExit('LoadPersistedActions block not found exactly once')
+          text = text.replace(old, new)
+          old = '''    return Results.Ok(actions.Values\n        .Where(x => x.ProductId == selectedProductId && mockClock.UtcNow >= x.VisibleAt)\n        .OrderBy(x => x.Start));\n'''
+          new = '''    var now = mockClock.UtcNow;\n    return Results.Ok(actions.Values\n        .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)\n        .Select(x => WithObservableStatus(x, now))\n        .OrderBy(x => x.Start));\n'''
+          if text.count(old) != 1:
+              raise SystemExit('actions readback block not found exactly once')
+          program.write_text(text.replace(old, new))
+
+          tests = Path('tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs')
+          text = tests.read_text()
+          marker = '''    [Fact]\n    public async Task Mock_can_inject_provider_failure()\n'''
+          addition = '''    [Fact]\n    public async Task Mock_scheduled_action_becomes_active_at_start_boundary()\n    {\n        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();\n        using var http = factory.CreateClient();\n        var cancellationToken = TestContext.Current.CancellationToken;\n        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);\n        var start = now.AddMinutes(10);\n\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n        var provider = new TwoParkMockProvider(http);\n        var created = await provider.StartActionAsync(\n            new ProviderParkingActionRequest("CLOCK1", start, start.AddHours(1), "Oss"), cancellationToken);\n\n        var beforeStart = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("scheduled", beforeStart.Status);\n\n        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 10 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();\n        var atStart = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("active", atStart.Status);\n    }\n\n    [Fact]\n    public async Task Mock_stopped_scheduled_action_stays_stopped_after_start_boundary()\n    {\n        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();\n        using var http = factory.CreateClient();\n        var cancellationToken = TestContext.Current.CancellationToken;\n        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);\n        var start = now.AddMinutes(10);\n\n        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();\n        var provider = new TwoParkMockProvider(http);\n        var created = await provider.StartActionAsync(\n            new ProviderParkingActionRequest("CLOCK2", start, start.AddHours(1), "Oss"), cancellationToken);\n        await provider.StopActionAsync(created.ProviderActionId, cancellationToken);\n\n        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 15 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();\n        var action = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);\n        Assert.Equal("stopped", action.Status);\n    }\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('test insertion marker not found exactly once')
+          tests.write_text(text.replace(marker, addition + marker))
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = progress.read_text()
+          old = '- 🚧 G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok.'
+          new = '- ✅ G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok; CI groen op commit `08b6cb3f` (`feat: add twopark mock clock control`).\n- 🚧 G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld.'
+          if text.count(old) != 1:
+              raise SystemExit('progress G2 marker not found exactly once')
+          progress.write_text(text.replace(old, new))
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.TwoParkMock/Program.cs tests/Parkeren.IntegrationTests/ParkingProviderMockTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'feat: derive twopark mock action status' || exit 0
+          git push
