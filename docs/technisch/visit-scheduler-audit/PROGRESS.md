@@ -105,8 +105,8 @@ Aanvullende afspraken:
 - ✅ `ExternalProviderAction` detectie blijft bewust exact action-id gebaseerd; er is geen fallback-koppeling voor onbekende provider IDs toegevoegd.
 - ✅ Startup scheduler-rebuild gebruikt centrale action-id/product identity en centrale 5-seconden End-tolerance; statusafhandeling blijft expliciet `stopped`/`active` zodat externe stops niet als ontbrekende action worden geïnterpreteerd; CI groen op commit `adf59937` (`fix: align scheduler recovery matching`).
 - ✅ `ReconcileScheduledCancelAsync` blijft bewust product-scoped en strikt bekend-action-id + `stopped` status; omdat dit Stop-semantiek is en geen lokale timestamp/fallbackheuristiek bevat, is geen cosmetische policy-conversie nodig.
-- 🚧 `VisitSchedulerWorkProcessor` gebruikt voor scheduled wake-up, free-gap predecessorcheck en aansluitende continuation centrale action-id/product identity; de twee bestaande provider-End checks gebruiken de centrale 5-seconden tolerance in plaats van 1 ms.
-- 📋 De no-id duplicate guard bij initial coverage wordt apart beoordeeld: daar is blokkeren bij mogelijke duplicate veiliger dan automatisch dezelfde unique-match-semantiek toepassen.
+- ✅ `VisitSchedulerWorkProcessor` gebruikt voor scheduled wake-up, free-gap predecessorcheck en aansluitende continuation centrale action-id/product identity; de twee provider-End checks gebruiken de centrale 5-seconden tolerance; CI groen op commit `5dedf4ba` (`fix: align scheduler provider matching`).
+- 🚧 Initial-coverage duplicate-prevention gebruikt centrale productcontext, kenteken-normalisatie en 5-seconden Start-tolerance. Dit blijft bewust een conservatieve `Any`-guard: één of meer mogelijke duplicates blokkeren de providerstart; `FindUniqueMatch` is hier niet passend omdat de kandidaat niet wordt gebruikt maar een dubbele mutatie moet worden voorkomen.
 
 ## Volgende hoofdfasen
 

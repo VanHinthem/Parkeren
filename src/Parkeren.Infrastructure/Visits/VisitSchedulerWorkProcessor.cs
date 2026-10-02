@@ -553,9 +553,13 @@ internal sealed class VisitSchedulerWorkProcessor(
             var remoteActions = string.IsNullOrWhiteSpace(providerProductId)
                 ? await parkingProvider.GetActionsAsync(cancellationToken)
                 : await parkingProvider.GetActionsForProductAsync(providerProductId, cancellationToken);
-            if (remoteActions.Any(x =>
-                    Vehicle.NormalizeLicensePlate(x.LicensePlate) == Vehicle.NormalizeLicensePlate(licensePlate) &&
-                    (x.Start - paid.Start).Duration() < TimeSpan.FromMilliseconds(1)))
+            var possibleDuplicate = new ProviderActionMatchCriteria(
+                null,
+                providerProductId,
+                licensePlate,
+                ExpectedStart: paid.Start);
+            if (remoteActions.Any(action =>
+                    ProviderActionMatchPolicy.Matches(action, possibleDuplicate)))
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
                 work.Cancel();
