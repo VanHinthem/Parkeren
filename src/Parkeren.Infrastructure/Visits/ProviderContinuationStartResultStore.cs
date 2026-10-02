@@ -77,7 +77,8 @@ internal sealed class ProviderContinuationStartResultStore(
                 var ruleSets = await dbContext.ParkingRuleSets
                     .Include(x => x.PaidWindows)
                     .Include(x => x.CalendarExceptions)
-                    .Where(x => x.ValidFrom < desiredEndAt &&
+                    .Where(x => x.ProviderProductId == visit.ProviderProductId &&
+                                x.ValidFrom < desiredEndAt &&
                                 (!x.ValidUntil.HasValue || x.ValidUntil.Value > action.PlannedEndAt))
                     .ToListAsync(cancellationToken);
                 var nextPaid = ProviderCoverageSchedule.NextPaidSegment(action.PlannedEndAt, desiredEndAt, ruleSets);
