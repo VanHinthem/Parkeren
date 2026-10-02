@@ -22,7 +22,9 @@ internal sealed class VisitSchedulerWorker(
                 await using var recoveryScope = scopeFactory.CreateAsyncScope();
                 var recovery = recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
                 await recovery.RecoverAsync(stoppingToken);
-                logger.LogInformation("Visit startup recovery completed before scheduler claim loop.");
+                var terminalRecovery = recoveryScope.ServiceProvider.GetRequiredService<IVisitTerminalRecoveryService>();
+                await terminalRecovery.RecoverAsync(stoppingToken);
+                logger.LogInformation("Visit startup recovery and terminal work rebuild completed before scheduler claim loop.");
                 break;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

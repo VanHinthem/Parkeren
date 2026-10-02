@@ -56,7 +56,7 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ Terminal planning aangesloten op Visit start en `DesiredEndAt`-wijzigingen; oude ad-hoc StopVisit-planning verwijderd.
 - ✅ CI groen op commit `8d358ada` na fixture- en PostgreSQL timestamp-precisiefixes.
 
-### B4 — terminal stop execution en finalization
+### B4 — terminal stop execution, finalization en recovery
 
 - ✅ `StopVisitCommand` kan een expliciete `VisitEndReason` dragen; ontbrekende reden blijft compatibel en betekent `ManualStop`.
 - ✅ `PostgresStopVisitClaimer` gebruikt de expliciete eindreden bij de overgang naar `Stopping`.
@@ -65,15 +65,18 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 - ✅ Replays valideren dat een gevonden terminale reden niet conflicteert met de reeds vastgelegde Visit-redenen.
 - ✅ `StopVisitFinalizer` gebruikt voor automatische terminale stops de `DueAt` van de matchende scheduler-work als functionele `ActualEndAt`; manual stop blijft de werkelijke stoptijd gebruiken.
 - ✅ CI groen op commit `76103a03` (`fix: finalize visits at terminal boundary`).
-- 🚧 Gerichte PostgreSQL-integratietests toegevoegd voor automatische `EndReason` + boundary-`ActualEndAt` en voor behoud van `ManualStop` + echte stoptijd.
-- 📋 Na groen: B4 en fase B afronden en nieuwe chat starten voor fase C.
+- ✅ PostgreSQL-integratietests dekken automatische `EndReason` + boundary-`ActualEndAt` en behoud van `ManualStop` + echte stoptijd.
+- ✅ Test-cleanup hersteld; volledige CI groen op commit `b810214e`.
+- 🚧 Startup terminal recovery herbouwt ontbrekende/verouderde terminale Stop-work vóór de scheduler claim-loop wordt vrijgegeven.
+- 🚧 Recoverytests dekken ontbrekende overdue terminal work (direct claimbaar) en vervanging van obsolete pending terminal work.
+- 📋 Na groen: fase B eindcontrole; als die schoon is fase B sluiten en nieuwe chat starten voor fase C.
 
 ## Volgende hoofdfasen
 
 - 📋 Fase C — SCHED-017/009 provider identity/matching.
 - 📋 Fase D — SCHED-001 JIT scheduled continuation.
 - 📋 Fase E — SCHED-002 free-gap / overnight continuation.
-- 📋 Fase F — SCHED-009/010 recovery hardening.
+- 📋 Fase F — SCHED-009/010 algemene recovery hardening.
 - 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness.
 - 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.
 - 📋 Fase I — SCHED-018 observability als laatste.
