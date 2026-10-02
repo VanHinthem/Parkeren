@@ -1,0 +1,51 @@
+name: temp g1 mock clock patch
+
+on:
+  push:
+    branches:
+      - scratch/g1-mock-clock
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/g1-mock-clock
+      - name: Patch central mock clock
+        shell: python
+        run: |
+          from pathlib import Path
+
+          program = Path('src/Parkeren.TwoParkMock/Program.cs')
+          text = program.read_text()
+          anchor = 'var stateGate = new SemaphoreSlim(1, 1);\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(f'Expected stateGate anchor once, found {text.count(anchor)}')
+          text = text.replace(anchor, anchor + 'var mockClock = new MockClock();\n', 1)
+          count = text.count('DateTimeOffset.UtcNow')
+          if count < 5:
+              raise SystemExit(f'Expected multiple UtcNow references, found {count}')
+          text = text.replace('DateTimeOffset.UtcNow', 'mockClock.UtcNow')
+          program.write_text(text)
+
+          clock = Path('src/Parkeren.TwoParkMock/MockClock.cs')
+          clock.write_text('''internal sealed class MockClock\n{\n    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;\n}\n''')
+
+          progress = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          p = progress.read_text()
+          old = '''- 🚧 `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald.\n\n## Volgende hoofdfasen\n\n- ✅ Fase E — SCHED-002 free-gap / overnight continuation.\n- 🚧 Fase F — SCHED-009/010 algemene recovery hardening.\n- 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.\n'''
+          new = '''- ✅ `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald; CI groen op commit `0b17d16a` (`fix: resume interrupted provider reconciliation`).\n\n## Fase G — SCHED-016 TwoParkMock + boundary test harness\n\n- 🚧 G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen, nog zonder functionele gedragswijziging.\n\n## Volgende hoofdfasen\n\n- ✅ Fase E — SCHED-002 free-gap / overnight continuation.\n- ✅ Fase F — SCHED-009/010 algemene recovery hardening.\n- 🚧 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.\n'''
+          if old not in p:
+              raise SystemExit('Expected F4/progress block not found')
+          progress.write_text(p.replace(old, new, 1))
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.TwoParkMock/Program.cs src/Parkeren.TwoParkMock/MockClock.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'refactor: centralize twopark mock clock' || exit 0
+          git push
