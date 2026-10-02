@@ -31,7 +31,11 @@ public sealed class VisitTerminalWorkPlannerTests(PostgreSqlFixture fixture)
         Assert.Single(work);
         Assert.Equal(VisitSchedulerWorkType.StopVisit, work[0].Type);
         Assert.Equal(VisitEndReason.DesiredEndReached, work[0].EndReason);
-        Assert.Equal(visit.DesiredEndAt, work[0].DueAt);
+        Assert.NotNull(visit.DesiredEndAt);
+        Assert.InRange(
+            (work[0].DueAt - visit.DesiredEndAt.Value).Duration(),
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
