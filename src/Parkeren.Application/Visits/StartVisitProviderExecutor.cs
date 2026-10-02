@@ -102,12 +102,15 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             var actions = string.IsNullOrWhiteSpace(request.ProductId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(request.ProductId, cancellationToken);
-            var confirmed = actions.SingleOrDefault(x =>
-                x.ProviderActionId == action.ProviderActionId &&
-                string.Equals(x.Status, "active", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(x.LicensePlate, request.LicensePlate, StringComparison.OrdinalIgnoreCase) &&
-                x.Start == preparation.Action.PlannedStartAt &&
-                x.End == preparation.Action.PlannedEndAt);
+            var confirmed = ProviderActionMatchPolicy.FindUniqueMatch(
+                actions,
+                new ProviderActionMatchCriteria(
+                    action.ProviderActionId,
+                    request.ProductId,
+                    request.LicensePlate,
+                    ["active"],
+                    preparation.Action.PlannedStartAt,
+                    preparation.Action.PlannedEndAt));
 
             if (confirmed is null)
             {

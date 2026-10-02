@@ -93,7 +93,9 @@ Aanvullende afspraken:
 - Locationcode versus providerlabel is geen harde identity mismatch.
 - Zonder bekend provider action-id mag fallback alleen één unieke kandidaat accepteren.
 
-- 🚧 Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; callers zijn in deze slice bewust nog niet omgebouwd.
+- ✅ Centrale `ProviderActionMatchPolicy` en gerichte unit tests toegevoegd; CI groen op commit `8ffaa755` (`fix: centralize provider action matching`).
+- 🚧 Directe start-readback en `StartVisitProviderReconciler` aangesloten op de centrale policy; gerichte tests toegevoegd voor kentekennormalisatie en 5-seconden Start/End-tolerance.
+- 🚧 Reconciler behoudt conservatieve execution-evidence-semantiek: plate/start-evidence met gewijzigde end/status wordt niet blind retryable.
 
 ## Volgende hoofdfasen
 

@@ -6,7 +6,6 @@ namespace Parkeren.Application.Visits;
 
 public sealed class StartVisitProviderReconciler(IParkingProvider provider, IProviderStartResultStore resultStore)
 {
-    private static readonly TimeSpan TimestampTolerance = TimeSpan.FromMilliseconds(1);
     public async Task<ProviderAction?> ReconcileAsync(ProviderStartPreparation preparation, string licensePlate, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preparation);
@@ -16,42 +15,39 @@ public sealed class StartVisitProviderReconciler(IParkingProvider provider, IPro
         var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
             : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
-        var candidates = !string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId)
-            ? actions.Where(x =>
-                x.ProviderActionId == preparation.Action.ProviderActionId &&
-                PlatesMatch(x.LicensePlate, licensePlate)).ToArray()
-            : actions.Where(x =>
-                PlatesMatch(x.LicensePlate, licensePlate) &&
-                TimestampsMatch(x.Start, preparation.Action.PlannedStartAt)).ToArray();
 
-        if (candidates.Length == 0)
+        var match = ProviderActionMatchPolicy.FindUniqueMatch(
+            actions,
+            new ProviderActionMatchCriteria(
+                preparation.Action.ProviderActionId,
+                preparation.Action.ProviderProductId,
+                licensePlate,
+                ["active", "scheduled"],
+                preparation.Action.PlannedStartAt,
+                preparation.Action.PlannedEndAt));
+
+        if (match is null)
         {
             if (string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
-                await resultStore.RecordRetryableAsync(preparation, cancellationToken);
+            {
+                // A matching plate/start with a changed end or status is evidence that
+                // the start may have executed. Ambiguous/evidence matches must not trigger a retry.
+                var hasExecutionEvidence = actions.Any(action =>
+                    (string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId) ||
+                     string.Equals(action.ProductId, preparation.Action.ProviderProductId, StringComparison.Ordinal)) &&
+                    ProviderActionMatchPolicy.LicensePlatesMatch(action.LicensePlate, licensePlate) &&
+                    ProviderActionMatchPolicy.TimestampsMatch(action.Start, preparation.Action.PlannedStartAt));
+
+                if (!hasExecutionEvidence)
+                    await resultStore.RecordRetryableAsync(preparation, cancellationToken);
+            }
+
             return null;
         }
 
-        // A matching plate/start with a changed end or status is evidence that
-        // the start may have executed. Ambiguous matches must not trigger a retry.
-        if (candidates.Length != 1 ||
-            !TimestampsMatch(candidates[0].End, preparation.Action.PlannedEndAt) ||
-            (!string.Equals(candidates[0].Status, "active", StringComparison.OrdinalIgnoreCase) &&
-             !string.Equals(candidates[0].Status, "scheduled", StringComparison.OrdinalIgnoreCase)))
-            return null;
-
-        var match = candidates[0];
         preparation.Operation.BeginReconciliation();
         preparation.Action.BeginReconciliation();
         await resultStore.RecordConfirmedAsync(preparation, match, cancellationToken);
         return match;
     }
-
-    private static bool TimestampsMatch(DateTimeOffset left, DateTimeOffset right) =>
-        (left - right).Duration() < TimestampTolerance;
-
-    private static bool PlatesMatch(string providerPlate, string requestedPlate) =>
-        string.Equals(Normalize(providerPlate), Normalize(requestedPlate), StringComparison.Ordinal);
-
-    private static string Normalize(string plate) =>
-        string.Concat(plate.Where(char.IsLetterOrDigit)).ToUpperInvariant();
 }
