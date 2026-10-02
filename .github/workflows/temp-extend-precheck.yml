@@ -1,0 +1,69 @@
+name: temp extend precheck patch
+
+on:
+  push:
+    branches:
+      - scratch/e3-extend-precheck
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/e3-extend-precheck
+          fetch-depth: 0
+      - name: Patch extend precheck semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/Parkeren.Infrastructure/Visits/ProviderExtendResultStore.cs')
+          text = path.read_text()
+          old = '''                var nextDueAt = nextPaid.Start > providerAction.End
+                    ? nextPaid.Start
+                    : ProviderCoverageSchedule.PrecheckAt(providerAction.End);'''
+          new = '''                var nextDueAt = nextPaid.Start > providerAction.End
+                    ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
+                    : ProviderCoverageSchedule.PrecheckAt(providerAction.End);'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one extend dueAt block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs')
+          text = path.read_text()
+          marker = 'public async Task Confirmed_extension_schedules_followup_at_next_paid_window()'
+          start = text.index(marker)
+          end = text.index('\n    [Fact]', start + len(marker))
+          block = text[start:end]
+          old = 'Assert.InRange((work.DueAt - nextPaidStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
+          new = 'Assert.InRange((work.DueAt - nextPaidStart.AddMinutes(-5)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));'
+          if block.count(old) != 1:
+              raise SystemExit(f'Expected one target assertion, found {block.count(old)}')
+          block = block.replace(old, new, 1)
+          path.write_text(text[:start] + block + text[end:])
+
+          path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = path.read_text()
+          anchor = '- ✅ `ProviderStartResultStore` plant na een bevestigde providerstart een later betaald segment eveneens op T-5 van `nextPaid.Start`; aaneengesloten betaald parkeren blijft T-5 van de huidige provider-end gebruiken; implementatie op `9a9511b8` en CI groen na gerichte testfix op `8f8466ae` (`fix: expect free-gap precheck in start test`).'
+          replacement = anchor + '\n- ✅ Startup recovery herbouwt zowel vervolgcoverage na een actieve provideraction als eerste coverage na een gratis periode op T-5 van `nextPaid.Start`; CI groen op commit `9a80e929` (`fix: precheck recovered paid coverage`).\n- 🚧 `ProviderExtendResultStore` plant na een bevestigde extension een later betaald segment op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.'
+          if text.count(anchor) != 1:
+              raise SystemExit(f'Expected one Phase E anchor, found {text.count(anchor)}')
+          path.write_text(text.replace(anchor, replacement, 1))
+          PY
+
+          git diff --check
+          git diff -- src/Parkeren.Infrastructure/Visits/ProviderExtendResultStore.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/ProviderExtendResultStore.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'fix: precheck paid window after provider extend'
+          git push origin HEAD:scratch/e3-extend-precheck
