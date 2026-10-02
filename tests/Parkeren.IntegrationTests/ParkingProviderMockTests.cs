@@ -261,6 +261,48 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_scheduled_action_becomes_active_at_start_boundary()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+        var start = now.AddMinutes(10);
+
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        var provider = new TwoParkMockProvider(http);
+        var created = await provider.StartActionAsync(
+            new ProviderParkingActionRequest("CLOCK1", start, start.AddHours(1), "Oss"), cancellationToken);
+
+        var beforeStart = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+        Assert.Equal("scheduled", beforeStart.Status);
+
+        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 10 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();
+        var atStart = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+        Assert.Equal("active", atStart.Status);
+    }
+
+    [Fact]
+    public async Task Mock_stopped_scheduled_action_stays_stopped_after_start_boundary()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var now = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+        var start = now.AddMinutes(10);
+
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
+        var provider = new TwoParkMockProvider(http);
+        var created = await provider.StartActionAsync(
+            new ProviderParkingActionRequest("CLOCK2", start, start.AddHours(1), "Oss"), cancellationToken);
+        await provider.StopActionAsync(created.ProviderActionId, cancellationToken);
+
+        (await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 15 * 60 * 1000 }, cancellationToken)).EnsureSuccessStatusCode();
+        var action = Assert.Single(await provider.GetActionsAsync(cancellationToken), x => x.ProviderActionId == created.ProviderActionId);
+        Assert.Equal("stopped", action.Status);
+    }
+
+    [Fact]
     public async Task Mock_can_inject_provider_failure()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();

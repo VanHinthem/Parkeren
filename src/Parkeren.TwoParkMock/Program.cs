@@ -43,6 +43,21 @@ static IReadOnlyCollection<MockParkingAction> LoadPersistedActions(string? path)
     return JsonSerializer.Deserialize<MockParkingAction[]>(json) ?? Array.Empty<MockParkingAction>();
 }
 
+static MockParkingAction WithObservableStatus(MockParkingAction action, DateTimeOffset now)
+{
+    if (string.Equals(action.Status, "stopped", StringComparison.OrdinalIgnoreCase))
+        return action;
+
+    if (now < action.Start)
+        return action.Status == "scheduled" ? action : action with { Status = "scheduled" };
+
+    if (now < action.End)
+        return action.Status == "active" ? action : action with { Status = "active" };
+
+    // Post-End provider semantics are intentionally not inferred until live 2Park behavior is known.
+    return action;
+}
+
 var maxConcurrentActions = 5;
 var maxActionDuration = TimeSpan.FromHours(4);
 const string defaultProductId = "visitor";
@@ -89,8 +104,10 @@ app.MapGet("/api/actions", (string? productId) =>
     if (!products.Any(x => x.Id == selectedProductId))
         return Results.NotFound();
 
+    var now = mockClock.UtcNow;
     return Results.Ok(actions.Values
-        .Where(x => x.ProductId == selectedProductId && mockClock.UtcNow >= x.VisibleAt)
+        .Where(x => x.ProductId == selectedProductId && now >= x.VisibleAt)
+        .Select(x => WithObservableStatus(x, now))
         .OrderBy(x => x.Start));
 });
 

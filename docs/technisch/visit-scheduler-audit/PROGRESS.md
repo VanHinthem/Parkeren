@@ -148,7 +148,8 @@ Aanvullende afspraken:
 ## Fase G — SCHED-016 TwoParkMock + boundary test harness
 
 - ✅ G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen; CI groen op commit `8b0f09e5` (`refactor: centralize twopark mock clock`).
-- 🚧 G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok.
+- ✅ G2: test-endpoints kunnen de mockklok deterministisch zetten, vooruitzetten en terugzetten naar realtime; `/api/test/reset` reset ook de klok; CI groen op commit `08b6cb3f` (`feat: add twopark mock clock control`).
+- 🚧 G3: provider read-back leidt `scheduled -> active` af uit de mockklok; expliciet `stopped` blijft terminal en post-End gedrag wordt niet automatisch ingevuld.
 
 ## Volgende hoofdfasen
 
