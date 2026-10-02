@@ -139,8 +139,6 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
         if (conflictingMutation)
             throw new InvalidOperationException("Another provider mutation is in progress or requires reconciliation.");
 
-        if (previous.PlannedEndAt > DateTimeOffset.UtcNow)
-            throw new InvalidOperationException("A new provider action cannot start before the preceding action ends.");
         if (await dbContext.ProviderParkingActions.AnyAsync(
                 x => x.VisitId == persistedVisit.Id && x.Id != previous.Id &&
                      x.PlannedStartAt >= previous.PlannedEndAt, cancellationToken))

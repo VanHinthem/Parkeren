@@ -113,9 +113,9 @@ Aanvullende afspraken:
 
 ### D1/D2 — future continuation en scheduled providerstart
 
-- 🚧 Directe start-readback accepteert naast `active` ook `scheduled` als geldige bevestigde providerstatus, met dezelfde centrale identity- en timestampcriteria. Gerichte unit test toegevoegd voor een future scheduled action.
-- 📋 `ProviderContinuationStartStore.PrepareAttemptAsync` vanaf het T-5 JIT-venster laten voorbereiden zonder te eisen dat de predecessor al geëindigd is.
-- 📋 Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde` en maximaal één scheduled successor per Visit.
+- ✅ Directe start-readback accepteert naast `active` ook `scheduled` als geldige bevestigde providerstatus, met dezelfde centrale identity- en timestampcriteria; CI groen op commit `89fba047` (`fix: accept scheduled provider starts`).
+- 🚧 `ProviderContinuationStartStore.PrepareAttemptAsync` accepteert een nog actieve predecessor vóór diens eindgrens, zodat T-5 geen exception/retry-polling meer vereist. PostgreSQL-integratietest toegevoegd met circa vier minuten resterende predecessortijd.
+- ✅ Successor blijft `PlannedStartAt = predecessor.PlannedEndAt + 1 seconde`; de bestaande guard tegen een latere provideraction blijft de single-successor invariant bewaken.
 
 ## Volgende hoofdfasen
 
