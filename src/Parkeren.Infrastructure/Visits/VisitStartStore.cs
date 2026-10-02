@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -13,6 +14,10 @@ internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStart
 
         if (visit.Status == VisitStatus.Active)
         {
+            var terminalRuleSets = await LoadTerminalRuleSetsAsync(visit, cancellationToken);
+            await new VisitTerminalWorkPlanner(dbContext)
+                .EnsureAsync(visit, terminalRuleSets, cancellationToken);
+
             var longVisitWarningAfter = await dbContext.ParkingSystemSettings
                 .AsNoTracking()
                 .Select(x => x.LongVisitWarningAfter)
@@ -50,4 +55,16 @@ internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStart
         }
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    private Task<List<ParkingRuleSet>> LoadTerminalRuleSetsAsync(
+        Visit visit,
+        CancellationToken cancellationToken) =>
+        dbContext.ParkingRuleSets
+            .Include(x => x.PaidWindows)
+            .Include(x => x.CalendarExceptions)
+            .Where(x =>
+                (visit.ProviderProductId == null || x.ProviderProductId == visit.ProviderProductId) &&
+                (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
 }
