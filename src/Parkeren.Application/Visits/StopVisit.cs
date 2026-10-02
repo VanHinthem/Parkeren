@@ -2,7 +2,11 @@ using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Visits;
 
-public sealed record StopVisitCommand(Guid OperationId, Guid VisitId, Guid ActorUserId);
+public sealed record StopVisitCommand(
+    Guid OperationId,
+    Guid VisitId,
+    Guid ActorUserId,
+    VisitEndReason? EndReason = null);
 public sealed record StopVisitContext(StopVisitActor Actor, Visit Visit);
 
 public static class StopVisitPreconditions

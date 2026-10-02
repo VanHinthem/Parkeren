@@ -49,11 +49,18 @@ Besluit defer-delay voor V1: tijdelijk niet-uitvoerbaar schedulerwork wordt stan
 
 ### B3 — terminal scheduler work
 
-- 🚧 `VisitSchedulerWork.EndReason` toegevoegd; alleen `StopVisit` work mag een eindreden dragen.
-- 🚧 `VisitTerminalWorkPlanner.EnsureAsync` bewaakt idempotent precies één actuele terminale Stop-taak en vervangt alleen pending obsolete work.
-- 🚧 Claimed terminal work wordt nooit stil vervangen.
-- 🚧 Domein- en PostgreSQL-integratietests toegevoegd voor metadata, idempotentie, replacement en claimed conflict.
-- 📋 Na groen: terminal planning aansluiten op Visit start en end-time change.
+- ✅ `VisitSchedulerWork.EndReason` toegevoegd; alleen `StopVisit` work mag een eindreden dragen.
+- ✅ `VisitTerminalWorkPlanner.EnsureAsync` bewaakt idempotent precies één actuele terminale Stop-taak en vervangt alleen pending obsolete work.
+- ✅ Claimed terminal work wordt nooit stil vervangen.
+- ✅ Domein- en PostgreSQL-integratietests toegevoegd voor metadata, idempotentie, replacement en claimed conflict.
+- ✅ Terminal planning aangesloten op Visit start en `DesiredEndAt`-wijzigingen; oude ad-hoc StopVisit-planning verwijderd.
+- ✅ CI groen op commit `8d358ada` na fixture- en PostgreSQL timestamp-precisiefixes.
+
+### B4 — terminal stop execution en finalization
+
+- 🚧 `StopVisitCommand` kan een expliciete `VisitEndReason` dragen; ontbrekende reden blijft compatibel en betekent `ManualStop`.
+- 🚧 `PostgresStopVisitClaimer` gebruikt de expliciete eindreden bij de overgang naar `Stopping`.
+- 📋 Volgende stap: terminale scheduler-work geeft `EndReason` door en gebruikt bij automatische beëindiging de functionele boundary als `ActualEndAt`.
 
 ## Volgende hoofdfasen
 
