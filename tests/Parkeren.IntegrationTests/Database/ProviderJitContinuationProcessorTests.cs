@@ -35,14 +35,13 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"jit-processor-{suffix}", $"JIT-PROCESSOR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"JP-{suffix[..2]}-{suffix[2..4]}", $"JP{suffix[..4]}", null);
-        var product = new ParkingProviderProduct(
-            Guid.NewGuid(),
-            "visitor",
-            "JIT visitor product",
-            null,
-            null,
-            "Oss",
-            now);
+        ParkingProviderProduct product;
+        await using (var productContext = fixture.CreateDbContext())
+        {
+            product = await productContext.ParkingProviderProducts
+                .AsNoTracking()
+                .SingleAsync(x => x.ProviderProductId == "visitor", cancellationToken);
+        }
         var visit = new Visit(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -88,7 +87,6 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
-            seedContext.ParkingProviderProducts.Add(product);
             seedContext.Visits.Add(visit);
             seedContext.ProviderParkingActions.Add(predecessor);
             seedContext.VisitSchedulerWork.Add(work);
@@ -194,9 +192,6 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.ParkingRuleSets
                 .Where(x => x.Id == ruleSet.Id)
-                .ExecuteDeleteAsync(cancellationToken);
-            await cleanupContext.ParkingProviderProducts
-                .Where(x => x.Id == product.Id)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.Vehicles
                 .Where(x => x.Id == vehicle.Id)
