@@ -1,36 +1,46 @@
 # SCHED-007 — `MaxPaidParkingDuration` grens
 
-**Status:** ⚠️ Audit afgerond; grensberekening goed, lifecycle-afronding niet  
-**Prioriteit:** hoog via SCHED-013
+**Status:** ✅ Opnieuw geverifieerd na terminal lifecycle-hardening  
+**Prioriteit:** hoog  
 
 ## Gewenste invariant
 
-De totale betaalde tijd binnen één Visit mag de snapshotwaarde `MaxPaidParkingDuration` nooit overschrijden. Gratis tijd telt niet mee. Zodra de maximale betaalde duur is bereikt, mag geen nieuwe providerdekking worden gestart en moet de Visit-lifecycle naar een geldige eindtoestand bewegen.
+De totale betaalde tijd binnen één Visit mag de snapshotwaarde `MaxPaidParkingDuration` nooit overschrijden. Gratis tijd telt niet mee. Zodra de maximale betaalde duur is bereikt, mag geen nieuwe providerdekking worden gestart en moet de Visit via de normale terminale lifecycle worden afgerond.
 
-## As-built gedrag
+## Huidig as-built gedrag
 
-De processor berekent betaalde tijd met de geldige versioned rulesets. Hij vergelijkt zowel `paidThroughNow` als `paidThroughDesiredEnd` met de policygrens en gebruikt `FindPaidDurationBoundary` wanneer het gewenste planningsvenster de grens overschrijdt.
+`VisitTerminalBoundaryCalculator` berekent de functionele grens uit de versioned parkeerregels en het immutable policy-snapshot. Voor `MaxPaidParkingDuration` wordt uitsluitend betaalde tijd opgeteld; gratis perioden en overnight gaps tellen niet mee.
 
-Daarmee wordt vervolgdekking correct afgekapt. De scheduler start niet bewust een nieuwe action voorbij de berekende betaalde-grens.
+Wanneer de paid-limit de vroegste functionele grens is, levert de calculator:
 
-## Bevinding
+- `At =` het exacte instant waarop de maximale betaalde duur is verbruikt;
+- `Reason = VisitEndReason.MaxPaidParkingDurationReached`.
 
-Wanneer de grens is bereikt, wordt continuation-work `Completed`, maar er is in dit pad geen normale Visit-finalization. Hetzelfde probleem geldt wanneer het laatste providersegment precies op de betaalde limiet eindigt.
+`VisitTerminalWorkPlanner` bewaakt vervolgens durable, idempotent `StopVisit`-work op die grens. De gewone continuationplanning blijft dezelfde harde grens respecteren en start geen providerdekking voorbij de terminal boundary.
 
-De limiet wordt dus gebruikt als **provider-planningsgrens**, maar niet volledig als **Visit-lifecyclegrens**. Dit is onderdeel van [SCHED-013](SCHED-013.md).
+Bij uitvoering van terminal `StopVisit` wordt de Visit via dezelfde Stop/finalization-flow afgerond als andere automatische eindredenen. De functionele `ActualEndAt` komt uit de `DueAt` van de terminale scheduler-work en niet uit een latere wall-clock uitvoertijd.
 
-## Positief
+Startup recovery herberekent de terminal boundary en herbouwt ontbrekende of obsolete pending terminal work voordat de scheduler-loop wordt vrijgegeven.
 
-- paid-time wordt gesegmenteerd; gratis perioden tellen niet mee;
-- de policy is een immutable Visit-snapshot;
-- de boundary wordt vóór volgende continuation opnieuw berekend;
-- `MaxProviderActionDuration` blijft gescheiden van `MaxPaidParkingDuration`.
+## Regressiebewijs
 
-## Onduidelijkheden / open vragen
+De huidige tests bewijzen gezamenlijk:
 
-1. Moet het bereiken van `MaxPaidParkingDuration` functioneel dezelfde stop/finalization-flow gebruiken als een expliciete eindtijd, of een aparte automatische eindreden krijgen?
-2. Welke `ActualEndAt` moet gelden wanneer de betaalde grens samenvalt met een gratis periode of provideractiongrens?
+- `VisitTerminalBoundaryCalculatorTests` dekken de paid-duration boundary en `MaxPaidParkingDurationReached`;
+- paid-time calculator/segmenter tests bewijzen dat gratis perioden niet meetellen;
+- `VisitSchedulerWorkTests` bewijzen dat terminal Stop-work de eindreden persistent kan dragen;
+- `VisitTerminalWorkPlannerTests` dekken idempotentie, replacement en claimed-conflict;
+- `VisitTerminalStopExecutionTests` bewijzen dat terminal Stop-work de Visit daadwerkelijk `Completed` maakt en de functionele boundary als `ActualEndAt` bewaart;
+- `VisitTerminalRecoveryTests` bewijzen herstel van ontbrekende/verouderde terminal work na restart.
+
+De terminale uitvoeringsflow is niet afhankelijk van een specifieke automatische eindreden; dezelfde persistente reason wordt van work naar Stop-claim en finalization doorgegeven.
+
+## Relaties
+
+- [SCHED-013](SCHED-013.md): centrale terminale Visit lifecycle en eindredenen.
+- [SCHED-002](SCHED-002.md): gratis/overnight perioden blijven uitgesloten van betaalde tijd.
+- [SCHED-008](SCHED-008.md): elapsed-duration is een onafhankelijke harde grens.
 
 ## Conclusie
 
-De rekenkundige begrenzing ziet er correct uit. De ontbrekende overgang naar een terminale Visitstatus is het relevante betrouwbaarheidsprobleem en wordt centraal behandeld in SCHED-013.
+Het oorspronkelijke lifecycle-gat is door fase B opgelost. `MaxPaidParkingDuration` is niet langer alleen een provider-planningsgrens, maar een duurzame functionele Visitgrens met expliciete eindreden, terminal Stop-work, correcte finalization en restart recovery. Er resteert geen zelfstandig SCHED-007-gat.

@@ -1,35 +1,51 @@
 # SCHED-008 — `MaxVisitElapsedDuration` grens
 
-**Status:** ⚠️ Audit afgerond; planning wordt begrensd, Visit-afronding ontbreekt  
-**Prioriteit:** hoog via SCHED-013
+**Status:** ✅ Opnieuw geverifieerd na terminal lifecycle-hardening  
+**Prioriteit:** hoog  
 
 ## Gewenste invariant
 
 Een Visit met `MaxVisitElapsedDuration` mag nooit voorbij `Visit.StartAt + MaxVisitElapsedDuration` doorlopen, ongeacht gratis perioden, extensions of rolling-horizon-logica.
 
-## As-built gedrag
+## Huidig as-built gedrag
 
-`ProviderCoverageSchedule.PlanningEndAt` gebruikt bij een open-ended Visit met een elapsed-limiet direct `Visit.StartAt + MaxVisitElapsedDuration`. De schedulerprocessor clampet `desiredEndAt` nogmaals op dezelfde harde grens en maakt geen vervolgdekking wanneer die grens bereikt is.
+`VisitTerminalBoundaryCalculator` berekent de elapsed-grens rechtstreeks als:
 
-De start- en end-time validation gebruiken eveneens het policy-snapshot, zodat een gewone expliciete verlenging de elapsed-grens niet mag overschrijden.
+`Visit.StartAt + MaxVisitElapsedDuration`.
 
-## Bevinding
+Wanneer dit de vroegste functionele grens is, levert de calculator:
 
-Zoals bij `MaxPaidParkingDuration` stopt de providerplanning wel, maar de scheduler maakt de Visit niet automatisch terminal wanneer de elapsed-grens wordt bereikt. In de productiecode is `Visit.Complete(...)` gekoppeld aan de duurzame Stop Visit-finalization; een normale harde elapsed-boundary doorloopt die flow niet vanzelf.
+- `At =` de harde elapsed-boundary;
+- `Reason = VisitEndReason.MaxVisitElapsedDurationReached`.
 
-Dit is geen aparte rekenfout maar een lifecycleprobleem; zie [SCHED-013](SCHED-013.md).
+Deze grens is gebaseerd op de oorspronkelijke `Visit.StartAt`; verlengen of gratis tijd reset de elapsed-klok niet. Het policy-snapshot blijft immutable voor de actieve Visit.
 
-## Positieve beschermingen
+`VisitTerminalWorkPlanner` bewaakt durable, idempotent `StopVisit`-work op deze grens. De coverageplanning gebruikt dezelfde harde limit en plant geen providerdekking voorbij de terminal boundary.
 
-- de grens is gebaseerd op de oorspronkelijke `Visit.StartAt`; verlengen reset hem niet;
-- de snapshot voorkomt dat latere policywijzigingen de actieve Visit stilzwijgend veranderen;
-- continuation wordt niet bewust voorbij de harde grens gepland.
+Bij uitvoering van terminal `StopVisit` wordt de Visit via de centrale Stop/finalization-flow afgerond. De functionele `ActualEndAt` wordt uit de `DueAt` van de terminale work genomen, zodat een late scheduler-uitvoering de functionele eindtijd niet verschuift.
 
-## Onduidelijkheden / open vragen
+Startup recovery herberekent de terminal boundary en herbouwt ontbrekende of obsolete pending terminal work voordat schedulerclaims weer plaatsvinden.
 
-1. Moet een elapsed-policygrens een eigen automatische stopreden/auditveld krijgen?
-2. Moet de automatische terminale flow enkele minuten vóór de harde grens al voorbereiden wanneer nog een actieve provideraction bestaat, of volstaat een durable stop op exact de grens?
+## Regressiebewijs
+
+De huidige tests bewijzen gezamenlijk:
+
+- `VisitTerminalBoundaryCalculatorTests` dekken elapsed als vroegste grens en de tie-break met andere boundaries;
+- `VisitDurationPolicyValidatorTests` bewijzen dat gratis tijd de elapsed-limiet niet omzeilt;
+- start/end-time validatie voorkomt gewone wijzigingen voorbij de snapshotlimit;
+- `VisitSchedulerWorkTests` bewijzen dat terminal Stop-work de eindreden persistent draagt;
+- `VisitTerminalWorkPlannerTests` dekken idempotentie, replacement en claimed-conflict;
+- `VisitTerminalStopExecutionTests` bewijzen daadwerkelijke `Completed`-finalization op de functionele boundary;
+- `VisitTerminalRecoveryTests` bewijzen restart-herstel van terminal work.
+
+De terminale uitvoeringsflow is reason-agnostisch: `MaxVisitElapsedDurationReached` volgt hetzelfde persistente work → Stop-claim → finalization-pad als andere automatische eindredenen.
+
+## Relaties
+
+- [SCHED-013](SCHED-013.md): centrale terminale Visit lifecycle en eindredenen.
+- [SCHED-006](SCHED-006.md): rolling horizon geldt alleen wanneer geen eerdere harde Visitgrens bestaat.
+- [SCHED-007](SCHED-007.md): paid-duration is een onafhankelijke harde grens.
 
 ## Conclusie
 
-De tijdgrens wordt in planning correct gerespecteerd, maar zonder betrouwbare Visit-finalization blijft een Visit lokaal capaciteit bezetten nadat de policygrens is verstreken. Oplossen via het gedeelde lifecycle-ontwerp van SCHED-013.
+Het oorspronkelijke lifecycle-gat is door fase B opgelost. `MaxVisitElapsedDuration` is nu een duurzame functionele Visitgrens met expliciete eindreden, terminal Stop-work, correcte boundary-finalization en restart recovery. Er resteert geen zelfstandig SCHED-008-gat.
