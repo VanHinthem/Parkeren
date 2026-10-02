@@ -222,6 +222,45 @@ public sealed class ParkingProviderMockTests
     }
 
     [Fact]
+    public async Task Mock_clock_can_be_set_advanced_and_reset()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixedNow = new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+
+        var set = await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = fixedNow }, cancellationToken);
+        set.EnsureSuccessStatusCode();
+        var balanceAtSet = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+        Assert.Equal(fixedNow, balanceAtSet!.RetrievedAt);
+
+        var advance = await http.PostAsJsonAsync("api/test/clock/advance", new { Milliseconds = 90_000 }, cancellationToken);
+        advance.EnsureSuccessStatusCode();
+        var balanceAfterAdvance = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+        Assert.Equal(fixedNow.AddSeconds(90), balanceAfterAdvance!.RetrievedAt);
+
+        var reset = await http.PostAsync("api/test/clock/reset", null, cancellationToken);
+        reset.EnsureSuccessStatusCode();
+        var balanceAfterReset = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+        Assert.InRange(balanceAfterReset!.RetrievedAt, DateTimeOffset.UtcNow.AddSeconds(-5), DateTimeOffset.UtcNow.AddSeconds(5));
+    }
+
+    [Fact]
+    public async Task Mock_reset_also_resets_clock_to_realtime()
+    {
+        await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
+        using var http = factory.CreateClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixedNow = new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = fixedNow }, cancellationToken)).EnsureSuccessStatusCode();
+        (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
+
+        var balance = await http.GetFromJsonAsync<MockBalanceResponse>("api/balance", cancellationToken);
+        Assert.InRange(balance!.RetrievedAt, DateTimeOffset.UtcNow.AddSeconds(-5), DateTimeOffset.UtcNow.AddSeconds(5));
+    }
+
+    [Fact]
     public async Task Mock_can_inject_provider_failure()
     {
         await using var factory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
@@ -236,3 +275,6 @@ public sealed class ParkingProviderMockTests
             new ProviderParkingActionRequest("TK01HF", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), "Oss"), cancellationToken));
     }
 }
+
+
+internal sealed record MockBalanceResponse(int RemainingPaidMinutes, DateTimeOffset RetrievedAt);

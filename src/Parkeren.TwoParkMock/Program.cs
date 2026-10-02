@@ -228,6 +228,26 @@ app.MapPost("/api/test/capacity", (MockCapacityRequest request) =>
     return Results.NoContent();
 });
 
+app.MapPost("/api/test/clock/set", (MockClockSetRequest request) =>
+{
+    mockClock.Set(request.UtcNow);
+    return Results.Ok(new { utcNow = mockClock.UtcNow });
+});
+
+app.MapPost("/api/test/clock/advance", (MockClockAdvanceRequest request) =>
+{
+    if (request.Milliseconds < 0)
+        return Results.BadRequest(new { error = "Clock advance must be non-negative." });
+    mockClock.Advance(TimeSpan.FromMilliseconds(request.Milliseconds));
+    return Results.Ok(new { utcNow = mockClock.UtcNow });
+});
+
+app.MapPost("/api/test/clock/reset", () =>
+{
+    mockClock.Reset();
+    return Results.Ok(new { utcNow = mockClock.UtcNow });
+});
+
 app.MapPost("/api/test/reset", async () =>
 {
     actions.Clear();
@@ -242,6 +262,7 @@ app.MapPost("/api/test/reset", async () =>
     forcedValidationError = false;
     rejectDuplicateActiveActions = false;
     omitCreatedActionBody = false;
+    mockClock.Reset();
     await PersistActionsAsync();
     return Results.NoContent();
 });
@@ -333,6 +354,9 @@ public sealed class MockUnknownOutcomeState
         return true;
     }
 }
+
+public sealed record MockClockSetRequest(DateTimeOffset UtcNow);
+public sealed record MockClockAdvanceRequest(double Milliseconds);
 
 public sealed record MockCapacityRequest(int MaxConcurrentActions);
 
