@@ -1,3 +1,4 @@
+using Xunit;
 using Parkeren.Domain.Visits;
 
 namespace Parkeren.Domain.Tests;
