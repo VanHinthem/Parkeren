@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Policies;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
@@ -34,6 +35,14 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"jit-processor-{suffix}", $"JIT-PROCESSOR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"JP-{suffix[..2]}-{suffix[2..4]}", $"JP{suffix[..4]}", null);
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(),
+            "visitor",
+            "JIT visitor product",
+            null,
+            null,
+            "Oss",
+            now);
         var visit = new Visit(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -42,16 +51,19 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             user.Id,
             startAt,
             desiredEndAt,
-            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true),
+            product.Id,
+            product.ProviderProductId,
+            product.Location);
         visit.Activate();
 
         var remotePredecessor = await parkingProvider.StartActionAsync(
-            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, boundary, "Oss"),
+            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, boundary, "Oss", product.ProviderProductId),
             cancellationToken);
         Assert.Equal("active", remotePredecessor.Status, ignoreCase: true);
 
         var predecessor = new Parkeren.Domain.Visits.ProviderParkingAction(
-            Guid.NewGuid(), visit.Id, startAt, boundary);
+            Guid.NewGuid(), visit.Id, startAt, boundary, product.ProviderProductId, product.Location);
         predecessor.MarkStarting();
         predecessor.MarkActive(remotePredecessor.ProviderActionId, startAt, remotePredecessor.Status);
 
@@ -70,11 +82,13 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             Enumerable.Range(0, 7)
                 .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
                 .ToArray());
+        ruleSet.AssignProviderProduct(product.Id);
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
+            seedContext.ParkingProviderProducts.Add(product);
             seedContext.Visits.Add(visit);
             seedContext.ProviderParkingActions.Add(predecessor);
             seedContext.VisitSchedulerWork.Add(work);
@@ -126,7 +140,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
             }
 
-            var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
+            var remoteActions = await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken);
             Assert.Equal(2, remoteActions.Count);
             Assert.Single(remoteActions, action =>
                 action.ProviderActionId != remotePredecessor.ProviderActionId &&
@@ -161,7 +175,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 (await replayVerifyContext.VisitSchedulerWork.SingleAsync(
                     x => x.Id == duplicateWork.Id,
                     cancellationToken)).Status);
-            Assert.Equal(2, (await parkingProvider.GetActionsAsync(cancellationToken)).Count);
+            Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
         }
         finally
         {
@@ -180,6 +194,9 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.ParkingRuleSets
                 .Where(x => x.Id == ruleSet.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.ParkingProviderProducts
+                .Where(x => x.Id == product.Id)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.Vehicles
                 .Where(x => x.Id == vehicle.Id)
