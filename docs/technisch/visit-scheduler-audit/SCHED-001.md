@@ -1,30 +1,17 @@
-# Visit scheduler — betrouwbaarheidsaudit
+# SCHED-001 — T-5 en aansluitende StartNewAction
 
-**Status:** in uitvoering  
-**Start audit:** 2 oktober 2026
+**Status:** ⚠️ Bevinding bevestigd  
+**Prioriteit:** hoog  
+**Scenario:** betaald parkeren met opvolgende provideraction  
+**Datum bevinding:** 2 oktober 2026
 
-Dit document toetst de actuele schedulerimplementatie op `main` scenario voor scenario. De functionele en technische schedulerdocumentatie beschrijven wat het systeem doet; dit document beoordeelt vervolgens of de implementatie de gewenste invarianten betrouwbaar afdwingt.
+## Samenvatting
 
-Er wordt tijdens de audit niet stilzwijgend gerefactord. Eerst wordt gedrag bewezen, testdekking vastgesteld en een bevinding vastgelegd. Pas daarna wordt besloten of de implementatie moet wijzigen.
+De huidige scheduler plant continuation-work correct op **T-5** voor een aaneengesloten betaald segment, maar `ProviderContinuationStartStore.PrepareAttemptAsync(...)` weigert vervolgens de opvolgende `StartNewAction` zolang de voorgaande provideraction nog niet is afgelopen.
 
-## Auditmethode
+Daardoor is T-5 in de actuele implementatie geen moment waarop een successor veilig vooraf wordt gepland. Het is feitelijk het begin van een exception/retry-cyclus richting de providergrens.
 
-Per scenario beoordelen we:
-
-1. gewenste functionele invariant;
-2. daadwerkelijke codeflow;
-3. persistente state en locks;
-4. providergrens en idempotency;
-5. gedrag bij fout/crash/restart;
-6. bestaande geautomatiseerde tests;
-7. ontbrekende testdekking;
-8. conclusie en eventuele vervolgactie.
-
-## Scenario 1 — betaald parkeren met opvolgende provideraction
-
-### Scope
-
-Baseline-flow:
+## Baseline-scenario
 
 ```text
 Visit starten tijdens betaald parkeren
@@ -44,7 +31,7 @@ Continuation = StartNewAction
 MaxProviderActionDuration = 4 uur
 ```
 
-### Gewenste invarianten
+## Gewenste invarianten
 
 1. Een geldige actieve Visit behoudt providerdekking gedurende ieder betaald segment zolang `DesiredEndAt` en policygrenzen dat vereisen.
 2. Er ontstaat nooit ongecontroleerde overlap tussen provideractions.
@@ -65,8 +52,6 @@ MaxProviderActionDuration = 4 uur
 - wordt een persistente Start `ProviderOperation` plus `ProviderParkingAction` voorbereid;
 - voert `StartVisitProviderExecutor` de provider-call uit;
 - wordt de Visit na bevestigde start `Active`.
-
-De startflow is daarmee persistent/idempotent opgezet en koppelt providerstate aan lokale Visit/action-state.
 
 ### 2. Planning continuation-work
 
@@ -91,15 +76,13 @@ Wanneer `DueAt` is bereikt:
 - alleen `Active + Healthy` wordt geclaimd;
 - daarna wordt het item `Claimed`.
 
-Dit beschermt tegen dubbel claimen tussen workerinstanties en serialiseert schedulerclaims met Visit-mutaties die dezelfde advisory lock gebruiken.
-
 ### 4. Processor op T-5
 
 `VisitSchedulerWorkProcessor`:
 
 1. leest de actuele/scheduled provideraction;
 2. berekent opnieuw `PrecheckAt(latestAction.PlannedEndAt)`;
-3. controleert de functionele eindgrenzen en betaald-tijdbeleid;
+3. controleert functionele eindgrenzen en betaald-tijdbeleid;
 4. bepaalt het volgende betaalde segment;
 5. leest voor `StartNewAction` de huidige action opnieuw bij de provider;
 6. vereist dat deze nog `active` is en dezelfde eindtijd heeft;
@@ -107,16 +90,11 @@ Dit beschermt tegen dubbel claimen tussen workerinstanties en serialiseert sched
 
 Tot dit punt past de flow bij de bedoeling van een JIT precheck.
 
-## Bevinding SCHED-001 — T-5 en StartNewAction spreken elkaar tegen
-
-**Status:** bevestigd  
-**Prioriteit voor vervolgonderzoek:** hoog
-
-### Codegedrag
+## Bewezen inconsistentie
 
 Na de T-5 precheck roept de processor voor Oss `ProviderContinuationStartStore.PrepareAttemptAsync(...)` aan.
 
-Deze store weigert echter een nieuwe continuation zolang de voorgaande provideraction nog niet is afgelopen:
+Deze store weigert een nieuwe continuation zolang de voorgaande provideraction nog niet is afgelopen:
 
 ```text
 if previous.PlannedEndAt > UtcNow
@@ -145,13 +123,7 @@ T-1: hetzelfde
 rond T: pas wanneer PlannedEndAt <= UtcNow kan PrepareAttemptAsync doorgaan
 ```
 
-### Functionele betekenis
-
-Daarmee is T-5 momenteel **geen moment waarop de opvolgende provideraction alvast veilig wordt gepland**. Het is feitelijk het begin van een exception-gedreven pollingcyclus richting de actiongrens.
-
-Dat wijkt af van de functionele/technische bedoeling die tot nu toe aan T-5 is gekoppeld: vroeg providerstate valideren en de opvolgende dekking JIT voorbereiden.
-
-### Betrouwbaarheidsimpact
+## Betrouwbaarheidsimpact
 
 De continuation wordt rond de providergrens afhankelijk van:
 
@@ -161,24 +133,24 @@ De continuation wordt rond de providergrens afhankelijk van:
 - provider-latency;
 - eventuele tijdelijke storing precies rond `PlannedEndAt`.
 
-De nieuwe lokale action gebruikt wel `previous.PlannedEndAt + 1 seconde` als gewenste provider-starttijd, maar de externe start-call wordt pas ná het verstrijken van de vorige actiongrens uitgevoerd.
+De nieuwe lokale action gebruikt wel `previous.PlannedEndAt + 1 seconde` als gewenste provider-starttijd, maar de externe start-call wordt pas na het verstrijken van de vorige actiongrens uitgevoerd.
 
-We moeten bij de vervolgaudit daarom expliciet bewijzen hoe 2Park omgaat met een requested starttijd die op het moment van de call al enkele seconden in het verleden kan liggen. Zonder dat bewijs kan niet worden aangenomen dat betaalde providerdekking gegarandeerd naadloos is.
+Daarom is nog niet bewezen dat betaalde providerdekking naadloos blijft wanneer de provider-call enkele seconden of langer na de geplande successor-start plaatsvindt.
 
-### Positieve beschermingen die wel aanwezig zijn
+## Positieve beschermingen
 
 Deze bevinding betekent niet dat de hele continuationflow onveilig is. De volgende beschermingen zijn aanwezig:
 
 - schedulerwork wordt persistent opgeslagen;
 - claiming gebruikt `FOR UPDATE SKIP LOCKED`;
-- dezelfde Visit advisory lock wordt gebruikt bij relevante mutaties;
+- relevante mutaties gebruiken dezelfde Visit advisory lock;
 - `work.Id` is de stabiele operation-id voor continuation;
-- `ProviderOperation` voorkomt dat een retry stilzwijgend als een volledig nieuwe onafhankelijke mutatie wordt behandeld;
+- `ProviderOperation` bewaakt provider-mutatie/idempotency;
 - vóór StartNewAction wordt de voorgaande provideraction opnieuw remote gecontroleerd;
 - unknown providerresultaten gaan naar reconciliation;
 - een bevestigde continuation plant indien nodig opnieuw schedulerwork voor de volgende grens.
 
-### Bestaande testdekking
+## Bestaande testdekking
 
 Gevonden dekking bewijst onder andere:
 
@@ -189,45 +161,46 @@ Gevonden dekking bewijst onder andere:
 - continuation operations worden als `ContinueStart` en `Succeeded` opgeslagen;
 - recovery/unknown-result flows hebben afzonderlijke dekking.
 
-### Ontbrekend baseline-bewijs
+## Ontbrekend bewijs
 
-Tijdens deze audit is nog geen geautomatiseerde end-to-end/integratietest gevonden die de volledige tijdsflow bewijst:
+Nog niet aangetoond is de volledige tijdsflow:
 
 ```text
 T-5 work claimen
 -> StartNewAction continuation verwerken terwijl predecessor nog actief is
--> geen exception/retry polling
--> successor vooraf/scheduled bij provider
+-> successor veilig vooraf/scheduled bij provider
 -> grens passeren
 -> successor actief
 -> ononderbroken betaalde dekking
 ```
 
-De huidige code kan deze flow in deze vorm bovendien niet uitvoeren, omdat `PrepareAttemptAsync` vóór `previous.PlannedEndAt` expliciet weigert.
+De huidige code kan deze flow in deze vorm niet uitvoeren, omdat `PrepareAttemptAsync` vóór `previous.PlannedEndAt` expliciet weigert.
 
-## Voorlopige conclusie scenario 1
+## Open beslispunt
 
-De baseline heeft goede persistente bouwstenen voor locking, operation-idempotency en recovery, maar de feitelijke timing van `StartNewAction` verdient **nog geen betrouwbaarheidsvink**.
+Voor een fix moet eerst het echte 2Park-contract worden vastgesteld:
 
-De kernvraag voor de volgende stap is niet direct “hoe repareren we dit?”, maar eerst:
+> Kan/moet een opvolgende action op T-5 al als scheduled provideraction worden aangemaakt met een starttijd direct na de predecessor, of moet de Start-call pas na het eindmoment van de predecessor worden uitgevoerd?
 
-> Wat is de gewenste en door 2Park ondersteunde semantiek voor een successor: moet deze op T-5 als scheduled action worden aangemaakt, of pas exact na het eindmoment van de predecessor?
+Relevante eerdere live bevindingen:
 
-Dat moet worden gekoppeld aan de al uitgevoerde echte 2Park-tests (`startInMinutes=5` werkte en overlap werd door 2Park geweigerd). Daarna kunnen we bepalen welke codeflow en testmatrix de juiste is.
+- `startInMinutes=5` werkte;
+- overlap werd door 2Park geweigerd;
+- een aansluitende scheduled action na de eerste action is eerder succesvol getest.
 
-## Auditbacklog
+Deze providersemantiek moet opnieuw precies worden gekoppeld aan de gewenste schedulerflow voordat implementatie wordt gewijzigd.
 
-| ID | Scenario | Status |
-| --- | --- | --- |
-| SCHED-001 | T-5 -> aansluitende `StartNewAction` | ⚠ bevestigd timingvraagstuk |
-| SCHED-002 | gratis periode / overnight -> hervatten betaald parkeren | nog te auditen |
-| SCHED-003 | handmatig stoppen versus continuation | nog te auditen |
-| SCHED-004 | `DesiredEndAt` verkorten | nog te auditen |
-| SCHED-005 | `DesiredEndAt` verlengen | nog te auditen |
-| SCHED-006 | open-ended rolling horizon | nog te auditen |
-| SCHED-007 | `MaxPaidParkingDuration` grens | nog te auditen |
-| SCHED-008 | `MaxVisitElapsedDuration` grens | nog te auditen |
-| SCHED-009 | provider timeout/unknown continuation | nog te auditen |
-| SCHED-010 | crash/restart tijdens claimed work | nog te auditen |
-| SCHED-011 | externe providerwijziging / discrepancy | nog te auditen |
-| SCHED-012 | Long Visit warning schedulergedrag | nog te auditen |
+## Besluit / fix
+
+Nog open.
+
+## Verificatiecriteria na fix
+
+SCHED-001 kan pas op ✅ wanneer minimaal bewezen is:
+
+1. T-5 heeft expliciet en voorspelbaar gedrag zonder exception-gedreven polling;
+2. successor-start veroorzaakt geen overlapfout;
+3. er ontstaat geen onbedoeld gat in betaalde providerdekking;
+4. retry/restart kan geen duplicate successor maken;
+5. unknown providerresultaat gaat eerst door reconciliation;
+6. een integratietest de volledige continuation-boundary afdekt.
