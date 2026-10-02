@@ -22,18 +22,15 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('src/Parkeren.Infrastructure/Visits/PostgresVisitEndTimeChanger.cs')
           text = path.read_text()
-          old = '''        var dueAt = currentAction is not null && nextPaid.Start <= currentAction.PlannedEndAt
-            ? ProviderCoverageSchedule.PrecheckAt(currentAction.PlannedEndAt)
-            : nextPaid.Start;'''
-          new = '''        var dueAt = currentAction is not null && nextPaid.Start <= currentAction.PlannedEndAt
-            ? ProviderCoverageSchedule.PrecheckAt(currentAction.PlannedEndAt)
-            : ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one end-time continuation dueAt block, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          pattern = r'(var dueAt = currentAction is not null && nextPaid\.Start <= currentAction\.PlannedEndAt\s*\n\s*\? ProviderCoverageSchedule\.PrecheckAt\(currentAction\.PlannedEndAt\)\s*\n\s*:) nextPaid\.Start;'
+          text, count = re.subn(pattern, r'\1 ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);', text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one end-time continuation dueAt block, found {count}')
+          path.write_text(text)
 
           path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
           text = path.read_text()
