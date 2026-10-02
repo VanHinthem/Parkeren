@@ -143,12 +143,16 @@ Aanvullende afspraken:
 - ✅ V1 single-instance deploymentcontract vastgelegd; CI groen op commit `79ce2d04` (`docs: define single-instance scheduler deployment`).
 - ✅ Startup recovery verwerkt achtergelaten `Claimed` schedulerwork per Visit onder de SCHED-014 lock-order en via de SCHED-015 execution policy; tijdelijke defer gebruikt dezelfde centrale delay als runtime claiming; CI groen op commit `d8f48c26` (`fix: recover claimed scheduler work by policy`).
 - ✅ Achtergelaten `InProgress` provideroperations die ouder zijn dan de bestaande 5-minuten attempt lease worden bij startup onder de Visit-lock naar `Unknown` gebracht en daarna via de bestaande reconciliationflow verwerkt; CI groen na compilefix op `2de98742`.
-- 🚧 `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald.
+- ✅ `Pending` provideroperations blijven bij startup onaangeroerd voor de normale guarded replay; onderbroken `Reconciling` operations worden onder de Visit-lock teruggebracht naar `Unknown`, zodat alleen provider read-back wordt hervat en geen mutation wordt herhaald; CI groen op commit `0b17d16a` (`fix: resume interrupted provider reconciliation`).
+
+## Fase G — SCHED-016 TwoParkMock + boundary test harness
+
+- 🚧 G1: TwoParkMock gebruikt één centrale mockklok voor alle bestaande tijdsafhankelijke beslissingen, nog zonder functionele gedragswijziging.
 
 ## Volgende hoofdfasen
 
 - ✅ Fase E — SCHED-002 free-gap / overnight continuation.
-- 🚧 Fase F — SCHED-009/010 algemene recovery hardening.
-- 📋 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.
+- ✅ Fase F — SCHED-009/010 algemene recovery hardening.
+- 🚧 Fase G — SCHED-016 TwoParkMock + boundary test harness; rondt ook SCHED-001 activationbewijs af.
 - 📋 Fase H — regressieverificatie SCHED-001 t/m SCHED-012.
 - 📋 Fase I — SCHED-018 observability als laatste.
