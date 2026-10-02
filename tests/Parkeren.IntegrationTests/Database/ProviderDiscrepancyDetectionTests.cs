@@ -171,7 +171,7 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
     public async Task Provider_end_drift_within_central_tolerance_does_not_create_discrepancy()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var remoteProduct = new ProviderProduct("tolerance-product", "Tolerance product", "OSS_J");
+        var remoteProduct = new ProviderProduct("visitor", "Tolerance product", "OSS_J");
         var localProduct = await GetOrCreateProductAsync(remoteProduct, cancellationToken);
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"disc-tol-ok-{suffix}", $"DISC-TOL-OK-{suffix}", "hash", UserRole.Visitor);
@@ -245,7 +245,7 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
     public async Task Provider_end_drift_outside_central_tolerance_creates_end_discrepancy()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var remoteProduct = new ProviderProduct("tolerance-product", "Tolerance product", "OSS_J");
+        var remoteProduct = new ProviderProduct("visitor", "Tolerance product", "OSS_J");
         var localProduct = await GetOrCreateProductAsync(remoteProduct, cancellationToken);
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"disc-tol-bad-{suffix}", $"DISC-TOL-BAD-{suffix}", "hash", UserRole.Visitor);
