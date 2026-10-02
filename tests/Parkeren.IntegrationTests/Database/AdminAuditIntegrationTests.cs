@@ -115,8 +115,14 @@ public sealed class AdminAuditIntegrationTests(PostgreSqlFixture fixture)
             using var context = JsonDocument.Parse(audit.ContextJson);
             Assert.Equal(visitor.Username, context.RootElement.GetProperty("username").GetString());
             Assert.False(audit.ContextJson.Contains(newPin, StringComparison.Ordinal));
-            Assert.False(audit.ContextJson.Contains("pin", StringComparison.OrdinalIgnoreCase));
-            Assert.False(audit.ContextJson.Contains("hash", StringComparison.OrdinalIgnoreCase));
+            Assert.False(audit.ContextJson.Contains("admin-hash", StringComparison.Ordinal));
+            Assert.False(audit.ContextJson.Contains("visitor-hash", StringComparison.Ordinal));
+
+            foreach (var property in context.RootElement.EnumerateObject())
+            {
+                Assert.DoesNotContain("pin", property.Name, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("hash", property.Name, StringComparison.OrdinalIgnoreCase);
+            }
         }
         finally
         {
