@@ -141,9 +141,9 @@ public sealed class OpenEndedRollingHorizonTests(PostgreSqlFixture fixture)
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class MutableTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
     {
-        private DateTimeOffset utcNow = utcNow;
+        private DateTimeOffset utcNow = initialUtcNow;
 
         public override DateTimeOffset GetUtcNow() => utcNow;
 
