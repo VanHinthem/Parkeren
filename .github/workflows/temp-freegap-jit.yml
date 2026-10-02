@@ -1,0 +1,150 @@
+name: temp freegap jit patch
+
+on:
+  push:
+    branches:
+      - scratch/e5-endtime-precheck
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scratch/e5-endtime-precheck
+          fetch-depth: 0
+      - name: Patch free-gap JIT semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs')
+          text = path.read_text()
+
+          old = '''        if (nextPaid.Start > latestAction.PlannedEndAt)
+        {
+            if (nextPaid.Start > now)
+            {
+                work.Release(nextPaid.Start);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var parkingProvider = serviceProvider.GetRequiredService<IParkingProvider>();
+            var remoteActions = string.IsNullOrWhiteSpace(latestAction.ProviderProductId)
+                ? await parkingProvider.GetActionsAsync(cancellationToken)
+                : await parkingProvider.GetActionsForProductAsync(latestAction.ProviderProductId, cancellationToken);
+            var previous = ProviderActionMatchPolicy.FindUniqueMatch(
+                remoteActions,
+                new ProviderActionMatchCriteria(
+                    latestAction.ProviderActionId,
+                    latestAction.ProviderProductId));
+            if (previous is null ||
+                !string.Equals(previous.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+                !ProviderActionMatchPolicy.TimestampsMatch(previous.End, latestAction.PlannedEndAt))
+            {
+                if (previous?.Status is { } status &&
+                    string.Equals(status, "stopped", StringComparison.OrdinalIgnoreCase))
+                    latestAction.MarkExternallyStopped(status);
+                visit.SetHealth(VisitHealth.AttentionRequired);
+                work.Cancel();
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            latestAction.MarkCompleted(latestAction.PlannedEndAt);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await ProcessInitialCoverageAsync(work, visit, nextPaid.Start, cancellationToken);
+            return;
+        }'''
+          new = '''        if (nextPaid.Start > latestAction.PlannedEndAt)
+        {
+            var nextPaidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);
+            if (nextPaidPrecheckAt > now)
+            {
+                work.Release(nextPaidPrecheckAt);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            if (latestAction.PlannedEndAt <= now)
+                latestAction.MarkCompleted(latestAction.PlannedEndAt);
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await ProcessInitialCoverageAsync(work, visit, latestAction.PlannedEndAt, cancellationToken);
+            return;
+        }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one free-gap processor block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = '''        if (paid.Start > now)
+        {
+            work.Release(paid.Start);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }'''
+          new = '''        if (paid.Start > now)
+        {
+            var paidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(paid.Start);
+            if (paidPrecheckAt > now)
+            {
+                work.Release(paidPrecheckAt);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+        }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one initial-coverage future-start block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          path = Path('tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs')
+          text = path.read_text()
+          start_marker = '    public async Task Scheduler_skips_free_gap_and_caps_next_action_at_paid_boundary()'
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit('Free-gap test method not found')
+          block_start = text.rfind('    [Fact]', 0, start)
+          block_end = text.find('\n    [Fact]', start)
+          if block_start < 0 or block_end < 0:
+              raise SystemExit('Could not isolate free-gap test block')
+          block = text[block_start:block_end]
+          replacements = [
+              ('public async Task Scheduler_skips_free_gap_and_caps_next_action_at_paid_boundary()', 'public async Task Scheduler_preschedules_next_action_inside_free_gap_precheck_window()'),
+              ('var nextPaidStart = DateTimeOffset.UtcNow.AddMinutes(-1);', 'var nextPaidStart = DateTimeOffset.UtcNow.AddMinutes(4);'),
+              ('VisitSchedulerWorkType.ContinueProviderCoverage, nextPaidStart);', 'VisitSchedulerWorkType.ContinueProviderCoverage, nextPaidStart.AddMinutes(-5));'),
+              ('Assert.Equal(ProviderActionState.Active, next.State);', 'Assert.Equal(ProviderActionState.Scheduled, next.State);'),
+          ]
+          for old_value, new_value in replacements:
+              if block.count(old_value) != 1:
+                  raise SystemExit(f'Expected one test replacement for {old_value!r}, found {block.count(old_value)}')
+              block = block.replace(old_value, new_value, 1)
+          text = text[:block_start] + block + text[block_end:]
+          path.write_text(text)
+
+          path = Path('docs/technisch/visit-scheduler-audit/PROGRESS.md')
+          text = path.read_text()
+          old = '- 🚧 `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end.'
+          new = '- ✅ `PostgresVisitEndTimeChanger` plant nieuw benodigde coverage na het verlengen van `DesiredEndAt` eveneens op T-5 van `nextPaid.Start`; aaneengesloten coverage blijft T-5 van de huidige provider-end; CI groen op commit `d2fa0b25` (`fix: precheck paid window after end-time change`).\n\n### E2 — future successor over gratis periode\n\n- 🚧 `VisitSchedulerWorkProcessor` maakt binnen T-5 vóór het volgende betaalde segment de future successor direct aan; een verstreken predecessor wordt lokaal afgerond zonder afhankelijkheid van remote `active` na natuurlijke expiratie.'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one end-time progress line, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          git diff --check
+          git diff -- src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Infrastructure/Visits/VisitSchedulerWorkProcessor.cs tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs docs/technisch/visit-scheduler-audit/PROGRESS.md
+          git commit -m 'fix: preschedule coverage after free gap'
+          git push origin HEAD:scratch/e5-endtime-precheck
