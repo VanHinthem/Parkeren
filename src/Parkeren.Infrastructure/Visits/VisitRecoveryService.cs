@@ -16,12 +16,15 @@ internal sealed class VisitRecoveryService(
     ContinueVisitProviderReconciler extendReconciler,
     StopVisitProviderReconciler stopReconciler,
     StartVisitProviderReconciler startReconciler,
+    IProviderStartStore providerStartStore,
+    StartVisitProviderExecutor startProviderExecutor,
     IProviderContinuationStartResultStore continuationStartResults,
     IVisitEndTimeProviderAdjuster endTimeProviderAdjuster,
     IVisitEndTimeChanger endTimeChanger,
     IParkingProvider provider,
     IProviderDiscrepancyService discrepancyService,
     NotificationInboxWriter inboxWriter,
+    IProviderOperationExecutionTracker executionTracker,
     TimeProvider timeProvider,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
@@ -278,6 +281,9 @@ internal sealed class VisitRecoveryService(
         await ReconcileAsync(startup: true, cancellationToken: cancellationToken);
     }
 
+    public Task RecoverExpiredInProgressOperationsAsync(CancellationToken cancellationToken = default) =>
+        MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);
+
     private async Task MarkStaleInProgressProviderOperationsUnknownAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -299,8 +305,14 @@ internal sealed class VisitRecoveryService(
 
             var operation = await dbContext.ProviderOperations
                 .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);
-            if (operation is null ||
-                operation.Status != ProviderOperationStatus.InProgress ||
+            if (operation is null || operation.Status != ProviderOperationStatus.InProgress)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            using var recoveryClaim = executionTracker.TryClaimRecovery(operation.OperationId);
+            if (recoveryClaim is null ||
                 (operation.AttemptStartedAt.HasValue && operation.AttemptStartedAt > staleBefore))
             {
                 await transaction.CommitAsync(cancellationToken);
@@ -388,7 +400,36 @@ internal sealed class VisitRecoveryService(
 
         foreach (var item in items)
         {
-            if (!startup && !item.UnresolvedOperations.Any(x => x.Status == ProviderOperationStatus.Unknown))
+            var hasUnknownOperation = item.UnresolvedOperations
+                .Any(x => x.Status == ProviderOperationStatus.Unknown);
+            if (!hasUnknownOperation)
+            {
+                var retryableStart = item.UnresolvedOperations.SingleOrDefault(x =>
+                    x.Type == ProviderOperationType.Start &&
+                    x.Status == ProviderOperationStatus.Pending);
+                var retryableAction = retryableStart is null
+                    ? null
+                    : item.ProviderActions.SingleOrDefault(x =>
+                        x.Id == retryableStart.ProviderParkingActionId &&
+                        x.State == ProviderActionState.Planned &&
+                        x.Health == ProviderActionHealth.Healthy);
+
+                if (item.Visit.Status == VisitStatus.Starting &&
+                    retryableStart is not null && retryableAction is not null)
+                {
+                    var licensePlate = await GetRecoveryLicensePlateAsync(item.Visit, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(licensePlate) &&
+                        await RetryConfirmedAbsentStartAsync(
+                            item.Visit, retryableStart, retryableAction, licensePlate, cancellationToken))
+                        await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
+                    continue;
+                }
+
+                if (!startup)
+                    continue;
+            }
+
+            if (!startup && !hasUnknownOperation)
                 continue;
 
             var decision = VisitRecoveryClassifier.Classify(item);
@@ -445,11 +486,7 @@ internal sealed class VisitRecoveryService(
 
             if (decision.Kind is VisitRecoveryKind.ReconcileStart or VisitRecoveryKind.ReconcileContinuationStart)
             {
-                var licensePlate = await dbContext.Vehicles
-                    .AsNoTracking()
-                    .Where(x => x.Id == item.Visit.VehicleId)
-                    .Select(x => x.LicensePlate)
-                    .SingleOrDefaultAsync(cancellationToken);
+                var licensePlate = await GetRecoveryLicensePlateAsync(item.Visit, cancellationToken);
 
                 if (string.IsNullOrWhiteSpace(licensePlate))
                 {
@@ -471,6 +508,10 @@ internal sealed class VisitRecoveryService(
                     ? new StartVisitProviderReconciler(provider, continuationStartResults)
                     : startReconciler;
                 var reconciled = await reconciler.ReconcileAsync(preparation, licensePlate, cancellationToken);
+                if (reconciled is null && decision.Kind == VisitRecoveryKind.ReconcileStart)
+                    await RetryConfirmedAbsentStartAsync(
+                        item.Visit, decision.Operation, action, licensePlate, cancellationToken);
+
                 if (reconciled is not null &&
                     decision.Kind == VisitRecoveryKind.ReconcileContinuationStart &&
                     decision.Operation.ParentOperationId is Guid parentOperationId)
@@ -510,6 +551,71 @@ internal sealed class VisitRecoveryService(
 
             await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
         }
+    }
+
+    private async Task<string?> GetRecoveryLicensePlateAsync(
+        Visit visit,
+        CancellationToken cancellationToken) =>
+        await dbContext.Vehicles
+            .AsNoTracking()
+            .Where(x => x.Id == visit.VehicleId)
+            .Select(x => x.LicensePlate)
+            .SingleOrDefaultAsync(cancellationToken);
+
+    private async Task<bool> RetryConfirmedAbsentStartAsync(
+        Visit visit,
+        ProviderOperation operation,
+        Parkeren.Domain.Visits.ProviderParkingAction action,
+        string licensePlate,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(visit.ProviderLocation))
+        {
+            logger.LogError(
+                "Cannot retry provider Start for Visit {VisitId}: provider location is missing.",
+                visit.Id);
+            return false;
+        }
+
+        var pendingOperation = await dbContext.ProviderOperations.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == operation.Id, cancellationToken);
+        var plannedAction = await dbContext.ProviderParkingActions.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == action.Id, cancellationToken);
+        if (pendingOperation?.Status != ProviderOperationStatus.Pending ||
+            plannedAction?.State != ProviderActionState.Planned ||
+            plannedAction.Health != ProviderActionHealth.Healthy)
+            return false;
+
+        ProviderStartPreparation preparation;
+        try
+        {
+            preparation = await providerStartStore.PrepareAttemptAsync(
+                new StartVisitClaimResult(visit, true, true),
+                plannedAction.PlannedEndAt,
+                cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogInformation(
+                exception,
+                "Provider Start retry for Visit {VisitId} was not claimed because its persisted state changed.",
+                visit.Id);
+            return false;
+        }
+
+        var execution = await startProviderExecutor.ExecuteAsync(
+            preparation,
+            new ProviderStartRequest(
+                licensePlate,
+                visit.ProviderLocation,
+                preparation.Action.PlannedEndAt,
+                visit.ProviderProductExternalId),
+            cancellationToken);
+
+        if (execution.RequiresReconciliation)
+            logger.LogInformation("Provider Start retry for Visit {VisitId} requires another reconciliation.", visit.Id);
+
+        return !execution.RequiresReconciliation && !execution.DefinitiveFailure;
     }
 
 

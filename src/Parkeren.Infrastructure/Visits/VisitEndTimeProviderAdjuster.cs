@@ -9,7 +9,8 @@ namespace Parkeren.Infrastructure.Visits;
 internal sealed class VisitEndTimeProviderAdjuster(
     ParkerenDbContext dbContext,
     IParkingProvider provider,
-    TimeProvider timeProvider) : IVisitEndTimeProviderAdjuster
+    TimeProvider timeProvider,
+    IProviderOperationExecutionTracker executionTracker) : IVisitEndTimeProviderAdjuster
 {
     public async Task<VisitEndTimeProviderAdjustmentResult> AdjustAsync(
         ChangeVisitEndTimeCommand command,
@@ -104,7 +105,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         if (existingCancel is null)
         {
             var cancelOperationId = Guid.NewGuid();
-            await PersistScheduledCancelAttemptAsync(
+            using var activeAttempt = await PersistScheduledCancelAttemptAsync(
                 visit.Id, scheduled.Id, cancelOperationId, rootChange.OperationId, cancellationToken);
 
             try
@@ -173,7 +174,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(x => x.Id == visit.VehicleId, cancellationToken);
         var operationId = Guid.NewGuid();
         var newActionId = Guid.NewGuid();
-        await PersistReplacementAttemptAsync(
+        using var activeReplacement = await PersistReplacementAttemptAsync(
             visit.Id, newActionId, operationId, rootChange.OperationId,
             scheduled!.PlannedStartAt, requestedEndAt,
             providerProductId, location, cancellationToken);
@@ -213,7 +214,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         }
     }
 
-    private async Task PersistReplacementAttemptAsync(
+    private async Task<IDisposable> PersistReplacementAttemptAsync(
         Guid visitId, Guid actionId, Guid operationId, Guid parentOperationId,
         DateTimeOffset startAt, DateTimeOffset endAt,
         string providerProductId, string providerLocation,
@@ -236,10 +237,21 @@ internal sealed class VisitEndTimeProviderAdjuster(
         operation.SetParentOperationId(parentOperationId);
         operation.SetRequestedEndAt(endAt);
         operation.BeginAttempt();
+        var executionLease = executionTracker.TryTrack(operation.OperationId)
+            ?? throw new InvalidOperationException("Provider operation is already owned in this process.");
         dbContext.ProviderParkingActions.Add(action);
         dbContext.ProviderOperations.Add(operation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return executionLease;
+        }
+        catch
+        {
+            executionLease.Dispose();
+            throw;
+        }
     }
 
     private async Task MarkReplacementUnknownAsync(
@@ -263,7 +275,7 @@ internal sealed class VisitEndTimeProviderAdjuster(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task PersistScheduledCancelAttemptAsync(
+    private async Task<IDisposable> PersistScheduledCancelAttemptAsync(
         Guid visitId, Guid actionId, Guid operationId, Guid parentOperationId, CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -280,10 +292,21 @@ internal sealed class VisitEndTimeProviderAdjuster(
         operation.SetParentOperationId(parentOperationId);
         action.BeginStopping();
         operation.BeginAttempt();
+        var executionLease = executionTracker.TryTrack(operation.OperationId)
+            ?? throw new InvalidOperationException("Provider operation is already owned in this process.");
         dbContext.ProviderOperations.Add(operation);
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return executionLease;
+        }
+        catch
+        {
+            executionLease.Dispose();
+            throw;
+        }
     }
 
     private async Task MarkScheduledCancelUnknownAsync(

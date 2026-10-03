@@ -39,7 +39,8 @@ public interface IProviderExtendResultStore
 public sealed class ContinueVisitProviderExecutor(
     IParkingProvider provider,
     IProviderExtendResultStore resultStore,
-    IProviderExtendMutationGuard? mutationGuard = null)
+    IProviderExtendMutationGuard? mutationGuard = null,
+    IProviderOperationExecutionTracker? executionTracker = null)
 {
     public async Task<ProviderExtendExecution> ExecuteAsync(
         ProviderExtendPreparation preparation,
@@ -57,6 +58,9 @@ public sealed class ContinueVisitProviderExecutor(
             !preparation.AttemptStartedNow &&
             preparation.Operation.Status == ProviderOperationStatus.InProgress)
         {
+            if (executionTracker?.IsActive(preparation.Operation.OperationId) == true)
+                return new(preparation, null, true);
+
             var attemptStartedAt = preparation.Operation.AttemptStartedAt;
             if (!attemptStartedAt.HasValue ||
                 DateTimeOffset.UtcNow - attemptStartedAt.Value < TimeSpan.FromMinutes(5))
@@ -71,8 +75,13 @@ public sealed class ContinueVisitProviderExecutor(
             string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
             throw new InvalidOperationException("Provider continuation is not ready for mutation.");
 
+        IDisposable? activeAttempt = null;
         try
         {
+            activeAttempt = preparation.ExecutionLease;
+            if (executionTracker is not null && activeAttempt is null)
+                return new(preparation, null, true);
+
             if (!preparation.Operation.VisitId.HasValue ||
                 (mutationGuard is not null &&
                  !await mutationGuard.CanExtendAsync(
@@ -178,6 +187,10 @@ public sealed class ContinueVisitProviderExecutor(
         {
             await resultStore.RecordDefinitiveFailureAsync(preparation, "provider-rejected", cancellationToken);
             return new(preparation, null, false, true);
+        }
+        finally
+        {
+            activeAttempt?.Dispose();
         }
     }
 }

@@ -5,7 +5,9 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProviderExtendStore
+internal sealed class ProviderExtendStore(
+    ParkerenDbContext dbContext,
+    IProviderOperationExecutionTracker executionTracker) : IProviderExtendStore
 {
     public async Task<ProviderExtendPreparation> PrepareAttemptAsync(
         Visit visit,
@@ -68,16 +70,30 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
             {
                 existing.BeginAttempt();
                 attemptStartedNow = true;
-                await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await transaction.CommitAsync(cancellationToken);
-            return new ProviderExtendPreparation(
-                existing,
-                persistedAction,
-                providerEndAt,
-                true,
-                attemptStartedNow);
+            var executionLease = attemptStartedNow
+                ? executionTracker.TryTrack(existing.OperationId)
+                    ?? throw new InvalidOperationException("Provider Extend attempt is already owned in this process.")
+                : null;
+            try
+            {
+                if (attemptStartedNow)
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ProviderExtendPreparation(
+                    existing,
+                    persistedAction,
+                    providerEndAt,
+                    true,
+                    attemptStartedNow,
+                    executionLease);
+            }
+            catch
+            {
+                executionLease?.Dispose();
+                throw;
+            }
         }
 
         var prepared = new ContinueVisitProviderPreparer()
@@ -86,10 +102,19 @@ internal sealed class ProviderExtendStore(ParkerenDbContext dbContext) : IProvid
         prepared.Operation.SetRequestedEndAt(providerEndAt);
         prepared.Operation.BeginAttempt();
         dbContext.ProviderOperations.Add(prepared.Operation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return prepared with { AttemptStartedNow = true };
+        var preparedLease = executionTracker.TryTrack(prepared.Operation.OperationId)
+            ?? throw new InvalidOperationException("Provider Extend attempt is already owned in this process.");
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return prepared with { AttemptStartedNow = true, ExecutionLease = preparedLease };
+        }
+        catch
+        {
+            preparedLease.Dispose();
+            throw;
+        }
     }
 
     private static DateTimeOffset NormalizeForPostgres(DateTimeOffset value)

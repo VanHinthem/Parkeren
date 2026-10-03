@@ -6,7 +6,9 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProviderStopStore
+internal sealed class ProviderStopStore(
+    ParkerenDbContext dbContext,
+    IProviderOperationExecutionTracker executionTracker) : IProviderStopStore
 {
     public async Task<ProviderStopPreparation> PrepareAttemptAsync(
         StopVisitClaim claim,
@@ -88,13 +90,26 @@ internal sealed class ProviderStopStore(ParkerenDbContext dbContext) : IProvider
             attemptStartedNow = true;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return new ProviderStopPreparation(
-            operation,
-            action,
-            !attemptStartedNow,
-            attemptStartedNow,
-            providerActionKnownMissing);
+        var executionLease = attemptStartedNow
+            ? executionTracker.TryTrack(operation.OperationId)
+                ?? throw new InvalidOperationException("Provider Stop attempt is already owned in this process.")
+            : null;
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new ProviderStopPreparation(
+                operation,
+                action,
+                !attemptStartedNow,
+                attemptStartedNow,
+                providerActionKnownMissing,
+                executionLease);
+        }
+        catch
+        {
+            executionLease?.Dispose();
+            throw;
+        }
     }
 }

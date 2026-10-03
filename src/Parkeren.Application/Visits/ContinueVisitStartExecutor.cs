@@ -7,7 +7,8 @@ public sealed class ContinueVisitStartExecutor(
     IParkingProvider provider,
     IProviderContinuationStartResultStore resultStore,
     IProviderContinuationStartMutationGuard mutationGuard,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IProviderOperationExecutionTracker? executionTracker = null)
 {
     public Task<ProviderStartExecution> ExecuteAsync(
         ProviderStartPreparation preparation,
@@ -20,7 +21,7 @@ public sealed class ContinueVisitStartExecutor(
 
         var reconciler = new StartVisitProviderReconciler(provider, resultStore);
         var executor = new StartVisitProviderExecutor(
-            provider, resultStore, reconciler, timeProvider, mutationGuard);
+            provider, resultStore, reconciler, timeProvider, mutationGuard, executionTracker);
         return executor.ExecuteAsync(
             preparation,
             new ProviderStartRequest(

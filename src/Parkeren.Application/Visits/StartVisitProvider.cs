@@ -2,7 +2,12 @@ using Parkeren.Domain.Visits;
 
 namespace Parkeren.Application.Visits;
 
-public sealed record ProviderStartPreparation(ProviderOperation Operation, ProviderParkingAction Action, bool IsReplay, bool AttemptStartedNow = false);
+public sealed record ProviderStartPreparation(
+    ProviderOperation Operation,
+    ProviderParkingAction Action,
+    bool IsReplay,
+    bool AttemptStartedNow = false,
+    IDisposable? ExecutionLease = null);
 
 public sealed class StartVisitProviderPreparer
 {
@@ -34,7 +39,8 @@ public sealed record ProviderExtendPreparation(
     ProviderParkingAction Action,
     DateTimeOffset ProviderEndAt,
     bool IsReplay,
-    bool AttemptStartedNow = false);
+    bool AttemptStartedNow = false,
+    IDisposable? ExecutionLease = null);
 
 public sealed class ContinueVisitProviderPreparer
 {

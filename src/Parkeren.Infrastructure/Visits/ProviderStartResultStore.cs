@@ -18,7 +18,8 @@ internal sealed class ProviderStartResultStore(
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         ArgumentNullException.ThrowIfNull(providerAction);
-        preparation.Action.CaptureStartResponse(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
+        var (_, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        action.CaptureStartResponse(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -30,10 +31,12 @@ internal sealed class ProviderStartResultStore(
         var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        preparation.Action.ResetForRetry();
-        preparation.Operation.ResetForRetry();
-        var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
+        var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        action.ResetForRetry();
+        operation.ResetForRetry();
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         visit.SetHealth(VisitHealth.Healthy);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -47,9 +50,14 @@ internal sealed class ProviderStartResultStore(
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         ArgumentNullException.ThrowIfNull(providerAction);
-        preparation.Action.MarkActive(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
-        preparation.Operation.Succeed(timeProvider.GetUtcNow());
-        var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
+        var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        if (operation.Status == ProviderOperationStatus.Unknown)
+            operation.BeginReconciliation();
+        if (action.Health == ProviderActionHealth.Unknown)
+            action.BeginReconciliation();
+        action.MarkActive(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
+        operation.Succeed(timeProvider.GetUtcNow());
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
 
         // A Stop request can win while the external Start call is in flight.
@@ -61,17 +69,17 @@ internal sealed class ProviderStartResultStore(
             visit.SetHealth(VisitHealth.Healthy);
 
             var desiredEndAt = ProviderCoverageSchedule.PlanningEndAt(
-                visit, preparation.Action.PlannedEndAt);
-            if (desiredEndAt > preparation.Action.PlannedEndAt)
+                visit, action.PlannedEndAt);
+            if (desiredEndAt > action.PlannedEndAt)
             {
                 var ruleSets = await dbContext.ParkingRuleSets
                     .Include(x => x.PaidWindows)
                     .Include(x => x.CalendarExceptions)
                     .Where(x => x.ValidFrom < desiredEndAt &&
-                                (!x.ValidUntil.HasValue || x.ValidUntil.Value > preparation.Action.PlannedEndAt))
+                                (!x.ValidUntil.HasValue || x.ValidUntil.Value > action.PlannedEndAt))
                     .ToListAsync(cancellationToken);
                 var nextPaid = ProviderCoverageSchedule.NextPaidSegment(
-                    preparation.Action.PlannedEndAt, desiredEndAt, ruleSets);
+                    action.PlannedEndAt, desiredEndAt, ruleSets);
                 if (nextPaid is not null && !await dbContext.VisitSchedulerWork.AnyAsync(
                     work => work.VisitId == visit.Id &&
                             work.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
@@ -79,9 +87,9 @@ internal sealed class ProviderStartResultStore(
                              work.Status == VisitSchedulerWorkStatus.Claimed),
                     cancellationToken))
                 {
-                    var dueAt = nextPaid.Start > preparation.Action.PlannedEndAt
+                    var dueAt = nextPaid.Start > action.PlannedEndAt
                         ? ProviderCoverageSchedule.PrecheckAt(nextPaid.Start)
-                        : ProviderCoverageSchedule.PrecheckAt(preparation.Action.PlannedEndAt);
+                        : ProviderCoverageSchedule.PrecheckAt(action.PlannedEndAt);
                     dbContext.VisitSchedulerWork.Add(new VisitSchedulerWork(
                         Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, dueAt));
                 }
@@ -103,10 +111,14 @@ internal sealed class ProviderStartResultStore(
         var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        preparation.Operation.Fail(errorCode, timeProvider.GetUtcNow());
-        preparation.Action.MarkFailed();
-        var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
+        var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        if (operation.Status == ProviderOperationStatus.Unknown)
+            operation.BeginReconciliation();
+        operation.Fail(errorCode, timeProvider.GetUtcNow());
+        action.MarkFailed();
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         visit.Cancel();
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -119,12 +131,36 @@ internal sealed class ProviderStartResultStore(
         var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
-        preparation.Action.MarkUnknown();
-        preparation.Operation.MarkUnknown(errorCode);
-        var visit = await dbContext.Visits.FindAsync([preparation.Operation.VisitId!.Value], cancellationToken);
+        var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        if (action.Health != ProviderActionHealth.Unknown)
+            action.MarkUnknown();
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            operation.ResumeUnknownAfterInterruptedReconciliation();
+        if (operation.Status == ProviderOperationStatus.InProgress)
+            operation.MarkUnknown(errorCode);
+        var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
         if (visit is null) throw new InvalidOperationException("Visit for provider start operation was not found.");
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         visit.SetHealth(VisitHealth.Reconciling);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task<(ProviderOperation Operation, Parkeren.Domain.Visits.ProviderParkingAction Action)> LoadPersistedAttemptAsync(
+        ProviderStartPreparation preparation,
+        CancellationToken cancellationToken)
+    {
+        var operation = await dbContext.ProviderOperations.SingleAsync(
+            x => x.Id == preparation.Operation.Id && x.VisitId == preparation.Operation.VisitId,
+            cancellationToken);
+        await dbContext.Entry(operation).ReloadAsync(cancellationToken);
+        if (operation.ProviderParkingActionId is not Guid actionId || actionId != preparation.Action.Id)
+            throw new InvalidOperationException("Provider start operation does not reference the supplied action.");
+
+        var action = await dbContext.ProviderParkingActions.SingleAsync(
+            x => x.Id == actionId && x.VisitId == operation.VisitId,
+            cancellationToken);
+        await dbContext.Entry(action).ReloadAsync(cancellationToken);
+        return (operation, action);
     }
 }
