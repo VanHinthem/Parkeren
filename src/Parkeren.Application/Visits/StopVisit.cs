@@ -53,7 +53,8 @@ public sealed record ProviderStopPreparation(
     ProviderParkingAction Action,
     bool IsReplay,
     bool AttemptStartedNow,
-    bool ProviderActionKnownMissing = false);
+    bool ProviderActionKnownMissing = false,
+    IDisposable? ExecutionLease = null);
 
 public interface IProviderStopStore
 {
@@ -85,7 +86,8 @@ public sealed class StopVisitProviderExecutor(
     Parkeren.Application.ParkingProvider.IParkingProvider provider,
     IProviderStopResultStore resultStore,
     StopVisitProviderReconciler? reconciler = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IProviderOperationExecutionTracker? executionTracker = null)
 {
     private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(5);
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -113,6 +115,9 @@ public sealed class StopVisitProviderExecutor(
             preparation.Operation.Status == ProviderOperationStatus.InProgress &&
             preparation.Action.State == ProviderActionState.Stopping)
         {
+            if (executionTracker?.IsActive(preparation.Operation.OperationId) == true)
+                return new(preparation, null, true);
+
             var attemptStartedAt = preparation.Operation.AttemptStartedAt;
             if (attemptStartedAt is not null && clock.GetUtcNow() - attemptStartedAt.Value < AttemptLease)
                 return new(preparation, null, true);
@@ -131,8 +136,13 @@ public sealed class StopVisitProviderExecutor(
             string.IsNullOrWhiteSpace(preparation.Action.ProviderActionId))
             throw new InvalidOperationException("Provider Stop is not ready for mutation.");
 
+        IDisposable? activeAttempt = null;
         try
         {
+            activeAttempt = preparation.ExecutionLease;
+            if (executionTracker is not null && activeAttempt is null)
+                return new(preparation, null, true);
+
             if (preparation.ProviderActionKnownMissing)
             {
                 var currentActions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
@@ -211,6 +221,10 @@ public sealed class StopVisitProviderExecutor(
         {
             await resultStore.RecordUnknownAsync(preparation, "invalid-response", CancellationToken.None);
             return new(preparation, null, true);
+        }
+        finally
+        {
+            activeAttempt?.Dispose();
         }
     }
 }

@@ -15,6 +15,9 @@ public interface IVisitRecoveryService
     Task RecoverAsync(
         CancellationToken cancellationToken = default);
 
+    Task RecoverExpiredInProgressOperationsAsync(
+        CancellationToken cancellationToken = default);
+
     Task ReconcileActiveProviderActionsAsync(
         CancellationToken cancellationToken = default);
 

@@ -5,7 +5,9 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProviderStartStore
+internal sealed class ProviderStartStore(
+    ParkerenDbContext dbContext,
+    IProviderOperationExecutionTracker executionTracker) : IProviderStartStore
 {
     private const long StartOperationLockNamespace = 0x53544152; // STAR
     public async Task<ProviderStartPreparation> PrepareAttemptAsync(StartVisitClaimResult claim, DateTimeOffset providerEndAt, CancellationToken cancellationToken = default)
@@ -20,6 +22,8 @@ internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProvide
         var visitLockKey = VisitAdvisoryLock.For(claim.Visit.Id);
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({visitLockKey})", cancellationToken);
+
+        var persistedVisit = await dbContext.Visits.SingleAsync(x => x.Id == claim.Visit.Id, cancellationToken);
 
         var conflictingMutationExists = await dbContext.ProviderOperations.AnyAsync(
             x => x.VisitId == claim.Visit.Id &&
@@ -41,23 +45,52 @@ internal sealed class ProviderStartStore(ParkerenDbContext dbContext) : IProvide
             if (existing.Status == ProviderOperationStatus.Pending &&
                 existingAction.State == ProviderActionState.Planned)
             {
+                if (persistedVisit.Status != VisitStatus.Starting)
+                    throw new InvalidOperationException("A provider Start retry requires a Starting Visit.");
+
                 existingAction.MarkStarting();
                 existing.BeginAttempt();
                 attemptStartedNow = true;
-                await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await transaction.CommitAsync(cancellationToken);
-            return new ProviderStartPreparation(existing, existingAction, true, attemptStartedNow);
+            var executionLease = attemptStartedNow
+                ? executionTracker.TryTrack(existing.OperationId)
+                    ?? throw new InvalidOperationException("Provider start attempt is already owned in this process.")
+                : null;
+            try
+            {
+                if (attemptStartedNow)
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ProviderStartPreparation(existing, existingAction, true, attemptStartedNow, executionLease);
+            }
+            catch
+            {
+                executionLease?.Dispose();
+                throw;
+            }
         }
+
+        if (persistedVisit.Status != VisitStatus.Starting)
+            throw new InvalidOperationException("A provider Start attempt requires a Starting Visit.");
 
         var prepared = new StartVisitProviderPreparer().Prepare(claim, providerEndAt);
         prepared.Action.MarkStarting();
         prepared.Operation.BeginAttempt();
         dbContext.ProviderParkingActions.Add(prepared.Action);
         dbContext.ProviderOperations.Add(prepared.Operation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return prepared;
+        var preparedLease = executionTracker.TryTrack(prepared.Operation.OperationId)
+            ?? throw new InvalidOperationException("Provider start attempt is already owned in this process.");
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return prepared with { ExecutionLease = preparedLease };
+        }
+        catch
+        {
+            preparedLease.Dispose();
+            throw;
+        }
     }
 }

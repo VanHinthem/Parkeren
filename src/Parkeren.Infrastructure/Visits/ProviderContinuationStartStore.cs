@@ -5,7 +5,9 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext)
+internal sealed class ProviderContinuationStartStore(
+    ParkerenDbContext dbContext,
+    IProviderOperationExecutionTracker executionTracker)
     : IProviderContinuationStartStore
 {
     public async Task<ProviderStartPreparation> PrepareInitialCoverageAsync(
@@ -41,11 +43,24 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
                 action.MarkStarting();
                 existing.BeginAttempt();
                 attemptStartedNow = true;
-                await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await transaction.CommitAsync(cancellationToken);
-            return new ProviderStartPreparation(existing, action, true, attemptStartedNow);
+            var executionLease = attemptStartedNow
+                ? executionTracker.TryTrack(existing.OperationId)
+                    ?? throw new InvalidOperationException("Continuation Start attempt is already owned in this process.")
+                : null;
+            try
+            {
+                if (attemptStartedNow)
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ProviderStartPreparation(existing, action, true, attemptStartedNow, executionLease);
+            }
+            catch
+            {
+                executionLease?.Dispose();
+                throw;
+            }
         }
 
         if (await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id &&
@@ -70,9 +85,19 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
         operation.BeginAttempt();
         dbContext.ProviderParkingActions.Add(nextAction);
         dbContext.ProviderOperations.Add(operation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return new ProviderStartPreparation(operation, nextAction, false, true);
+        var preparedLease = executionTracker.TryTrack(operation.OperationId)
+            ?? throw new InvalidOperationException("Continuation Start attempt is already owned in this process.");
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new ProviderStartPreparation(operation, nextAction, false, true, preparedLease);
+        }
+        catch
+        {
+            preparedLease.Dispose();
+            throw;
+        }
     }
 
     public async Task<ProviderStartPreparation> PrepareAttemptAsync(
@@ -123,11 +148,24 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
                 action.MarkStarting();
                 existing.BeginAttempt();
                 attemptStartedNow = true;
-                await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await transaction.CommitAsync(cancellationToken);
-            return new ProviderStartPreparation(existing, action, true, attemptStartedNow);
+            var executionLease = attemptStartedNow
+                ? executionTracker.TryTrack(existing.OperationId)
+                    ?? throw new InvalidOperationException("Continuation Start attempt is already owned in this process.")
+                : null;
+            try
+            {
+                if (attemptStartedNow)
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ProviderStartPreparation(existing, action, true, attemptStartedNow, executionLease);
+            }
+            catch
+            {
+                executionLease?.Dispose();
+                throw;
+            }
         }
 
         var conflictingMutation = await dbContext.ProviderOperations.AnyAsync(
@@ -157,8 +195,18 @@ internal sealed class ProviderContinuationStartStore(ParkerenDbContext dbContext
         operation.BeginAttempt();
         dbContext.ProviderParkingActions.Add(nextAction);
         dbContext.ProviderOperations.Add(operation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return new ProviderStartPreparation(operation, nextAction, false, true);
+        var preparedLease = executionTracker.TryTrack(operation.OperationId)
+            ?? throw new InvalidOperationException("Continuation Start attempt is already owned in this process.");
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new ProviderStartPreparation(operation, nextAction, false, true, preparedLease);
+        }
+        catch
+        {
+            preparedLease.Dispose();
+            throw;
+        }
     }
 }

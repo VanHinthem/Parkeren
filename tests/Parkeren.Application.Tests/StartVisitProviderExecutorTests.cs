@@ -127,15 +127,22 @@ public sealed class StartVisitProviderExecutorTests
 
         var provider = new BlockingProvider();
         var resultStore = new TrackingResultStore();
-        var executor = new StartVisitProviderExecutor(provider, resultStore);
+        var tracker = new ProviderOperationExecutionTracker();
+        var executionLease = tracker.TryTrack(operation.OperationId);
+        Assert.NotNull(executionLease);
+        var clock = new FixedTimeProvider(operation.AttemptStartedAt!.Value.AddMinutes(6));
+        var executor = new StartVisitProviderExecutor(
+            provider, resultStore, timeProvider: clock, executionTracker: tracker);
         var request = new ProviderStartRequest("TK01HF", "test", end);
 
         var liveAttempt = executor.ExecuteAsync(
-            new ProviderStartPreparation(operation, action, false, AttemptStartedNow: true),
+            new ProviderStartPreparation(
+                operation, action, false, AttemptStartedNow: true, ExecutionLease: executionLease),
             request,
             cancellationToken);
 
         await provider.StartEntered.Task.WaitAsync(cancellationToken);
+        Assert.True(tracker.IsActive(operation.OperationId));
 
         var replay = await executor.ExecuteAsync(
             new ProviderStartPreparation(operation, action, true, AttemptStartedNow: false),
@@ -150,6 +157,7 @@ public sealed class StartVisitProviderExecutorTests
 
         provider.ReleaseStart.SetResult();
         await liveAttempt;
+        Assert.False(tracker.IsActive(operation.OperationId));
     }
 
     [Fact]

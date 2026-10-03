@@ -16,7 +16,7 @@ public interface IProviderStartMutationGuard
     Task<bool> CanStartAsync(Guid visitId, CancellationToken cancellationToken = default);
 }
 
-public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null, IProviderStartMutationGuard? mutationGuard = null)
+public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProviderStartResultStore resultStore, StartVisitProviderReconciler? reconciler = null, TimeProvider? timeProvider = null, IProviderStartMutationGuard? mutationGuard = null, IProviderOperationExecutionTracker? executionTracker = null)
 {
     private static readonly TimeSpan AttemptLease = TimeSpan.FromMinutes(5);
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -46,6 +46,9 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             preparation.Operation.Status == ProviderOperationStatus.InProgress &&
             preparation.Action.State == ProviderActionState.Starting)
         {
+            if (executionTracker?.IsActive(preparation.Operation.OperationId) == true)
+                return new(preparation, null, true);
+
             // A replay can race with the request that currently owns this persisted
             // attempt. Only an expired persisted lease may be treated as abandoned.
             var attemptStartedAt = preparation.Operation.AttemptStartedAt;
@@ -78,8 +81,13 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         if (preparation.Operation.Status != ProviderOperationStatus.InProgress || preparation.Action.State != ProviderActionState.Starting)
             throw new InvalidOperationException("Provider start is not ready for mutation.");
 
+        IDisposable? activeAttempt = null;
         try
         {
+            activeAttempt = preparation.ExecutionLease;
+            if (executionTracker is not null && activeAttempt is null)
+                return new(preparation, null, true);
+
             if (request.EndAt != preparation.Action.PlannedEndAt)
                 throw new InvalidOperationException("Provider request end must match the persisted planned end.");
 
@@ -142,6 +150,10 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
         {
             await resultStore.RecordDefinitiveFailureAsync(preparation, "provider-rejected", cancellationToken);
             return new(preparation, null, false, true);
+        }
+        finally
+        {
+            activeAttempt?.Dispose();
         }
     }
 }

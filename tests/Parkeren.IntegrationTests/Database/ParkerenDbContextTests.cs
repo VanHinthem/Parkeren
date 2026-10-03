@@ -1081,6 +1081,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 new ProviderParkingActionRequest("GG77GG", startAt, endAt, "Oss"),
                 cancellationToken);
             await resultStore.RecordResponseAsync(preparation, providerAction, cancellationToken);
+            preparation.ExecutionLease?.Dispose();
         }
 
         await using (var staleContext = fixture.CreateDbContext())

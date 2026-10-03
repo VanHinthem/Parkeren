@@ -51,7 +51,10 @@ internal sealed class VisitSchedulerWorker(
                     try
                     {
                         var recovery = scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>();
+                        await recovery.RecoverExpiredInProgressOperationsAsync(stoppingToken);
                         await recovery.ReconcileUnknownOperationsAsync(stoppingToken);
+                        var terminalRecovery = scope.ServiceProvider.GetRequiredService<IVisitTerminalRecoveryService>();
+                        await terminalRecovery.RecoverAsync(stoppingToken);
                         await recovery.ReconcileActiveProviderActionsAsync(stoppingToken);
                     }
                     catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
