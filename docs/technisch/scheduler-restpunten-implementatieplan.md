@@ -1,6 +1,6 @@
 # Implementatieplan scheduler-restpunten
 
-**Status:** uitvoering gestart (SR-001)\
+**Status:** SR-003, SR-004, SR-001 en SR-005 gemerged; SR-002 PR1 in uitvoering, PR2-providerdetails nog open\
 **Bron:** [Scheduler restpunten](scheduler-restpunten.md)\
 **Scope:** SR-001 t/m SR-005. SCHED-018 (scheduler-observability) valt buiten scope.
 
@@ -9,7 +9,7 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 ## Uitvoerings- en PR-aanpak
 
 - Werk per zelfstandig restpunt op een eigen branch en open een PR naar `main`: SR-003, SR-004, SR-001 en SR-005, in die volgorde. Begin elke branch vanaf de bijgewerkte `main`; merge pas na review, relevante gerichte tests en groene CI.
-- Behandel SR-002 als één samenhangende featurebranch en één PR met interne gates 5a t/m 5d. De contract-, historie-, reconciliatie- en saldoverwerking worden pas gezamenlijk naar `main` gemerged als alle gates groen zijn.
+- Verdeel SR-002 over twee afhankelijke PR's: PR1 bevat de actieboekhouding uit 5a en het intervalgebaseerde saldo/rapportage-deel van 5d; PR2 bevat 5b, 5c en de historiecorrectie-, fallback- en waarschuwingseisen uit 5d. Merge PR2 pas na PR1. Houd elke PR zelfstandig reviewbaar en valideerbaar.
 - Een merge naar `main` deployt niet automatisch. Voer de productie-uitrol na de afgesproken acceptatie handmatig en gecontroleerd uit, met exact één actieve API/schedulerinstance en zonder overlappende deployment.
 - Houd per PR de scope beperkt tot het betreffende restpunt; documenteer in de PR-beschrijving welke gatecriteria en tests zijn afgedekt. Bij een falende gate wordt de PR eerst hersteld; start geen afhankelijke PR voordat de vorige wijziging gemerged is.
 
@@ -69,7 +69,7 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 
 **Doel:** een geldige geplande opvolger over een gratis gat blijft dekking bieden na herstart en wordt niet dubbel aangemaakt.
 
-**Status:** implementatie gereed; Gate 4-regressietests geslaagd; review/merge open.
+**Status:** gemerged naar `main` (commit `848dc19`); Gate 4-regressietests geslaagd.
 
 - Laat recovery een lokale `Scheduled`-actie aan de hand van bekende provider-id en verwachte tijden bij de provider bevestigen.
 - Herstel de lokale overgang en planning als de provider inmiddels `active` meldt; behoud de bestaande scheduled actie bij status `scheduled`.
@@ -81,6 +81,24 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 ## Fase 5 — SR-002: actiegebruik, Visit-eindtijd en historie
 
 Dit is een contractwijziging en wordt opgesplitst. Begin deze fase pas na Gate 2, zodat duurzame claims/releases beschikbaar zijn voor het nieuwe schedulerwerk.
+
+### SR-002 PR-indeling en voortgang
+
+**PR1 — actieboekhouding (5a-accounting en deel van 5d)**
+
+- Neem de scheiding op tussen Visit-eindtijd en provideractie-intervallen, de eerste tijdbron per Stop-/startscenario, opslag van `ProviderCostAmount` en de afgesproken initiële berekening: ongeronde tariefsegmenten per actie optellen en het totaal eenmaal naar boven afronden op centen.
+- Schakel budget, urensaldo en rapportage om naar provideractie-intervallen. Gratis gaten en annuleringen vóór start tellen niet mee.
+- Valideer met directe versus geplande start, app-Stop versus provider-eindtijd, recovery na onzekere Stop, meerdere acties met gratis gat en annulering vóór start.
+- Laat providerhistorie ophalen/parseren, duurzame reconciliatie, retries, post-Completed verwerking en correcties van eerder berekende bedragen buiten PR1.
+
+**PR1-voortgang:** de kostenregel en `ProviderActionCostCalculator` zijn geïmplementeerd en getest; het `ProviderCostAmount`-veld en de bijbehorende schemawijziging zijn aanwezig. Bevestigde Stop, scheduler-voltooiing en scheduled-cancel recovery initialiseren nu de kosten per provideractie; ontbrekende historische regels/tarieven blokkeren de bevestigde overgang niet. Budgetgebruik en -waarschuwingen, kostenrapportage, gebruiksanalyse en betaalduur in de beheerder-Visit-lijst en -detail rekenen nu met provideractie-intervallen. De drie reviewbevindingen rond ontbrekende actiestart, werkelijk afrondmoment en vertraagde Stop-readback zijn opgelost en hebben regressietests. De huidige gemengde solution-suite slaagt (`405/405`), maar valideert PR1 nog niet zelfstandig: de PR1/PR2-wijzigingen in model en schema zijn nog niet gescheiden. Houd `ProviderHistoryStatus`, reconciliatiewerk en bijbehorende schemawijzigingen buiten PR1 en herhaal daarna de relevante tests op de geïsoleerde PR1-diff.
+
+**PR2 — providerhistorie (5b, 5c en resterend deel van 5d)**
+
+- Neem de echte historieparser/provideradapter, TwoParkMock-contract, duurzame reconciliatiewerkitems, retries en verwerking na terminale Visit-status op.
+- Neem historiecorrecties van intervallen en kosten, fallback/incompleetheid en waarschuwing-idempotentie op.
+- **Lokale PR2-voortgang:** de mockhistorie-interface en configureerbare zichtbaarheid/ontbrekende records zijn aangesloten; parserfixtures staan los van mockresponses. Duurzame actiegebonden reconciliatie, paginering, retries, verwerking na `Completed`, recoveryherstel, initiële kosten en rapportage-incompleetheid zijn aangesloten en getest. Houd deze wijzigingen buiten PR1.
+- Blokkeer de productieprovideradapter totdat request-/pagineringparameters en de tijdzonebetekenis van de provider-timestamps zijn bevestigd.
 
 ### 5a. Contract en datamodel
 
@@ -105,9 +123,10 @@ Implementeer dit vóór de reconciliatie, zodat de historieflow deterministisch 
 
 ### 5c. Providerhistorie en duurzame reconciliatie
 
-- Sla de eerste provider-eindtijd uit de Start-readback op naast de reeds opgeslagen provider-id en starttijd.
+- Sla de eerste bruikbare start- en eindtijd van de provideractie op in `ActualStartAt` en `ActualEndAt`; historie-readback corrigeert dezelfde velden. `PlannedStartAt` en `PlannedEndAt` blijven de aangevraagde grenzen.
+- Zodra de provideractie beëindigd is en het interval bekend is, bereken de initiële `ProviderCostAmount` voor de productgebonden tarieven met `duur in minuten * (uurtarief / 60)`. Sommeer de ongeronde segmentbedragen per actie en rond het totaal eenmaal naar boven af op hele eurocenten met `ProviderActionCostCalculator`; `ParkingCostCalculator` rondt per segment af en is hiervoor niet geschikt. Sla de uitkomst op de provideractie op; een historie-record mag tijden en kosten corrigeren.
 - Plan reconciliatie duurzaam na een succesvolle app-Stop en rond de provider-geplande `TIMEEND`; hervat na onzekere Stop zodra read-back/recovery beëindiging bevestigt.
-- Koppel historie op providerproduct en `atn_id`. Verwerk afgeronde `TIMESTART`, `TIMEEND` en bruikbare `COST` idempotent; gebruik backoff bij vertraagde zichtbaarheid en markeer administratie als onvolledig als retries uitgeput zijn.
+- Koppel historie op providerproduct en `atn_id`. Verwerk afgeronde `TIMESTART`, `TIMEEND` en bruikbare `COST` idempotent. Plan de eerste controle één minuut na een succesvolle app-Stop of twee minuten na provider-`TIMEEND`; probeer bij ontbrekende/onbruikbare historie opnieuw na 1, 5, 15, 30 en 60 minuten, daarna ieder uur tot maximaal zes uur na de eerste controle. Markeer de actie daarna als incompleet.
 - Leg beëindigde actie en reconciliatietaak atomair vast wanneer ze samen worden verwerkt. Herhaalde Stop/recovery mag geen dubbele taak maken.
 - Laat reconciliatie na `Completed` toe in execution policy, processor en recovery. Stop-claim behoudt reconciliatiewerk; recovery kan ontbrekend werk idempotent herbouwen.
 - Test dat reconciliatietaken na `Completed` worden verwerkt en dat herhaalde Stop/recovery geen dubbele taak oplevert.

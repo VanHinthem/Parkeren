@@ -1271,8 +1271,13 @@ internal sealed class AdministrationService(
             .Where(x => x.ProviderProductId == period.ProviderProductId &&
                         x.Status == VisitStatus.Completed &&
                         x.ActualEndAt.HasValue &&
-                        x.StartAt < period.ValidUntil &&
-                        x.ActualEndAt.Value > period.ValidFrom)
+                        ((x.StartAt < period.ValidUntil && x.ActualEndAt.Value > period.ValidFrom) ||
+                         dbContext.ProviderParkingActions.Any(action =>
+                             action.VisitId == x.Id &&
+                             action.ActualStartAt.HasValue &&
+                             action.ActualEndAt.HasValue &&
+                             action.ActualStartAt.Value < period.ValidUntil &&
+                             action.ActualEndAt.Value > period.ValidFrom)))
             .ToListAsync(cancellationToken);
 
         var ruleSets = await LoadRuleSetsForProductAsync(
@@ -1549,9 +1554,23 @@ internal sealed class AdministrationService(
                 paidDurationMinutes = (int)Math.Floor(paidDuration.TotalMinutes);
 
                 decimal amount = 0m;
-                foreach (var actionSegments in actionPaidSegments)
-                    amount += ProviderActionCostCalculator.Calculate(actionSegments, visitTariffs);
+                for (var index = 0; index < visitActions.Length; index++)
+                {
+                    var action = visitActions[index];
+                    if (action.ProviderCostAmount is decimal providerCost &&
+                        action.ActualStartAt is DateTimeOffset actionStart &&
+                        action.ActualEndAt is DateTimeOffset actionEnd &&
+                        actionStart >= reportFrom && actionEnd <= reportTo)
+                    {
+                        amount += providerCost;
+                        continue;
+                    }
 
+                    amount += ProviderActionCostCalculator.Calculate(actionPaidSegments[index], visitTariffs);
+                }
+
+                var historyIncomplete = visitActions.Any(
+                    x => x.HistoryStatus == ProviderHistoryStatus.Incomplete);
                 visitCosts.Add(new AdminVisitCostSummary(
                     row.Visit.Id,
                     row.Visit.UserId,
@@ -1561,8 +1580,8 @@ internal sealed class AdministrationService(
                     actualEnd,
                     paidDurationMinutes,
                     amount,
-                    true,
-                    null));
+                    !historyIncomplete,
+                    historyIncomplete ? "Provider action history is incomplete." : null));
             }
             catch (InvalidOperationException exception)
             {

@@ -12,19 +12,43 @@ internal sealed class BudgetWarningService(
     ParkerenDbContext dbContext,
     NotificationInboxWriter inboxWriter)
 {
-    public async Task EvaluateAsync(Visit completedVisit, CancellationToken cancellationToken = default)
+    public async Task EvaluateAsync(
+        Visit completedVisit,
+        CancellationToken cancellationToken = default,
+        ProviderParkingAction? providerActionOverride = null)
     {
         ArgumentNullException.ThrowIfNull(completedVisit);
         if (completedVisit.Status != VisitStatus.Completed || completedVisit.ActualEndAt is null)
             throw new InvalidOperationException("Budget warnings can only be evaluated for a completed Visit.");
+        if (providerActionOverride is not null && providerActionOverride.VisitId != completedVisit.Id)
+            throw new ArgumentException("Provider action override must belong to the completed Visit.", nameof(providerActionOverride));
 
-        var periods = await dbContext.ParkingBudgetPeriods
-            .AsNoTracking()
-            .Where(x => x.ProviderProductId == completedVisit.ProviderProductId &&
-                        x.ValidFrom < completedVisit.ActualEndAt.Value &&
-                        x.ValidUntil > completedVisit.StartAt)
-            .OrderBy(x => x.ValidFrom)
+        var visitProviderActions = await dbContext.ProviderParkingActions.AsNoTracking()
+            .Where(x => x.VisitId == completedVisit.Id)
             .ToListAsync(cancellationToken);
+        if (providerActionOverride is not null)
+        {
+            var actionIndex = visitProviderActions.FindIndex(x => x.Id == providerActionOverride.Id);
+            if (actionIndex >= 0)
+                visitProviderActions[actionIndex] = providerActionOverride;
+            else
+                visitProviderActions.Add(providerActionOverride);
+        }
+
+        var allPeriods = await dbContext.ParkingBudgetPeriods.AsNoTracking()
+            .Where(x => x.ProviderProductId == completedVisit.ProviderProductId)
+            .ToListAsync(cancellationToken);
+        var periods = allPeriods
+            .Where(period =>
+                period.ValidFrom < completedVisit.ActualEndAt.Value &&
+                period.ValidUntil > completedVisit.StartAt ||
+                visitProviderActions.Any(action =>
+                    action.ActualStartAt.HasValue &&
+                    action.ActualEndAt.HasValue &&
+                    period.ValidFrom < action.ActualEndAt.Value &&
+                    period.ValidUntil > action.ActualStartAt.Value))
+            .OrderBy(x => x.ValidFrom)
+            .ToList();
 
         if (periods.Count == 0)
             return;
@@ -43,8 +67,13 @@ internal sealed class BudgetWarningService(
                             x.Status == VisitStatus.Completed &&
                             x.ActualEndAt.HasValue &&
                             x.Id != completedVisit.Id &&
-                            x.StartAt < period.ValidUntil &&
-                            x.ActualEndAt.Value > period.ValidFrom)
+                            ((x.StartAt < period.ValidUntil && x.ActualEndAt.Value > period.ValidFrom) ||
+                             dbContext.ProviderParkingActions.Any(action =>
+                                 action.VisitId == x.Id &&
+                                 action.ActualStartAt.HasValue &&
+                                 action.ActualEndAt.HasValue &&
+                                 action.ActualStartAt.Value < period.ValidUntil &&
+                                 action.ActualEndAt.Value > period.ValidFrom)))
                 .ToListAsync(cancellationToken);
             visits.Add(completedVisit);
 
@@ -52,6 +81,14 @@ internal sealed class BudgetWarningService(
             var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
                 .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
                 .ToListAsync(cancellationToken);
+            if (providerActionOverride is not null)
+            {
+                var actionIndex = providerActions.FindIndex(x => x.Id == providerActionOverride.Id);
+                if (actionIndex >= 0)
+                    providerActions[actionIndex] = providerActionOverride;
+                else
+                    providerActions.Add(providerActionOverride);
+            }
 
             var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, providerActions, ruleSets);
             var alreadyNotified = await dbContext.ParkingBudgetWarningStates

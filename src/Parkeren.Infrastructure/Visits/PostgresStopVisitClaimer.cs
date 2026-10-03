@@ -62,7 +62,9 @@ internal sealed class PostgresStopVisitClaimer(ParkerenDbContext dbContext) : IS
         visit.BeginStopping(endReason ?? VisitEndReason.ManualStop);
 
         var pendingSchedulerWork = await dbContext.VisitSchedulerWork
-            .Where(x => x.VisitId == visit.Id && x.Status == VisitSchedulerWorkStatus.Pending)
+            .Where(x => x.VisitId == visit.Id &&
+                        x.Status == VisitSchedulerWorkStatus.Pending &&
+                        x.Type != VisitSchedulerWorkType.ReconcileProviderAction)
             .ToListAsync(cancellationToken);
         foreach (var work in pendingSchedulerWork)
             work.Cancel();

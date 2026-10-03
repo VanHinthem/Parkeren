@@ -1,0 +1,35 @@
+{
+  "status": {
+    "code": {
+      "major": "OK",
+      "minor": "SUCCESS"
+    }
+  },
+  "data": {
+    "startindex": "10",
+    "stopindex": "19",
+    "maxindex": "20",
+    "headers": [
+      { "hdr_label": "MBR_IDENT", "hdr_datatype": "LPN" },
+      { "hdr_label": "TIMESTART", "hdr_datatype": "DATETIME" },
+      { "hdr_label": "TIMEEND", "hdr_datatype": "DATETIME" },
+      { "hdr_label": "LOCATION", "hdr_datatype": "TEXT" },
+      { "hdr_label": "COST", "hdr_datatype": "MONEY" },
+      { "hdr_label": "CURRENCY_DESC", "hdr_datatype": "TEXT" }
+    ],
+    "actions": [
+      {
+        "atn_state": "COMPLETED",
+        "atn_id": "ANONYMIZED-ACTION-001",
+        "atn_parameters": [
+          { "prr_label": "MBR_IDENT", "prr_value": "XX-00-XX" },
+          { "prr_label": "TIMESTART", "prr_value": "03-10-2026 11:36:36" },
+          { "prr_label": "TIMEEND", "prr_value": "03-10-2026 11:36:47" },
+          { "prr_label": "LOCATION", "prr_value": "OSS Zone J" },
+          { "prr_label": "COST", "prr_value": "0.01" },
+          { "prr_label": "CURRENCY_DESC", "prr_value": "EUR" }
+        ]
+      }
+    ]
+  }
+}

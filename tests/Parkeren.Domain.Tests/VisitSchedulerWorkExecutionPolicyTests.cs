@@ -83,4 +83,20 @@ public sealed class VisitSchedulerWorkExecutionPolicyTests
             Assert.Equal(expected, decision);
         }
     }
+
+    [Theory]
+    [InlineData(VisitStatus.Starting)]
+    [InlineData(VisitStatus.Active)]
+    [InlineData(VisitStatus.Stopping)]
+    [InlineData(VisitStatus.Completed)]
+    [InlineData(VisitStatus.Cancelled)]
+    public void Provider_action_reconciliation_runs_for_any_visit_lifecycle(VisitStatus status)
+    {
+        var decision = VisitSchedulerWorkExecutionPolicy.Evaluate(
+            VisitSchedulerWorkType.ReconcileProviderAction,
+            status,
+            VisitHealth.AttentionRequired);
+
+        Assert.Equal(VisitSchedulerWorkExecutionDecision.Execute, decision);
+    }
 }

@@ -4,7 +4,8 @@ public enum VisitSchedulerWorkType
 {
     ContinueProviderCoverage,
     StopVisit,
-    LongVisitWarning
+    LongVisitWarning,
+    ReconcileProviderAction
 }
 
 public enum VisitSchedulerWorkStatus
@@ -24,18 +25,25 @@ public sealed class VisitSchedulerWork
         Guid visitId,
         VisitSchedulerWorkType type,
         DateTimeOffset dueAt,
-        VisitEndReason? endReason = null)
+        VisitEndReason? endReason = null,
+        Guid? providerParkingActionId = null)
     {
         if (id == Guid.Empty) throw new ArgumentException("Scheduler work id is required.", nameof(id));
         if (visitId == Guid.Empty) throw new ArgumentException("Visit id is required.", nameof(visitId));
         if (endReason is not null && type != VisitSchedulerWorkType.StopVisit)
             throw new ArgumentException("Only StopVisit scheduler work can carry a Visit end reason.", nameof(endReason));
+        if (type == VisitSchedulerWorkType.ReconcileProviderAction &&
+            (!providerParkingActionId.HasValue || providerParkingActionId == Guid.Empty))
+            throw new ArgumentException("Provider-action reconciliation work requires a provider action id.", nameof(providerParkingActionId));
+        if (type != VisitSchedulerWorkType.ReconcileProviderAction && providerParkingActionId is not null)
+            throw new ArgumentException("Only provider-action reconciliation work can reference a provider action.", nameof(providerParkingActionId));
 
         Id = id;
         VisitId = visitId;
         Type = type;
         DueAt = dueAt;
         EndReason = endReason;
+        ProviderParkingActionId = providerParkingActionId;
         Status = VisitSchedulerWorkStatus.Pending;
         CreatedAt = DateTimeOffset.UtcNow;
     }
@@ -45,6 +53,8 @@ public sealed class VisitSchedulerWork
     public VisitSchedulerWorkType Type { get; private set; }
     public DateTimeOffset DueAt { get; private set; }
     public VisitEndReason? EndReason { get; private set; }
+    public Guid? ProviderParkingActionId { get; private set; }
+    public int AttemptCount { get; private set; }
     public VisitSchedulerWorkStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ClaimedAt { get; private set; }
@@ -62,6 +72,7 @@ public sealed class VisitSchedulerWork
         Status = VisitSchedulerWorkStatus.Claimed;
         ClaimedBy = workerId;
         ClaimedAt = claimedAt;
+        AttemptCount++;
     }
 
     public void Defer(DateTimeOffset dueAt)

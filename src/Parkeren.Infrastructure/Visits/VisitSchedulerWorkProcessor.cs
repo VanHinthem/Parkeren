@@ -32,6 +32,12 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == work.VisitId, cancellationToken);
 
+        if (work.Type == VisitSchedulerWorkType.ReconcileProviderAction)
+        {
+            await ProcessProviderActionReconciliationAsync(work, visit, cancellationToken);
+            return;
+        }
+
         if (work.Type == VisitSchedulerWorkType.StopVisit)
         {
             await ProcessScheduledStopAsync(work, visit, cancellationToken);
@@ -161,6 +167,8 @@ internal sealed class VisitSchedulerWorkProcessor(
             {
                 predecessor.MarkCompleted(predecessor.PlannedEndAt);
                 await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, predecessor, cancellationToken);
+                await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                    dbContext, predecessor, predecessor.PlannedEndAt.AddMinutes(2), cancellationToken);
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -292,6 +300,8 @@ internal sealed class VisitSchedulerWorkProcessor(
             {
                 latestAction.MarkCompleted(latestAction.PlannedEndAt);
                 await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, latestAction, cancellationToken);
+                await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                    dbContext, latestAction, latestAction.PlannedEndAt.AddMinutes(2), cancellationToken);
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -336,7 +346,11 @@ internal sealed class VisitSchedulerWorkProcessor(
             {
                 if (previousAtProvider?.Status is { } providerStatus &&
                     string.Equals(providerStatus, "stopped", StringComparison.OrdinalIgnoreCase))
+                {
                     latestAction.MarkExternallyStopped(providerStatus);
+                    await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                        dbContext, latestAction, timeProvider.GetUtcNow().AddMinutes(1), cancellationToken);
+                }
                 visit.SetHealth(VisitHealth.AttentionRequired);
                 work.Cancel();
                 await dbContext.SaveChangesAsync(cancellationToken);
@@ -568,6 +582,109 @@ internal sealed class VisitSchedulerWorkProcessor(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+
+    private async Task ProcessProviderActionReconciliationAsync(
+        VisitSchedulerWork work,
+        Visit visit,
+        CancellationToken cancellationToken)
+    {
+        var actionId = work.ProviderParkingActionId
+            ?? throw new InvalidOperationException("Provider-action reconciliation work has no action id.");
+        var action = await dbContext.ProviderParkingActions
+            .SingleAsync(x => x.Id == actionId && x.VisitId == work.VisitId, cancellationToken);
+
+        if (action.HistoryStatus != ProviderHistoryStatus.Pending)
+        {
+            work.Cancel();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        ProviderActionHistoryRecord? record;
+        try
+        {
+            record = await ReadProviderHistoryRecordAsync(action, cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or TimeoutException or JsonException ||
+            exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            record = null;
+        }
+        var now = timeProvider.GetUtcNow();
+        if (record is not null && IsTerminalProviderHistoryStatus(record.Status) &&
+            record.ActualEndAt >= record.ActualStartAt)
+        {
+                 var cost = record.ProviderCostAmount is >= 0m
+                ? record.ProviderCostAmount
+                : null;
+            action.ApplyProviderHistory(record.ActualStartAt, record.ActualEndAt, cost);
+            if (visit.Status == VisitStatus.Completed)
+                await serviceProvider.GetRequiredService<BudgetWarningService>()
+                    .EvaluateAsync(visit, cancellationToken, action);
+            work.Complete(now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var historyDeadline = work.CreatedAt.AddMinutes(1).AddHours(6);
+        if (now >= historyDeadline)
+        {
+            action.MarkHistoryIncomplete();
+            work.Complete(now);
+        }
+        else
+        {
+            var retryDelay = work.AttemptCount switch
+            {
+                <= 1 => TimeSpan.FromMinutes(1),
+                2 => TimeSpan.FromMinutes(5),
+                3 => TimeSpan.FromMinutes(15),
+                4 => TimeSpan.FromMinutes(30),
+                _ => TimeSpan.FromHours(1)
+            };
+            var retryAt = now + retryDelay;
+            work.Release(retryAt < historyDeadline ? retryAt : historyDeadline);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<ProviderActionHistoryRecord?> ReadProviderHistoryRecordAsync(
+        Parkeren.Domain.Visits.ProviderParkingAction action,
+        CancellationToken cancellationToken)
+    {
+        var reader = serviceProvider.GetService<IProviderActionHistoryReader>();
+        if (reader is null || string.IsNullOrWhiteSpace(action.ProviderProductId) ||
+            string.IsNullOrWhiteSpace(action.ProviderActionId))
+            return null;
+
+        const int pageSize = 100;
+        for (var pageNumber = 0; ; pageNumber++)
+        {
+            var page = await reader.GetActionHistoryPageAsync(
+                action.ProviderProductId,
+                pageNumber,
+                pageSize,
+                cancellationToken);
+            var matches = page.Records
+                .Where(x => string.Equals(x.ProviderActionId, action.ProviderActionId, StringComparison.Ordinal))
+                .Take(2)
+                .ToArray();
+            if (matches.Length == 1)
+                return matches[0];
+            if (matches.Length > 1 || !page.HasMore)
+                return null;
+        }
+    }
+
+    private static bool IsTerminalProviderHistoryStatus(string status) =>
+        !string.IsNullOrWhiteSpace(status) &&
+        !string.Equals(status, "active", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(status, "scheduled", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(status, "starting", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(status, "stopping", StringComparison.OrdinalIgnoreCase);
 
     private async Task ProcessScheduledStopAsync(
         VisitSchedulerWork work,

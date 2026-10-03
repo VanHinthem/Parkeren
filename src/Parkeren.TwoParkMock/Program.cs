@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Parkeren.Application.ParkingProvider;
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -9,6 +10,7 @@ var stateGate = new SemaphoreSlim(1, 1);
 var mockClock = new MockClock();
 var actions = new ConcurrentDictionary<string, MockParkingAction>(
     LoadPersistedActions(statePath).ToDictionary(x => x.Id, StringComparer.Ordinal));
+var missingHistoryActionIds = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
 
 async Task PersistActionsAsync()
 {
@@ -63,6 +65,21 @@ static MockParkingAction WithObservableStatus(MockParkingAction action, DateTime
     };
 }
 
+static MockParkingAction MarkStopped(MockParkingAction action, DateTimeOffset now, TimeSpan historyVisibilityDelay)
+{
+    var actualStartAt = action.Start <= now ? action.Start : now;
+    var actualEndAt = action.Start <= now ? Min(now, action.End) : now;
+    return action with
+    {
+        Status = "stopped",
+        HistoryVisibleAt = now + historyVisibilityDelay,
+        HistoryStartAt = actualStartAt,
+        HistoryEndAt = actualEndAt
+    };
+
+    static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right) => left < right ? left : right;
+}
+
 static bool ConsumesCapacity(
     MockParkingAction action,
     DateTimeOffset now,
@@ -89,6 +106,7 @@ var remainingMinutesByProduct = new ConcurrentDictionary<string, int>(
     new[] { new KeyValuePair<string, int>(defaultProductId, 1500 * 60) });
 var validCredentials = true;
 var visibilityDelay = TimeSpan.Zero;
+var historyVisibilityDelay = TimeSpan.Zero;
 var readbackStartOffset = TimeSpan.Zero;
 var readbackEndOffset = TimeSpan.Zero;
 string? readbackLocation = null;
@@ -148,6 +166,40 @@ app.MapGet("/api/actions", (string? productId) =>
         .OrderBy(x => x.Start));
 });
 
+app.MapGet("/api/action-history", (string? productId, int pageNumber = 0, int pageSize = 10) =>
+{
+    var selectedProductId = string.IsNullOrWhiteSpace(productId) ? defaultProductId : productId;
+    if (!products.Any(x => x.Id == selectedProductId))
+        return Results.NotFound();
+    if (pageNumber < 0 || pageSize < 1)
+        return Results.BadRequest(new { error = "Page number and size must be positive." });
+
+    var now = mockClock.UtcNow;
+    var completedActions = actions.Values
+        .Where(x => x.ProductId == selectedProductId && !missingHistoryActionIds.ContainsKey(x.Id))
+        .Select(x => (Action: x, Observable: WithObservableStatus(x, now, postEndBehavior)))
+        .Where(x => string.Equals(x.Observable.Status, "stopped", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(x.Observable.Status, "completed", StringComparison.OrdinalIgnoreCase))
+        .Where(x => now >= (x.Action.HistoryVisibleAt ?? x.Action.End + historyVisibilityDelay))
+        .OrderBy(x => x.Action.End)
+        .ThenBy(x => x.Action.Id, StringComparer.Ordinal)
+        .ToArray();
+
+    var records = completedActions
+        .Skip(pageNumber * pageSize)
+        .Take(pageSize)
+        .Select(x => new ProviderActionHistoryRecord(
+            x.Action.Id,
+            "COMPLETED",
+            x.Action.HistoryStartAt ?? x.Action.Start,
+            x.Action.HistoryEndAt ?? x.Action.End,
+            0.01m,
+            "EUR"))
+        .ToArray();
+
+    return Results.Ok(new ProviderActionHistoryPage(records, pageNumber, pageSize, completedActions.Length));
+});
+
 app.MapPost("/api/actions", async (MockActionRequest request) =>
 {
     if (!validCredentials) return Results.Unauthorized();
@@ -204,7 +256,7 @@ app.MapPut("/api/actions/{id}/end", async (string id, string? productId, MockExt
 app.MapPost("/api/test/actions/{id}/stop", async (string id) =>
 {
     if (!actions.TryGetValue(id, out var current)) return Results.NotFound();
-    actions[id] = current with { Status = "stopped" };
+    actions[id] = MarkStopped(current, mockClock.UtcNow, historyVisibilityDelay);
     await PersistActionsAsync();
     return Results.NoContent();
 });
@@ -224,7 +276,7 @@ app.MapPost("/api/actions/{id}/stop", async (string id, string? productId) =>
     if (!string.IsNullOrWhiteSpace(productId) && current.ProductId != productId)
         return Results.NotFound();
 
-    actions[id] = current with { Status = "stopped" };
+    actions[id] = MarkStopped(current, mockClock.UtcNow, historyVisibilityDelay);
     await PersistActionsAsync();
     return Results.NoContent();
 });
@@ -256,6 +308,19 @@ app.MapPost("/api/test/validation-error", (MockValidationErrorRequest request) =
 app.MapPost("/api/test/visibility-delay", (MockVisibilityDelayRequest request) =>
 {
     visibilityDelay = TimeSpan.FromMilliseconds(Math.Max(0, request.Milliseconds));
+    return Results.NoContent();
+});
+
+app.MapPost("/api/test/action-history", (MockActionHistoryConfigRequest request) =>
+{
+    historyVisibilityDelay = TimeSpan.FromMilliseconds(Math.Max(0, request.VisibilityDelayMilliseconds));
+    missingHistoryActionIds.Clear();
+    foreach (var id in request.MissingActionIds ?? [])
+    {
+        if (!string.IsNullOrWhiteSpace(id))
+            missingHistoryActionIds[id] = 0;
+    }
+
     return Results.NoContent();
 });
 
@@ -338,6 +403,7 @@ app.MapPost("/api/test/clock/reset", () =>
 app.MapPost("/api/test/reset", async () =>
 {
     actions.Clear();
+    missingHistoryActionIds.Clear();
     failure.Reset();
     outcome.Reset();
     maxConcurrentActions = 5;
@@ -347,6 +413,7 @@ app.MapPost("/api/test/reset", async () =>
     remainingMinutesByProduct[defaultProductId] = 1500 * 60;
     validCredentials = true;
     visibilityDelay = TimeSpan.Zero;
+    historyVisibilityDelay = TimeSpan.Zero;
     readbackStartOffset = TimeSpan.Zero;
     readbackEndOffset = TimeSpan.Zero;
     readbackLocation = null;
@@ -387,7 +454,10 @@ public sealed record MockParkingAction(
     string Location,
     string Status,
     DateTimeOffset VisibleAt,
-    string ProductId = "visitor");
+    string ProductId = "visitor",
+    DateTimeOffset? HistoryVisibleAt = null,
+    DateTimeOffset? HistoryStartAt = null,
+    DateTimeOffset? HistoryEndAt = null);
 
 public sealed record MockFailureRequest(int StatusCode = 503, int DelayMilliseconds = 0, int Count = 1);
 
@@ -459,6 +529,10 @@ public sealed record MockBalanceRequest(int RemainingPaidMinutes);
 public sealed record MockAuthenticationRequest(bool Valid);
 
 public sealed record MockVisibilityDelayRequest(int Milliseconds);
+
+public sealed record MockActionHistoryConfigRequest(
+    int VisibilityDelayMilliseconds = 0,
+    string[]? MissingActionIds = null);
 
 public sealed record MockReadbackOffsetsRequest(double StartMilliseconds, double EndMilliseconds);
 

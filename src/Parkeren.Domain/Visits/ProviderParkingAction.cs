@@ -2,6 +2,7 @@ namespace Parkeren.Domain.Visits;
 
 public enum ProviderActionState { Planned, Starting, Scheduled, Active, Stopping, Stopped, Completed, Failed }
 public enum ProviderActionHealth { Healthy, Unknown, Reconciling }
+public enum ProviderHistoryStatus { NotRequired, Pending, Reconciled, Incomplete }
 
 public sealed class ProviderParkingAction
 {
@@ -30,6 +31,7 @@ public sealed class ProviderParkingAction
     public DateTimeOffset? ActualStartAt { get; private set; }
     public DateTimeOffset? ActualEndAt { get; private set; }
     public decimal? ProviderCostAmount { get; private set; }
+    public ProviderHistoryStatus HistoryStatus { get; private set; } = ProviderHistoryStatus.NotRequired;
     public string? ProviderStatus { get; private set; }
     public ProviderActionState State { get; private set; }
     public ProviderActionHealth Health { get; private set; }
@@ -89,10 +91,50 @@ public sealed class ProviderParkingAction
         if (amount < 0m) throw new ArgumentOutOfRangeException(nameof(amount));
         if (State is not (ProviderActionState.Stopped or ProviderActionState.Completed))
             throw new InvalidOperationException("Initial provider cost requires a terminated provider action.");
-        if (ProviderCostAmount.HasValue)
-            throw new InvalidOperationException("Initial provider cost has already been set.");
+        if (HistoryStatus != ProviderHistoryStatus.NotRequired)
+            throw new InvalidOperationException("Initial provider cost can only be set before history reconciliation.");
 
         ProviderCostAmount = amount;
+    }
+
+    public void ScheduleHistoryReconciliation()
+    {
+        if (State is not (ProviderActionState.Stopped or ProviderActionState.Completed))
+            throw new InvalidOperationException("History reconciliation requires a terminated provider action.");
+        if (HistoryStatus == ProviderHistoryStatus.Pending) return;
+        if (HistoryStatus != ProviderHistoryStatus.NotRequired)
+            throw new InvalidOperationException("History reconciliation is already terminal.");
+
+        HistoryStatus = ProviderHistoryStatus.Pending;
+    }
+
+    public void ApplyProviderHistory(
+        DateTimeOffset actualStartAt,
+        DateTimeOffset actualEndAt,
+        decimal? providerCostAmount)
+    {
+        if (HistoryStatus != ProviderHistoryStatus.Pending)
+            throw new InvalidOperationException("Provider history can only be applied to a pending reconciliation.");
+        if (actualEndAt < actualStartAt)
+            throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        if (providerCostAmount.HasValue && providerCostAmount.Value < 0m)
+            throw new ArgumentOutOfRangeException(nameof(providerCostAmount));
+
+        ActualStartAt = actualStartAt;
+        ActualEndAt = actualEndAt;
+        if (providerCostAmount.HasValue)
+            ProviderCostAmount = providerCostAmount.Value;
+        HistoryStatus = providerCostAmount.HasValue
+            ? ProviderHistoryStatus.Reconciled
+            : ProviderHistoryStatus.Incomplete;
+    }
+
+    public void MarkHistoryIncomplete()
+    {
+        if (HistoryStatus != ProviderHistoryStatus.Pending)
+            throw new InvalidOperationException("Only pending history reconciliation can become incomplete.");
+
+        HistoryStatus = ProviderHistoryStatus.Incomplete;
     }
 
     public void MarkExternallyStopped(string providerStatus)

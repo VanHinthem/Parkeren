@@ -1,1 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk.Web" />
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<ItemGroup>
+		<ProjectReference Include="../Parkeren.Application/Parkeren.Application.csproj" />
+	</ItemGroup>
+</Project>

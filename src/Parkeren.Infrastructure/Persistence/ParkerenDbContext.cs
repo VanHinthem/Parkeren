@@ -218,6 +218,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.ProviderCostAmount);
             entity.Property(x => x.State).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.HistoryStatus).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Version).IsRowVersion();
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(x => x.VisitId);
@@ -310,11 +311,15 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Version).IsRowVersion();
+            entity.HasIndex(x => x.ProviderParkingActionId)
+                .IsUnique()
+                .HasFilter("\"ProviderParkingActionId\" IS NOT NULL AND \"Type\" = 'ReconcileProviderAction' AND \"Status\" IN ('Pending', 'Claimed')");
             entity.HasIndex(x => new { x.Status, x.DueAt });
             entity.HasIndex(x => new { x.VisitId, x.Type, x.DueAt })
                 .IsUnique()
-                .HasFilter("\"Status\" IN ('Pending', 'Claimed')");
+                .HasFilter("\"Status\" IN ('Pending', 'Claimed') AND \"Type\" <> 'ReconcileProviderAction'");
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Visit>(entity =>

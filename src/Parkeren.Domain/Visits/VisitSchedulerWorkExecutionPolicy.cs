@@ -21,7 +21,18 @@ public static class VisitSchedulerWorkExecutionPolicy
             VisitSchedulerWorkType.ContinueProviderCoverage => EvaluateContinuation(visitStatus, visitHealth),
             VisitSchedulerWorkType.StopVisit => EvaluateStop(visitStatus),
             VisitSchedulerWorkType.LongVisitWarning => EvaluateLongVisitWarning(visitStatus),
+            VisitSchedulerWorkType.ReconcileProviderAction => EvaluateProviderActionReconciliation(visitStatus),
             _ => throw new ArgumentOutOfRangeException(nameof(workType), workType, "Unsupported scheduler work type.")
+        };
+    }
+
+    private static VisitSchedulerWorkExecutionDecision EvaluateProviderActionReconciliation(VisitStatus status)
+    {
+        return status switch
+        {
+            VisitStatus.Starting or VisitStatus.Active or VisitStatus.Stopping or VisitStatus.Completed or VisitStatus.Cancelled
+                => VisitSchedulerWorkExecutionDecision.Execute,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported Visit status.")
         };
     }
 

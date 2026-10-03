@@ -116,6 +116,51 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Budget_usage_includes_provider_action_overlap_before_visit_start()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var boundary = new DateTimeOffset(2026, 9, 30, 8, 0, 0, TimeSpan.Zero);
+        var actionStart = boundary.AddMinutes(-1);
+        var visitStart = boundary.AddMinutes(1);
+        CompletedVisitSeed? visitSeed = null;
+        var budgetIds = new List<Guid>();
+
+        try
+        {
+            visitSeed = await CreateCompletedVisitAsync(
+                visitStart,
+                boundary.AddMinutes(15),
+                ct,
+                actionStartAt: actionStart,
+                actionEndAt: boundary.AddMinutes(10));
+            await using var administration = CreateAdministration();
+            var previous = await administration.Service.CreateBudgetPeriodAsync(
+                admin.Id, boundary.AddHours(-1), boundary, 10 * 60, ct);
+            var current = await administration.Service.CreateBudgetPeriodAsync(
+                admin.Id, boundary, boundary.AddHours(1), 10 * 60, ct);
+            Assert.Equal(AdminBudgetPeriodCreateOutcome.Created, previous.Outcome);
+            Assert.Equal(AdminBudgetPeriodCreateOutcome.Created, current.Outcome);
+            budgetIds.Add(previous.Period!.Id);
+            budgetIds.Add(current.Period!.Id);
+
+            var usage = await administration.Service.GetBudgetUsageAsync(
+                admin.Id, previous.Period.Id, boundary.AddMinutes(-1), ct);
+
+            Assert.NotNull(usage);
+            Assert.True(usage.IsComplete);
+            Assert.Equal(1, usage.UsedPaidDurationMinutes);
+        }
+        finally
+        {
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, budgetIds, [], ct);
+        }
+    }
+
+    [Fact]
     public async Task Cost_report_splits_paid_visit_across_tariff_versions()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -213,6 +258,42 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Cost_report_uses_reconciled_provider_cost_when_action_is_fully_in_period()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.FromHours(2)).ToUniversalTime();
+        var end = start.AddHours(1);
+        var tariffIds = new List<Guid>();
+        CompletedVisitSeed? visitSeed = null;
+
+        try
+        {
+            visitSeed = await CreateCompletedVisitAsync(start, end, ct, providerHistoryCost: 0.42m);
+            await using var administration = CreateAdministration();
+            var tariff = await administration.Service.CreateParkingTariffAsync(
+                admin.Id, start.AddHours(-1), end.AddHours(1), 1m, ParkingTariffUnit.Hour, ct);
+            Assert.Equal(AdminParkingTariffCreateOutcome.Created, tariff.Outcome);
+            tariffIds.Add(tariff.Tariff!.Id);
+
+            var report = await administration.Service.GetCostReportAsync(
+                admin.Id, start.AddMinutes(-1), end.AddMinutes(1), ct);
+
+            Assert.True(report.IsComplete);
+            Assert.Equal(60, report.TotalPaidDurationMinutes);
+            Assert.Equal(0.42m, report.TotalAmount);
+            Assert.Equal(0.42m, Assert.Single(report.Visits).Amount);
+        }
+        finally
+        {
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, [], tariffIds, ct);
+        }
+    }
+
+    [Fact]
     public async Task Cost_report_is_incomplete_when_paid_time_has_no_historical_tariff()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -246,6 +327,44 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             if (visitSeed is not null)
                 await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
             await CleanupAsync(admin.Id, [], [], ct);
+        }
+    }
+
+    [Fact]
+    public async Task Cost_report_is_incomplete_when_provider_history_is_incomplete()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.FromHours(2)).ToUniversalTime();
+        var end = start.AddHours(1);
+        var tariffIds = new List<Guid>();
+        CompletedVisitSeed? visitSeed = null;
+
+        try
+        {
+            visitSeed = await CreateCompletedVisitAsync(start, end, ct, historyIncomplete: true);
+            await using var administration = CreateAdministration();
+            var tariff = await administration.Service.CreateParkingTariffAsync(
+                admin.Id, start.AddHours(-1), end.AddHours(1), 1m, ParkingTariffUnit.Hour, ct);
+            Assert.Equal(AdminParkingTariffCreateOutcome.Created, tariff.Outcome);
+            tariffIds.Add(tariff.Tariff!.Id);
+
+            var report = await administration.Service.GetCostReportAsync(
+                admin.Id, start.AddMinutes(-1), end.AddMinutes(1), ct);
+
+            Assert.False(report.IsComplete);
+            Assert.Null(report.TotalAmount);
+            var visit = Assert.Single(report.Visits);
+            Assert.Equal(1m, visit.Amount);
+            Assert.False(visit.IsComplete);
+            Assert.Equal("Provider action history is incomplete.", visit.Error);
+        }
+        finally
+        {
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, [], tariffIds, ct);
         }
     }
 
@@ -293,7 +412,9 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         DateTimeOffset end,
         CancellationToken ct,
         DateTimeOffset? actionStartAt = null,
-        DateTimeOffset? actionEndAt = null)
+        DateTimeOffset? actionEndAt = null,
+        bool historyIncomplete = false,
+        decimal? providerHistoryCost = null)
     {
         var suffix = Guid.NewGuid().ToString("N");
         var visitor = new User(Guid.NewGuid(), $"visitor-{suffix}", $"VISITOR-{suffix}", "hash", UserRole.Visitor);
@@ -315,6 +436,16 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         action.MarkStarting();
         action.MarkActive($"provider-{Guid.NewGuid():N}", actionStartAt ?? start);
         action.MarkCompleted(actionEndAt ?? end);
+        if (historyIncomplete)
+        {
+            action.ScheduleHistoryReconciliation();
+            action.MarkHistoryIncomplete();
+        }
+        else if (providerHistoryCost is decimal cost)
+        {
+            action.ScheduleHistoryReconciliation();
+            action.ApplyProviderHistory(actionStartAt ?? start, actionEndAt ?? end, cost);
+        }
 
         await using var context = fixture.CreateDbContext();
         context.Users.Add(visitor);

@@ -192,6 +192,14 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 Assert.Equal(2, actions.Count);
                 Assert.Equal(ProviderActionState.Completed, actions[0].State);
                 Assert.Equal(ProviderActionState.Scheduled, actions[1].State);
+                Assert.Equal(ProviderHistoryStatus.Pending, actions[0].HistoryStatus);
+                var historyWork = await verifyContext.VisitSchedulerWork
+                    .SingleAsync(x => x.ProviderParkingActionId == actions[0].Id, cancellationToken);
+                Assert.Equal(VisitSchedulerWorkType.ReconcileProviderAction, historyWork.Type);
+                Assert.InRange(
+                    (historyWork.DueAt - firstPaidEnd.AddMinutes(2)).Duration(),
+                    TimeSpan.Zero,
+                    TimeSpan.FromMilliseconds(1));
                 Assert.Equal(nextPaidStart.ToUnixTimeSeconds(), actions[1].PlannedStartAt.ToUnixTimeSeconds());
                 successorId = actions[1].Id;
                 successorProviderActionId = actions[1].ProviderActionId!;

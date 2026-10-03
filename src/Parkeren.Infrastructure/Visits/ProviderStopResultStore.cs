@@ -70,6 +70,8 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
             await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, action, cancellationToken);
         }
 
+        await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+            dbContext, action, actualEndAt.AddMinutes(1), cancellationToken);
         operation.Succeed(actualEndAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);

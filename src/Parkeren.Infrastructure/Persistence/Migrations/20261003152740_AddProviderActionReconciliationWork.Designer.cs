@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Parkeren.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Parkeren.Infrastructure.Persistence;
 namespace Parkeren.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ParkerenDbContext))]
-    partial class ParkerenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003152740_AddProviderActionReconciliationWork")]
+    partial class AddProviderActionReconciliationWork
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1065,11 +1068,6 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("VisitId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null)
-                        .WithMany()
-                        .HasForeignKey("ProviderParkingActionId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Parkeren.Domain.Notifications.PushDelivery", b =>
@@ -1197,6 +1195,11 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Parkeren.Domain.Visits.ProviderOperation", b =>
                 {
+                    b.HasOne("Parkeren.Domain.Visits.ProviderParkingAction", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderParkingActionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Parkeren.Domain.Visits.Visit", null)
                         .WithMany()
                         .HasForeignKey("VisitId")

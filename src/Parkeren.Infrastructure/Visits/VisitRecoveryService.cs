@@ -31,6 +31,8 @@ internal sealed class VisitRecoveryService(
 {
     public async Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default)
     {
+        await RecoverProviderActionHistoryWorkAsync(cancellationToken);
+
         var visitIds = await dbContext.Visits.AsNoTracking()
             .Where(x => x.Status == VisitStatus.Active && x.Health == VisitHealth.Healthy)
             .Select(x => x.Id)
@@ -163,6 +165,8 @@ internal sealed class VisitRecoveryService(
                     action.State == ProviderActionState.Active)
                 {
                     action.MarkExternallyStopped(remote.Status);
+                    await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                        dbContext, action, timeProvider.GetUtcNow().AddMinutes(1), cancellationToken);
                 }
 
                 if (!mismatch)
@@ -175,6 +179,7 @@ internal sealed class VisitRecoveryService(
                 await MarkAttentionRequiredAsync(visit, cancellationToken, attentionReason);
                 var work = await dbContext.VisitSchedulerWork
                     .Where(x => x.VisitId == visitId &&
+                        x.Type != VisitSchedulerWorkType.ReconcileProviderAction &&
                         (x.Status == VisitSchedulerWorkStatus.Pending ||
                          x.Status == VisitSchedulerWorkStatus.Claimed))
                     .ToListAsync(cancellationToken);
@@ -277,9 +282,44 @@ internal sealed class VisitRecoveryService(
     public async Task RecoverAsync(CancellationToken cancellationToken = default)
     {
         await ReleaseClaimedSchedulerWorkAsync(cancellationToken);
+        await RecoverProviderActionHistoryWorkAsync(cancellationToken);
         await MarkStaleInProgressProviderOperationsUnknownAsync(cancellationToken);
         await ResumeInterruptedProviderReconciliationsAsync(cancellationToken);
         await ReconcileAsync(startup: true, cancellationToken: cancellationToken);
+    }
+
+    private async Task RecoverProviderActionHistoryWorkAsync(CancellationToken cancellationToken)
+    {
+        var candidates = await dbContext.ProviderParkingActions.AsNoTracking()
+            .Where(x => (x.State == ProviderActionState.Stopped || x.State == ProviderActionState.Completed) &&
+                        x.VisitId.HasValue &&
+                        !string.IsNullOrWhiteSpace(x.ProviderActionId) &&
+                        (x.HistoryStatus == ProviderHistoryStatus.NotRequired ||
+                         x.HistoryStatus == ProviderHistoryStatus.Pending))
+            .Select(x => new { x.Id, VisitId = x.VisitId!.Value })
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var lockKey = VisitAdvisoryLock.For(candidate.VisitId);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+            var action = await dbContext.ProviderParkingActions
+                .SingleOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);
+            if (action is not null)
+            {
+                if (action.HistoryStatus == ProviderHistoryStatus.NotRequired)
+                    await ProviderActionInitialCostInitializer.TryInitializeAsync(
+                        dbContext, action, cancellationToken);
+                await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                    dbContext, action, timeProvider.GetUtcNow(), cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 
     public Task RecoverExpiredInProgressOperationsAsync(CancellationToken cancellationToken = default) =>
@@ -782,6 +822,8 @@ internal sealed class VisitRecoveryService(
         var stoppedAt = timeProvider.GetUtcNow();
         persistedAction.MarkStopped(stoppedAt, remote.Status, remote.Start);
         await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, persistedAction, cancellationToken);
+        await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+            dbContext, persistedAction, stoppedAt.AddMinutes(1), cancellationToken);
         persistedOperation.Succeed(stoppedAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -849,6 +891,7 @@ internal sealed class VisitRecoveryService(
 
         var schedulerWork = await dbContext.VisitSchedulerWork
             .Where(x => x.VisitId == visit.Id &&
+                        x.Type != VisitSchedulerWorkType.ReconcileProviderAction &&
                         (x.Status == VisitSchedulerWorkStatus.Pending ||
                          x.Status == VisitSchedulerWorkStatus.Claimed))
             .ToListAsync(cancellationToken);
@@ -1024,6 +1067,8 @@ internal sealed class VisitRecoveryService(
                 var persistedAction = await dbContext.ProviderParkingActions
                     .SingleAsync(x => x.Id == candidateAction.Id, cancellationToken);
                 persistedAction.MarkExternallyStopped(confirmedAction.Status);
+                await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                    dbContext, persistedAction, timeProvider.GetUtcNow().AddMinutes(1), cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
             logger.LogWarning(

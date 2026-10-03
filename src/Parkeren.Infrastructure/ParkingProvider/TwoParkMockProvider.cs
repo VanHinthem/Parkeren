@@ -3,7 +3,7 @@ using Parkeren.Application.ParkingProvider;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
 
-public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvider
+public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvider, IProviderActionHistoryReader
 {
     public async Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
         (await httpClient.GetFromJsonAsync<MockCategory[]>("api/categories", cancellationToken) ?? [])
@@ -56,6 +56,25 @@ public sealed class TwoParkMockProvider(HttpClient httpClient) : IParkingProvide
             cancellationToken) ?? [])
             .Select(x => Map(x, productId))
             .ToArray();
+
+    public async Task<ProviderActionHistoryPage> GetActionHistoryPageAsync(
+        string providerProductId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerProductId))
+            throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
+        if (pageNumber < 0)
+            throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (pageSize < 1)
+            throw new ArgumentOutOfRangeException(nameof(pageSize));
+
+        var url = $"api/action-history?productId={Uri.EscapeDataString(providerProductId)}" +
+                  $"&pageNumber={pageNumber}&pageSize={pageSize}";
+        return await httpClient.GetFromJsonAsync<ProviderActionHistoryPage>(url, cancellationToken)
+            ?? throw new InvalidOperationException("Parking provider returned no action history page.");
+    }
 
     public async Task<ProviderParkingAction> StartActionAsync(
         ProviderParkingActionRequest request,

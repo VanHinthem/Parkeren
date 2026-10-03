@@ -20,6 +20,36 @@ public sealed class VisitSchedulerWorkTests
     }
 
     [Fact]
+    public void Provider_action_reconciliation_requires_action_id()
+    {
+        var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
+
+        Assert.Throws<ArgumentException>(() => new VisitSchedulerWork(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            VisitSchedulerWorkType.ReconcileProviderAction,
+            dueAt));
+    }
+
+    [Fact]
+    public void Provider_action_reconciliation_counts_each_claim_attempt()
+    {
+        var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            VisitSchedulerWorkType.ReconcileProviderAction,
+            dueAt,
+            providerParkingActionId: Guid.NewGuid());
+
+        work.Claim("worker-1", dueAt);
+        work.Release(dueAt.AddMinutes(1));
+        work.Claim("worker-1", dueAt.AddMinutes(1));
+
+        Assert.Equal(2, work.AttemptCount);
+    }
+
+    [Fact]
     public void Non_stop_work_rejects_terminal_end_reason()
     {
         var dueAt = DateTimeOffset.Parse("2026-10-02T12:00:00Z");

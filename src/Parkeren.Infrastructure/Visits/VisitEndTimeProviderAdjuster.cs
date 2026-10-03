@@ -349,6 +349,8 @@ internal sealed class VisitEndTimeProviderAdjuster(
         var stoppedAt = timeProvider.GetUtcNow();
         action.MarkStopped(stoppedAt, "stopped", providerStartedAt);
         await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, action, cancellationToken);
+        await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+            dbContext, action, stoppedAt.AddMinutes(1), cancellationToken);
         operation.Succeed(stoppedAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);

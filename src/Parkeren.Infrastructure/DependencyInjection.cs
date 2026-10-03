@@ -92,6 +92,7 @@ public static class DependencyInjection
             var baseUrl = configuration["ParkingProvider:BaseUrl"]
                 ?? throw new InvalidOperationException("ParkingProvider:BaseUrl is not configured.");
             services.AddHttpClient<IParkingProvider, TwoParkMockProvider>(client => client.BaseAddress = new Uri(baseUrl));
+            services.AddHttpClient<IProviderActionHistoryReader, TwoParkMockProvider>(client => client.BaseAddress = new Uri(baseUrl));
         }
         else if (providerType == "TwoPark")
         {

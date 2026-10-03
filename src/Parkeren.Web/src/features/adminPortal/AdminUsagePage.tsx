@@ -194,10 +194,10 @@ export function AdminUsagePage(){
         <div className="admin-usage__metric"><span>Betaalde tijd</span><strong>{formatMinutes(report.totalPaidDurationMinutes)}</strong></div>
         <div className="admin-usage__metric"><span>Totale kosten</span><strong>{formatMoney(report.totalAmount)}</strong></div>
         <div className="admin-usage__metric"><span>Visits</span><strong>{report.visits.length}</strong></div>
-        <div className="admin-usage__metric"><span>Berekening</span><strong>{report.isComplete?"Compleet":"Onvolledig"}</strong><small>{report.isComplete?"Alle betaalde segmenten hebben rules en tarieven.":"Minimaal één Visit mist historische configuratie."}</small></div>
+        <div className="admin-usage__metric"><span>Berekening</span><strong>{report.isComplete?"Compleet":"Onvolledig"}</strong><small>{report.isComplete?"Providerhistorie, betaalde segmenten en tarieven zijn beschikbaar.":"Minimaal één Visit mist volledige providerhistorie of historische configuratie."}</small></div>
       </div>}
 
-      {report&&!report.isComplete&&<Alert tone="warning">Kosten zijn niet als totaal ingevuld zolang minimaal één betaald segment geen geldige historische tariefconfiguratie heeft.</Alert>}
+      {report&&!report.isComplete&&<Alert tone="warning">Totale kosten zijn niet beschikbaar zolang minstens één Visit incomplete providerhistorie of ontbrekende historische tariefconfiguratie heeft.</Alert>}
 
       {report&&report.visits.length===0?<p className="admin-usage__empty">Geen afgeronde Visits in deze periode.</p>:null}
       {report&&report.visits.length>0?<div className="admin-usage__table-wrap">

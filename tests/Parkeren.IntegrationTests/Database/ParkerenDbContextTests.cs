@@ -1549,6 +1549,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(action.Id, stopOperation.ProviderParkingActionId);
         Assert.Equal(1, stopOperation.AttemptCount);
         Assert.NotNull(action.ProviderCostAmount);
+        Assert.Equal(ProviderHistoryStatus.Pending, action.HistoryStatus);
+        var historyWork = await verifyContext.VisitSchedulerWork
+            .SingleAsync(x => x.ProviderParkingActionId == action.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkType.ReconcileProviderAction, historyWork.Type);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, historyWork.Status);
+        Assert.InRange(
+            (historyWork.DueAt - actualEndAt.AddMinutes(1)).Duration(),
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(1));
         var actionDuration = action.ActualEndAt!.Value - action.ActualStartAt!.Value;
         var expectedCost = decimal.Ceiling(
             (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
@@ -3322,7 +3331,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal("stopped", stoppedRemote.Status, ignoreCase: true);
 
         await using var cleanup = fixture.CreateDbContext();
-        await cleanup.VisitSchedulerWork.Where(x => x.Id == work.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
