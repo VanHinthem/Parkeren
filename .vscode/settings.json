@@ -1,0 +1,11 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "dotnet test": true,
+        "git push": true,
+        "gh": true,
+        "git fetch": true,
+        "git switch": true,
+        "git pull": true,
+        "git merge": true
+    }
+}
