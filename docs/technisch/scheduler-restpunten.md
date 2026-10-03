@@ -125,7 +125,7 @@ Controleer ook expliciet dat vóór het verstrijken van de lease geen herstel pl
 
 ## SR-004 — Mislukte release laat schedulerwerk geclaimd staan
 
-**Status:** bevestigd; oplossing nog niet gestart\
+**Status:** uitvoering gestart\
 **Impact:** een tijdelijke databasefout kan schedulerwerk, waaronder een automatische Stop, geblokkeerd laten tot de volgende applicatieherstart.
 
 ### Situatie
