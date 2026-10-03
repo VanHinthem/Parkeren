@@ -21,12 +21,21 @@ public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
         Guid previousId;
         DateTimeOffset? previousValidUntil;
         DateTimeOffset validFrom;
+        var seededBaseline = false;
 
         await using (var seed = fixture.CreateDbContext())
         {
             var latest = await seed.ParkingRuleSets
                 .OrderByDescending(x => x.ValidFrom)
-                .FirstAsync(ct);
+                .FirstOrDefaultAsync(ct);
+            if (latest is null)
+            {
+                latest = new ParkingRuleSet(
+                    Guid.NewGuid(), DateTimeOffset.UtcNow.AddYears(-1), null,
+                    TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+                seed.ParkingRuleSets.Add(latest);
+                seededBaseline = true;
+            }
             previousId = latest.Id;
             previousValidUntil = latest.ValidUntil;
 
@@ -116,10 +125,25 @@ public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
                     .ExecuteDeleteAsync(ct);
             }
 
-            await cleanup.ParkingRuleSets
-                .Where(x => x.Id == previousId)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.ValidUntil, previousValidUntil), ct);
+            if (seededBaseline)
+            {
+                await cleanup.PaidWindows
+                    .Where(x => x.ParkingRuleSetId == previousId)
+                    .ExecuteDeleteAsync(ct);
+                await cleanup.ParkingCalendarExceptions
+                    .Where(x => x.ParkingRuleSetId == previousId)
+                    .ExecuteDeleteAsync(ct);
+                await cleanup.ParkingRuleSets
+                    .Where(x => x.Id == previousId)
+                    .ExecuteDeleteAsync(ct);
+            }
+            else
+            {
+                await cleanup.ParkingRuleSets
+                    .Where(x => x.Id == previousId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.ValidUntil, previousValidUntil), ct);
+            }
 
             await cleanup.AdminAuditEvents.Where(x => x.ActorUserId == admin.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
