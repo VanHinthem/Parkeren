@@ -30,12 +30,12 @@ Als de providerverlenging al onderweg is wanneer de gebruiker Stop kiest, wordt 
 
 ## SR-002 — Visit-eindtijd en provideractiegebruik apart verwerken
 
-**Status:** SR-002 5a technisch voorstel opgesteld; Gate 5a en providerbewijs open\
+**Status:** SR-002 PR1 en PR2 gemerged en gepusht naar `main` (commit `6b28c64`); productieprovideradapter wacht op bevestiging van request-/pagineringsemantiek en tijdzone\
 **Afspraak in dit restpunt:** `Visit.ActualEndAt` is het moment waarop de scheduler de Visit daadwerkelijk afrondt. Budget- en urensaldo worden berekend op basis van provideractie-intervallen. De eerste actietijden komen afhankelijk van de situatie uit provider-readback, de providerplanning, de succesvolle Stop-response of recovery die een beëindigde actie bevestigt. Die waarden worden direct gebruikt en kunnen later met providerhistorie worden gecorrigeerd; er komt geen aparte voorlopigheidsmarkering op die tijden.
 
 Een Visit kan meerdere provideracties bevatten, met eventueel een gratis gat ertussen. De Visit-eindtijd kan dus verschillen van de eindtijd van iedere provideractie. Als een beleidsgrens de Visit beëindigt, stopt de stopflow open provideracties en annuleert zij toekomstige ingeplande acties. `DueAt` blijft het tijdstip waarop schedulerwerk wordt uitgevoerd of opnieuw geprobeerd; het is niet de eindtijd van een provideractie.
 
-De huidige budgetberekening gebruikt de hele periode van `Visit.StartAt` tot `Visit.ActualEndAt` en segmenteert die naar betaalde uren. Daarmee neemt zij aan dat alle betaalde tijd binnen de Visit door provideracties was gedekt. Dat hoeft niet te kloppen bij ontbrekende dekking of afwijkende werkelijke actie-intervallen.
+Budgetgebruik en rapportages rekenen met de betaalde delen van provideractie-intervallen. De selectie van Visits en budgetperioden houdt rekening met overlap van die gerealiseerde intervallen, ook wanneer historie de actie buiten de Visit-grenzen plaatst. Een ontbrekend of ongeldig interval maakt de administratie onvolledig in plaats van dat Visit-tijden als vervanging voor bewezen providergebruik dienen.
 
 Provideractie-eindtijden zijn niet altijd de werkelijke stoptijden. Een opgeslagen tijd kan het moment zijn waarop de applicatie de providerstop bevestigde; bij een extern gestopte of verdwenen actie kan de eindtijd ontbreken. Een actie die vóór de geplande start wordt geannuleerd, hoort nul gebruik op te leveren.
 

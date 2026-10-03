@@ -6,6 +6,7 @@
         "git fetch": true,
         "git switch": true,
         "git pull": true,
-        "git merge": true
+        "git merge": true,
+        "git -C C:\\GITHUB\\Parkeren-pr1-validation": true
     }
 }

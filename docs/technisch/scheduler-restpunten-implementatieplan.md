@@ -1,6 +1,6 @@
 # Implementatieplan scheduler-restpunten
 
-**Status:** SR-003, SR-004, SR-001 en SR-005 gemerged; SR-002 PR1 in uitvoering, PR2-providerdetails nog open\
+**Status:** SR-003, SR-004, SR-001, SR-005 en SR-002 PR1/PR2 gemerged naar `main`; productieprovideradapter wacht op bevestiging van providercontractdetails\
 **Bron:** [Scheduler restpunten](scheduler-restpunten.md)\
 **Scope:** SR-001 t/m SR-005. SCHED-018 (scheduler-observability) valt buiten scope.
 
@@ -29,7 +29,7 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 1. Maak voor SR-001 t/m SR-005 afzonderlijke werkitems onder de bestaande schedulerplanning. Koppel elk werkitem aan dit plan en aan de verificatie in `scheduler-restpunten.md`.
 2. Leg de huidige relevante tests en testcommando's vast. Voer de bestaande scheduler-, recovery-, provider- en visit-lifecycletests uit als baseline.
 3. Breng per stap de benodigde persistencewijzigingen in kaart; bestaande administratie migreren is geen onderdeel van dit traject.
-4. Bevestig voor SR-002 vóór implementatie de openstaande technische keuzes: model voor provideractie-intervallen en kosten, status van ontbrekende historie, historie-request/paginering en idempotentiesleutel voor reconciliatie.
+4. De keuzes voor provideractie-intervallen, kosten, ontbrekende historie en idempotente reconciliatie zijn in SR-002 PR1/PR2 geïmplementeerd. Bevestig vóór implementatie van de productieprovideradapter de exacte historie-requestparameters, pagineringsemantiek en tijdzonebetekenis van provider-timestamps.
 5. Bewaar geanonimiseerde live-providerwaarnemingen uitsluitend voor de expliciet aangemaakte testactie/testaccount. Gebruik TwoParkMock voor herhaalbare regressietests.
 
 **Gate 0:** baseline slaagt, de SR-002 openstaande keuzes zijn vastgelegd, en elk werkitem heeft concrete tests en een eigenaar. Bij een falende baseline eerst vaststellen of die al bestond; neem geen ongerelateerde reparaties in dit traject op.
@@ -91,14 +91,14 @@ Dit is een contractwijziging en wordt opgesplitst. Begin deze fase pas na Gate 2
 - Valideer met directe versus geplande start, app-Stop versus provider-eindtijd, recovery na onzekere Stop, meerdere acties met gratis gat en annulering vóór start.
 - Laat providerhistorie ophalen/parseren, duurzame reconciliatie, retries, post-Completed verwerking en correcties van eerder berekende bedragen buiten PR1.
 
-**PR1-voortgang:** de kostenregel en `ProviderActionCostCalculator` zijn geïmplementeerd en getest; het `ProviderCostAmount`-veld en de bijbehorende schemawijziging zijn aanwezig. Bevestigde Stop, scheduler-voltooiing en scheduled-cancel recovery initialiseren nu de kosten per provideractie; ontbrekende historische regels/tarieven blokkeren de bevestigde overgang niet. Budgetgebruik en -waarschuwingen, kostenrapportage, gebruiksanalyse en betaalduur in de beheerder-Visit-lijst en -detail rekenen nu met provideractie-intervallen. De drie reviewbevindingen rond ontbrekende actiestart, werkelijk afrondmoment en vertraagde Stop-readback zijn opgelost en hebben regressietests. De huidige gemengde solution-suite slaagt (`405/405`), maar valideert PR1 nog niet zelfstandig: de PR1/PR2-wijzigingen in model en schema zijn nog niet gescheiden. Houd `ProviderHistoryStatus`, reconciliatiewerk en bijbehorende schemawijzigingen buiten PR1 en herhaal daarna de relevante tests op de geïsoleerde PR1-diff.
+**PR1-voortgang:** de actieboekhouding, `ProviderCostAmount` en intervalgebaseerd budgetgebruik, saldo en rapportage zijn gemerged naar `main`.
 
 **PR2 — providerhistorie (5b, 5c en resterend deel van 5d)**
 
 - Neem de echte historieparser/provideradapter, TwoParkMock-contract, duurzame reconciliatiewerkitems, retries en verwerking na terminale Visit-status op.
 - Neem historiecorrecties van intervallen en kosten, fallback/incompleetheid en waarschuwing-idempotentie op.
-- **Lokale PR2-voortgang:** de mockhistorie-interface en configureerbare zichtbaarheid/ontbrekende records zijn aangesloten; parserfixtures staan los van mockresponses. Duurzame actiegebonden reconciliatie, paginering, retries, verwerking na `Completed`, recoveryherstel, initiële kosten en rapportage-incompleetheid zijn aangesloten en getest. Houd deze wijzigingen buiten PR1.
-- Blokkeer de productieprovideradapter totdat request-/pagineringparameters en de tijdzonebetekenis van de provider-timestamps zijn bevestigd.
+- **PR2-voortgang:** de mockhistorie-interface, parserfixtures, duurzame actiegebonden reconciliatie, paginering, retries, verwerking na `Completed`, recoveryherstel, historiecorrecties, waarschuwingen en rapportage-incompleetheid zijn gemerged en getest. PR2 staat op `main` in commit `6b28c64`; de volledige solution-suite slaagde met `422/422` tests.
+- De productieprovideradapter is bewust nog niet aangesloten. Bevestig eerst met een expliciete testactie de requestparameters, pagineringsemantiek en tijdzonebetekenis; hardcode die contracten niet op basis van de mock of parserfixtures.
 
 ### 5a. Contract en datamodel
 
