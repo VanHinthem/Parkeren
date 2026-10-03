@@ -142,7 +142,7 @@ Test dat een tijdelijke fout bij release uiteindelijk leidt tot vrijgegeven of v
 
 ## SR-005 — Recovery herkent ingeplande opvolger na gratis periode niet
 
-**Status:** code-reviewbevinding; oplossing nodig\
+**Status:** implementatie gereed; SR-005-regressietests geslaagd; review/merge open\
 **Ontdekt:** 3 oktober 2026
 
 ### Situatie
@@ -157,7 +157,7 @@ Recovery moet een lokale `Scheduled`-actie expliciet bij de provider bevestigen 
 
 ### Verificatie
 
-De bestaande `ProviderFreeGapRecoveryTests.Recovery_does_not_duplicate_scheduled_successor_after_free_gap` voert recovery al uit met een afgeronde voorganger en ingeplande opvolger. De test controleert behoud van de acties en het ontbreken van duplicaten, maar niet de Visit-health of het voortbestaan/herstel van schedulerwerk.
+`ProviderFreeGapRecoveryTests.Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap` voert recovery uit met een afgeronde voorganger en ingeplande opvolger. De test controleert behoud van de acties, Visit-health, terminalwerk, herstel van ontbrekend continuation-work voor een latere betaalde periode en het ontbreken van duplicaten. Afwijkende start- en eindtijden, ontbrekende read-back en een gestopte actie moeten conservatief naar review gaan.
 
 Breid die test uit om ook te verifiëren dat:
 

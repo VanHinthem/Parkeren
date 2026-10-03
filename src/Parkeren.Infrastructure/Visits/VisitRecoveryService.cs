@@ -974,14 +974,14 @@ internal sealed class VisitRecoveryService(
             item.Visit.DesiredEndAt is not DateTimeOffset desiredEndAt)
             return;
 
-        var activeAction = item.ProviderActions
-            .Where(x => x.State == ProviderActionState.Active)
+        var candidateAction = item.ProviderActions
+            .Where(x => x.State is ProviderActionState.Active or ProviderActionState.Scheduled)
             .OrderByDescending(x => x.PlannedEndAt)
             .FirstOrDefault();
 
-        if (activeAction is null || string.IsNullOrWhiteSpace(activeAction.ProviderActionId))
+        if (candidateAction is null || string.IsNullOrWhiteSpace(candidateAction.ProviderActionId))
         {
-            if (activeAction is null &&
+            if (candidateAction is null &&
                 item.ProviderActions.All(x => x.State == ProviderActionState.Completed) &&
                 await RebuildFreeStartWorkAsync(
                     item.Visit, desiredEndAt,
@@ -995,54 +995,71 @@ internal sealed class VisitRecoveryService(
             return;
         }
 
-        var providerActions = string.IsNullOrWhiteSpace(activeAction.ProviderProductId)
+        var providerActions = string.IsNullOrWhiteSpace(candidateAction.ProviderProductId)
             ? await provider.GetActionsAsync(cancellationToken)
-            : await provider.GetActionsForProductAsync(activeAction.ProviderProductId, cancellationToken);
+            : await provider.GetActionsForProductAsync(candidateAction.ProviderProductId, cancellationToken);
         var confirmedAction = ProviderActionMatchPolicy.FindUniqueMatch(
             providerActions,
             new ProviderActionMatchCriteria(
-                activeAction.ProviderActionId,
-                activeAction.ProviderProductId));
+                candidateAction.ProviderActionId,
+                candidateAction.ProviderProductId));
 
         if (confirmedAction is null)
         {
             logger.LogError(
                 "Visit recovery cannot rebuild scheduler for Visit {VisitId}: provider action {ProviderActionId} was not confirmed by the provider.",
                 item.Visit.Id,
-                activeAction.ProviderActionId);
+                candidateAction.ProviderActionId);
             await MarkAmbiguousAsync(item, cancellationToken);
             return;
         }
 
+        var isScheduledAction = candidateAction.State == ProviderActionState.Scheduled;
         if (string.Equals(confirmedAction.Status, "stopped", StringComparison.OrdinalIgnoreCase))
         {
-            var persistedAction = await dbContext.ProviderParkingActions
-                .SingleAsync(x => x.Id == activeAction.Id, cancellationToken);
-            persistedAction.MarkExternallyStopped(confirmedAction.Status);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            if (!isScheduledAction)
+            {
+                var persistedAction = await dbContext.ProviderParkingActions
+                    .SingleAsync(x => x.Id == candidateAction.Id, cancellationToken);
+                persistedAction.MarkExternallyStopped(confirmedAction.Status);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
             logger.LogWarning(
                 "Provider action {ProviderActionId} for Visit {VisitId} was stopped outside Parkeren; continuation is blocked pending review.",
-                activeAction.ProviderActionId, item.Visit.Id);
+                candidateAction.ProviderActionId, item.Visit.Id);
             await MarkAmbiguousAsync(item, cancellationToken);
             return;
         }
 
-        if (!string.Equals(confirmedAction.Status, "active", StringComparison.OrdinalIgnoreCase))
+        var isProviderActive = string.Equals(confirmedAction.Status, "active", StringComparison.OrdinalIgnoreCase);
+        var isProviderScheduled = string.Equals(confirmedAction.Status, "scheduled", StringComparison.OrdinalIgnoreCase);
+        if ((!isScheduledAction && !isProviderActive) ||
+            (isScheduledAction && !isProviderActive && !isProviderScheduled))
         {
             logger.LogWarning(
                 "Provider action {ProviderActionId} for Visit {VisitId} has unexpected status {ProviderStatus}; continuation is blocked.",
-                activeAction.ProviderActionId, item.Visit.Id, confirmedAction.Status);
+                candidateAction.ProviderActionId, item.Visit.Id, confirmedAction.Status);
             await MarkAmbiguousAsync(item, cancellationToken);
             return;
         }
 
-        if (!ProviderActionMatchPolicy.TimestampsMatch(confirmedAction.End, activeAction.PlannedEndAt))
+        if (!ProviderActionMatchPolicy.TimestampsMatch(confirmedAction.Start, candidateAction.PlannedStartAt) ||
+            !ProviderActionMatchPolicy.TimestampsMatch(confirmedAction.End, candidateAction.PlannedEndAt))
         {
             logger.LogWarning(
-                "Provider action {ProviderActionId} for Visit {VisitId} has end {ProviderEndAt}, while the locally confirmed end is {LocalEndAt}; continuation is blocked pending review.",
-                activeAction.ProviderActionId, item.Visit.Id, confirmedAction.End, activeAction.PlannedEndAt);
+                "Provider action {ProviderActionId} for Visit {VisitId} has start/end {ProviderStartAt}/{ProviderEndAt}, while the locally confirmed start/end is {LocalStartAt}/{LocalEndAt}; continuation is blocked pending review.",
+                candidateAction.ProviderActionId, item.Visit.Id, confirmedAction.Start, confirmedAction.End,
+                candidateAction.PlannedStartAt, candidateAction.PlannedEndAt);
             await MarkAmbiguousAsync(item, cancellationToken);
             return;
+        }
+
+        if (isScheduledAction && isProviderActive)
+        {
+            var persistedAction = await dbContext.ProviderParkingActions
+                .SingleAsync(x => x.Id == candidateAction.Id, cancellationToken);
+            persistedAction.ActivateScheduled(confirmedAction.Start, confirmedAction.Status);
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         if (desiredEndAt <= confirmedAction.End)

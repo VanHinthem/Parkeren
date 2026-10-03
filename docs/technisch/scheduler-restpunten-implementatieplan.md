@@ -69,9 +69,11 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 
 **Doel:** een geldige geplande opvolger over een gratis gat blijft dekking bieden na herstart en wordt niet dubbel aangemaakt.
 
+**Status:** implementatie gereed; Gate 4-regressietests geslaagd; review/merge open.
+
 - Laat recovery een lokale `Scheduled`-actie aan de hand van bekende provider-id en verwachte tijden bij de provider bevestigen.
 - Herstel de lokale overgang en planning als de provider inmiddels `active` meldt; behoud de bestaande scheduled actie bij status `scheduled`.
-- Breid `ProviderFreeGapRecoveryTests.Recovery_does_not_duplicate_scheduled_successor_after_free_gap` uit met Visit-health en vervolg-/terminal-work.
+- Breid `ProviderFreeGapRecoveryTests.Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap` uit met Visit-health, terminalwerk, herstel van continuation-work en ontbrekende/gestopte read-back of afwijkende start-/eindtijden.
 - Houd ontbrekende of afwijkende providerinformatie conservatief: geen tweede provideractie en waar nodig aandacht/review.
 
 **Gate 4:** tests bewijzen behoud van `Healthy`, geen duplicaat, passend vervolg- en terminalwerk, en veilige afhandeling van ontbrekende/afwijkende status voor zowel `scheduled` als inmiddels `active`.

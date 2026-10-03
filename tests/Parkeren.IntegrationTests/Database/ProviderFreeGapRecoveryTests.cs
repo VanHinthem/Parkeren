@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -17,8 +18,18 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 {
-    [Fact]
-    public async Task Recovery_does_not_duplicate_scheduled_successor_after_free_gap()
+    [Theory]
+    [InlineData("scheduled", false)]
+    [InlineData("scheduled", true)]
+    [InlineData("active", false)]
+    [InlineData("active", true)]
+    [InlineData("missing", false)]
+    [InlineData("stopped", false)]
+    [InlineData("start-mismatch", false)]
+    [InlineData("end-mismatch", false)]
+    public async Task Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap(
+        string providerReadback,
+        bool includeFurtherPaidPeriod)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
@@ -28,11 +39,17 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 
         var now = DateTimeOffset.UtcNow;
         now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+        (await http.PostAsJsonAsync(
+            "api/test/clock/set",
+            new { UtcNow = now },
+            cancellationToken)).EnsureSuccessStatusCode();
         var nextPaidStart = now.AddMinutes(4);
         var firstPaidEnd = nextPaidStart.AddHours(-1);
         var nextPaidEnd = nextPaidStart.AddHours(1);
+        var furtherPaidStart = includeFurtherPaidPeriod ? nextPaidEnd.AddHours(1) : (DateTimeOffset?)null;
+        var furtherPaidEnd = furtherPaidStart?.AddHours(1);
         var startAt = firstPaidEnd.AddHours(-1);
-        var desiredEndAt = nextPaidEnd.AddHours(1);
+        var desiredEndAt = (furtherPaidEnd ?? nextPaidEnd).AddHours(1);
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"gap-recovery-{suffix}", $"GAP-RECOVERY-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"GR-{suffix[..2]}-{suffix[2..4]}", $"GR{suffix[..4]}", null);
@@ -102,27 +119,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         work.Claim("free-gap-recovery-test", now);
 
         var businessZone = TimeZoneInfo.FindSystemTimeZoneById(ParkingTimeSegmenter.BusinessTimeZoneId);
-        var localPaidStart = TimeZoneInfo.ConvertTime(nextPaidStart, businessZone);
-        var localPaidEnd = TimeZoneInfo.ConvertTime(nextPaidEnd, businessZone);
-        var paidWindows = localPaidStart.Date == localPaidEnd.Date
-            ? new[]
-            {
-                new PaidWindow(
-                    localPaidStart.DayOfWeek,
-                    TimeOnly.FromDateTime(localPaidStart.DateTime),
-                    TimeOnly.FromDateTime(localPaidEnd.DateTime))
-            }
-            : new[]
-            {
-                new PaidWindow(
-                    localPaidStart.DayOfWeek,
-                    TimeOnly.FromDateTime(localPaidStart.DateTime),
-                    TimeOnly.MaxValue),
-                new PaidWindow(
-                    localPaidEnd.DayOfWeek,
-                    TimeOnly.MinValue,
-                    TimeOnly.FromDateTime(localPaidEnd.DateTime))
-            };
+        var paidWindows = CreatePaidWindows(nextPaidStart, nextPaidEnd, businessZone);
 
         var paidBeforeGap = new ParkingRuleSet(
             Guid.NewGuid(), startAt.AddDays(-1), firstPaidEnd, TimeSpan.FromHours(4), paidWindows);
@@ -131,11 +128,23 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         var paidAfterGap = new ParkingRuleSet(
             Guid.NewGuid(), nextPaidStart, nextPaidEnd, TimeSpan.FromHours(4), paidWindows);
         var freeTail = new ParkingRuleSet(
-            Guid.NewGuid(), nextPaidEnd, null, TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+            Guid.NewGuid(), nextPaidEnd, furtherPaidStart, TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        ParkingRuleSet? furtherPaid = null;
+        ParkingRuleSet? finalFreeTail = null;
+        if (furtherPaidStart is DateTimeOffset paidStart && furtherPaidEnd is DateTimeOffset paidEnd)
+        {
+            furtherPaid = new ParkingRuleSet(
+                Guid.NewGuid(), paidStart, paidEnd, TimeSpan.FromHours(4),
+                CreatePaidWindows(paidStart, paidEnd, businessZone));
+            finalFreeTail = new ParkingRuleSet(
+                Guid.NewGuid(), paidEnd, null, TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        }
         paidBeforeGap.AssignProviderProduct(product.Id);
         freeGap.AssignProviderProduct(product.Id);
         paidAfterGap.AssignProviderProduct(product.Id);
         freeTail.AssignProviderProduct(product.Id);
+        furtherPaid?.AssignProviderProduct(product.Id);
+        finalFreeTail?.AssignProviderProduct(product.Id);
 
         await using (var seedContext = fixture.CreateDbContext())
         {
@@ -144,7 +153,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             seedContext.Visits.Add(visit);
             seedContext.ProviderParkingActions.Add(predecessor);
             seedContext.VisitSchedulerWork.Add(work);
-            seedContext.ParkingRuleSets.AddRange(paidBeforeGap, freeGap, paidAfterGap, freeTail);
+            seedContext.ParkingRuleSets.AddRange(
+                new[] { paidBeforeGap, freeGap, paidAfterGap, freeTail }
+                    .Concat(new[] { furtherPaid, finalFreeTail }.OfType<ParkingRuleSet>()));
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -171,6 +182,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             }
 
             Guid successorId;
+            string successorProviderActionId;
             await using (var verifyContext = fixture.CreateDbContext())
             {
                 var actions = await verifyContext.ProviderParkingActions
@@ -182,13 +194,55 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 Assert.Equal(ProviderActionState.Scheduled, actions[1].State);
                 Assert.Equal(nextPaidStart.ToUnixTimeSeconds(), actions[1].PlannedStartAt.ToUnixTimeSeconds());
                 successorId = actions[1].Id;
+                successorProviderActionId = actions[1].ProviderActionId!;
             }
 
             Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
 
+            if (providerReadback == "active")
+            {
+                (await http.PostAsJsonAsync(
+                    "api/test/clock/set",
+                    new { UtcNow = nextPaidStart },
+                    cancellationToken)).EnsureSuccessStatusCode();
+            }
+            else if (providerReadback == "missing")
+            {
+                (await http.PostAsJsonAsync(
+                    "api/test/post-end-behavior",
+                    new { Behavior = "hide" },
+                    cancellationToken)).EnsureSuccessStatusCode();
+                (await http.PostAsJsonAsync(
+                    "api/test/clock/set",
+                    new { UtcNow = nextPaidEnd.AddMinutes(1) },
+                    cancellationToken)).EnsureSuccessStatusCode();
+            }
+            else if (providerReadback == "stopped")
+            {
+                (await http.PostAsync(
+                    $"api/test/actions/{successorProviderActionId}/stop",
+                    null,
+                    cancellationToken)).EnsureSuccessStatusCode();
+            }
+            else if (providerReadback is "start-mismatch" or "end-mismatch")
+            {
+                (await http.PostAsJsonAsync(
+                    "api/test/readback-offsets",
+                    new
+                    {
+                        StartMilliseconds = providerReadback == "start-mismatch" ? 60_000 : 0,
+                        EndMilliseconds = providerReadback == "end-mismatch" ? 60_000 : 0
+                    },
+                    cancellationToken)).EnsureSuccessStatusCode();
+            }
+
             await using (var recoveryScope = provider.CreateAsyncScope())
+            {
                 await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
                     .RecoverAsync(cancellationToken);
+                await recoveryScope.ServiceProvider.GetRequiredService<IVisitTerminalRecoveryService>()
+                    .RecoverAsync(cancellationToken);
+            }
 
             await using (var recoveryVerifyContext = fixture.CreateDbContext())
             {
@@ -198,10 +252,46 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                     .ToListAsync(cancellationToken);
                 Assert.Equal(2, actionsAfterRecovery.Count);
                 Assert.Equal(successorId, actionsAfterRecovery[1].Id);
-                Assert.Equal(ProviderActionState.Scheduled, actionsAfterRecovery[1].State);
+                Assert.Equal(
+                    providerReadback == "active" ? ProviderActionState.Active : ProviderActionState.Scheduled,
+                    actionsAfterRecovery[1].State);
+                Assert.Equal(ProviderActionHealth.Healthy, actionsAfterRecovery[1].Health);
+
+                var recoveredVisit = await recoveryVerifyContext.Visits
+                    .SingleAsync(x => x.Id == visit.Id, cancellationToken);
+                Assert.Equal(
+                    providerReadback is "scheduled" or "active"
+                        ? VisitHealth.Healthy
+                        : VisitHealth.AttentionRequired,
+                    recoveredVisit.Health);
+
+                var workItems = await recoveryVerifyContext.VisitSchedulerWork
+                    .Where(x => x.VisitId == visit.Id)
+                    .ToListAsync(cancellationToken);
+                Assert.Equal(VisitSchedulerWorkStatus.Completed,
+                    workItems.Single(x => x.Id == work.Id).Status);
+                var terminalWork = Assert.Single(workItems, x =>
+                    x.Type == VisitSchedulerWorkType.StopVisit &&
+                    x.Status == VisitSchedulerWorkStatus.Pending);
+                Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
+                Assert.Equal(desiredEndAt, terminalWork.DueAt);
+                var continuationWork = workItems.Where(x =>
+                    x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                    (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed)).ToArray();
+                if (providerReadback is "scheduled" or "active" && includeFurtherPaidPeriod)
+                {
+                    var rebuiltContinuation = Assert.Single(continuationWork);
+                    Assert.Equal(furtherPaidStart!.Value.AddMinutes(-5), rebuiltContinuation.DueAt);
+                }
+                else
+                {
+                    Assert.Empty(continuationWork);
+                }
             }
 
-            Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
+            Assert.Equal(
+                providerReadback == "missing" ? 0 : 2,
+                (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
         }
         finally
         {
@@ -222,7 +312,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 .Where(x => x.Id == visit.Id)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.ParkingRuleSets
-                .Where(x => x.Id == paidBeforeGap.Id || x.Id == freeGap.Id || x.Id == paidAfterGap.Id || x.Id == freeTail.Id)
+                .Where(x => x.Id == paidBeforeGap.Id || x.Id == freeGap.Id || x.Id == paidAfterGap.Id || x.Id == freeTail.Id ||
+                            (furtherPaid != null && x.Id == furtherPaid.Id) ||
+                            (finalFreeTail != null && x.Id == finalFreeTail.Id))
                 .ExecuteDeleteAsync(cancellationToken);
             if (createdProduct)
             {
@@ -237,5 +329,31 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 .Where(x => x.Id == user.Id)
                 .ExecuteDeleteAsync(cancellationToken);
         }
+    }
+
+    private static PaidWindow[] CreatePaidWindows(
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        TimeZoneInfo businessZone)
+    {
+        var localStart = TimeZoneInfo.ConvertTime(startAt, businessZone);
+        var localEnd = TimeZoneInfo.ConvertTime(endAt, businessZone);
+        return localStart.Date == localEnd.Date
+            ?
+            [new PaidWindow(
+                localStart.DayOfWeek,
+                TimeOnly.FromDateTime(localStart.DateTime),
+                TimeOnly.FromDateTime(localEnd.DateTime))]
+            :
+            [
+                new PaidWindow(
+                    localStart.DayOfWeek,
+                    TimeOnly.FromDateTime(localStart.DateTime),
+                    TimeOnly.MaxValue),
+                new PaidWindow(
+                    localEnd.DayOfWeek,
+                    TimeOnly.MinValue,
+                    TimeOnly.FromDateTime(localEnd.DateTime))
+            ];
     }
 }
