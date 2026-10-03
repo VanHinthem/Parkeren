@@ -38,6 +38,39 @@ public sealed class StopVisitProviderExecutorTests
     }
 
     [Fact]
+    public async Task Stop_end_time_is_captured_before_delayed_readback()
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+        var responseAt = startedAt.AddMinutes(1);
+        var readBackAt = responseAt.AddMinutes(5);
+        var clock = new MutableTimeProvider(startedAt);
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visitId, startedAt.AddMinutes(-30), startedAt.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-delayed-readback", startedAt.AddMinutes(-30), "active");
+        action.BeginStopping();
+
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        var provider = new SuccessfulStopProvider(
+            new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                "provider-stop-delayed-readback", "ST01OP", startedAt.AddMinutes(-30),
+                startedAt.AddHours(1), "Oss", "stopped"),
+            onStop: () => clock.SetUtcNow(responseAt),
+            onReadBack: () => clock.SetUtcNow(readBackAt));
+        var store = new TrackingStopResultStore();
+
+        var result = await new StopVisitProviderExecutor(provider, store, timeProvider: clock).ExecuteAsync(
+            new ProviderStopPreparation(operation, action, false, true),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.RequiresReconciliation);
+        Assert.Equal(responseAt, store.ConfirmedEndAt);
+        Assert.Equal(readBackAt, clock.GetUtcNow());
+    }
+
+    [Fact]
     public async Task In_progress_replay_never_calls_provider_again()
     {
         var now = DateTimeOffset.UtcNow;
@@ -131,7 +164,9 @@ public sealed class StopVisitProviderExecutorTests
     }
 
     private sealed class SuccessfulStopProvider(
-        Parkeren.Application.ParkingProvider.ProviderParkingAction action) : IParkingProvider
+        Parkeren.Application.ParkingProvider.ProviderParkingAction action,
+        Action? onStop = null,
+        Action? onReadBack = null) : IParkingProvider
     {
         public int StopCalls { get; private set; }
         public int ReadCalls { get; private set; }
@@ -141,6 +176,7 @@ public sealed class StopVisitProviderExecutorTests
         {
             StopCalls++;
             StoppedProviderActionId = providerActionId;
+            onStop?.Invoke();
             return Task.CompletedTask;
         }
 
@@ -148,6 +184,7 @@ public sealed class StopVisitProviderExecutorTests
             CancellationToken cancellationToken = default)
         {
             ReadCalls++;
+            onReadBack?.Invoke();
             return Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>([action]);
         }
 
@@ -163,6 +200,7 @@ public sealed class StopVisitProviderExecutorTests
         public int ConfirmedCalls { get; private set; }
         public int UnknownCalls { get; private set; }
         public Parkeren.Application.ParkingProvider.ProviderParkingAction? ConfirmedAction { get; private set; }
+        public DateTimeOffset? ConfirmedEndAt { get; private set; }
         public string? LastErrorCode { get; private set; }
 
         public Task RecordUnknownAsync(ProviderStopPreparation preparation, string errorCode, CancellationToken cancellationToken = default)
@@ -180,7 +218,17 @@ public sealed class StopVisitProviderExecutorTests
         {
             ConfirmedCalls++;
             ConfirmedAction = providerAction;
+            ConfirmedEndAt = actualEndAt;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset current = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => current;
+
+        public void SetUtcNow(DateTimeOffset value) => current = value;
     }
 }

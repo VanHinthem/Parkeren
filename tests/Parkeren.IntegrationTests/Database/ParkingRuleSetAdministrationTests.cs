@@ -35,6 +35,13 @@ public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
                 ? latest.ValidFrom.AddDays(1)
                 : candidate;
 
+            if (latest.ValidUntil.HasValue)
+            {
+                await seed.ParkingRuleSets
+                    .Where(x => x.Id == latest.Id)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ValidUntil, (DateTimeOffset?)null), ct);
+            }
+
             seed.Users.Add(admin);
             await seed.SaveChangesAsync(ct);
         }

@@ -89,7 +89,16 @@ public static class ParkingTariffCostCalculator
 {
     public static IReadOnlyList<ParkingTariffCost> Calculate(
         ParkingTimeSegment paidSegment,
-        IEnumerable<ParkingTariff> tariffs)
+        IEnumerable<ParkingTariff> tariffs) => CalculateCore(paidSegment, tariffs, roundPerSegment: true);
+
+    public static IReadOnlyList<ParkingTariffCost> CalculateUnrounded(
+        ParkingTimeSegment paidSegment,
+        IEnumerable<ParkingTariff> tariffs) => CalculateCore(paidSegment, tariffs, roundPerSegment: false);
+
+    private static IReadOnlyList<ParkingTariffCost> CalculateCore(
+        ParkingTimeSegment paidSegment,
+        IEnumerable<ParkingTariff> tariffs,
+        bool roundPerSegment)
     {
         if (!paidSegment.IsPaid) return Array.Empty<ParkingTariffCost>();
 
@@ -111,14 +120,37 @@ public static class ParkingTariffCostCalculator
             var end = boundaries[i + 1];
             var tariff = ParkingTariffResolver.Resolve(tariffArray, start);
             var duration = end - start;
-            var amount = ParkingCostCalculator.Calculate(new ParkingUsage(duration), tariff.Unit switch
+            var hourlyRate = tariff.Unit switch
             {
                 ParkingTariffUnit.Hour => tariff.Rate,
                 _ => throw new InvalidOperationException($"Unsupported parking tariff unit: {tariff.Unit}.")
-            }).Amount;
+            };
+            var usage = new ParkingUsage(duration);
+            var amount = roundPerSegment
+                ? ParkingCostCalculator.Calculate(usage, hourlyRate).Amount
+                : hourlyRate * duration.Ticks / TimeSpan.TicksPerHour;
             result.Add(new ParkingTariffCost(tariff, duration, amount));
         }
 
         return result;
+    }
+}
+
+public static class ProviderActionCostCalculator
+{
+    public static decimal Calculate(
+        IEnumerable<ParkingTimeSegment> actionSegments,
+        IEnumerable<ParkingTariff> tariffs)
+    {
+        ArgumentNullException.ThrowIfNull(actionSegments);
+        ArgumentNullException.ThrowIfNull(tariffs);
+
+        var tariffArray = tariffs.ToArray();
+        var unroundedAmount = actionSegments
+            .Where(x => x.IsPaid)
+            .SelectMany(x => ParkingTariffCostCalculator.CalculateUnrounded(x, tariffArray))
+            .Sum(x => x.Amount);
+
+        return decimal.Ceiling(unroundedAmount * 100m) / 100m;
     }
 }

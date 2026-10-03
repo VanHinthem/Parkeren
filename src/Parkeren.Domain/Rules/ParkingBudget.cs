@@ -55,35 +55,92 @@ public static class RealizedParkingBudgetUsageCalculator
     public static ParkingBudgetUsage Calculate(
         ParkingBudgetPeriod period,
         IEnumerable<Visit> visits,
+        IEnumerable<ProviderParkingAction> providerActions,
         IEnumerable<ParkingRuleSet> ruleSets)
     {
         ArgumentNullException.ThrowIfNull(period);
         ArgumentNullException.ThrowIfNull(visits);
+        ArgumentNullException.ThrowIfNull(providerActions);
         ArgumentNullException.ThrowIfNull(ruleSets);
 
         var ruleSetArray = ruleSets.ToArray();
+        var visitArray = visits.Where(x => x.Status == VisitStatus.Completed).ToArray();
+        var visitIds = visitArray.Select(x => x.Id).ToHashSet();
+        var actionsByVisit = providerActions
+            .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+            .GroupBy(x => x.VisitId!.Value)
+            .ToDictionary(x => x.Key, x => x.ToArray());
         var usedPaidDuration = TimeSpan.Zero;
 
-        foreach (var visit in visits.Where(x =>
-                     x.Status == VisitStatus.Completed &&
-                     x.ActualEndAt.HasValue &&
-                     x.StartAt < period.ValidUntil &&
-                     x.ActualEndAt.Value > period.ValidFrom))
+        foreach (var visit in visitArray)
         {
-            var start = visit.StartAt > period.ValidFrom ? visit.StartAt : period.ValidFrom;
-            var end = visit.ActualEndAt!.Value < period.ValidUntil ? visit.ActualEndAt.Value : period.ValidUntil;
-            if (end <= start)
+            if (!actionsByVisit.TryGetValue(visit.Id, out var visitActions))
                 continue;
 
-            var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(start, end, ruleSetArray)
-                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
-                .Where(x => x.IsPaid)
-                .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
-
-            usedPaidDuration += paidDuration;
+            usedPaidDuration += ProviderActionPaidTimeCalculator.Calculate(
+                visitActions,
+                period.ValidFrom,
+                period.ValidUntil,
+                ruleSetArray);
         }
 
         return ParkingBudgetCalculator.Calculate(period, usedPaidDuration);
+    }
+}
+
+public static class ProviderActionPaidTimeCalculator
+{
+    public static TimeSpan Calculate(
+        IEnumerable<ProviderParkingAction> providerActions,
+        DateTimeOffset rangeStart,
+        DateTimeOffset rangeEnd,
+        IEnumerable<ParkingRuleSet> ruleSets)
+    {
+        return CalculatePaidSegments(providerActions, rangeStart, rangeEnd, ruleSets)
+            .Aggregate(TimeSpan.Zero, (duration, segment) => duration + (segment.End - segment.Start));
+    }
+
+    public static IReadOnlyList<ParkingTimeSegment> CalculatePaidSegments(
+        IEnumerable<ProviderParkingAction> providerActions,
+        DateTimeOffset rangeStart,
+        DateTimeOffset rangeEnd,
+        IEnumerable<ParkingRuleSet> ruleSets)
+    {
+        ArgumentNullException.ThrowIfNull(providerActions);
+        ArgumentNullException.ThrowIfNull(ruleSets);
+        if (rangeEnd < rangeStart) throw new ArgumentOutOfRangeException(nameof(rangeEnd));
+
+        var ruleSetArray = ruleSets.ToArray();
+        var paidSegments = new List<ParkingTimeSegment>();
+        foreach (var action in providerActions)
+        {
+            if (action.State == ProviderActionState.Failed)
+                continue;
+            if (action.State is not (ProviderActionState.Stopped or ProviderActionState.Completed))
+                throw new InvalidOperationException("A completed Visit contains a provider action that has not terminated.");
+            if (action.ActualEndAt is not DateTimeOffset actualEndAt)
+                throw new InvalidOperationException("A terminated provider action has no actual end time.");
+            if (action.ActualStartAt is not DateTimeOffset actualStartAt)
+            {
+                if (action.State == ProviderActionState.Stopped && actualEndAt <= action.PlannedStartAt)
+                    continue;
+
+                throw new InvalidOperationException("A terminated provider action has no actual start time.");
+            }
+            if (actualEndAt < actualStartAt)
+                throw new InvalidOperationException("A provider action has an invalid actual interval.");
+
+            var start = actualStartAt > rangeStart ? actualStartAt : rangeStart;
+            var end = actualEndAt < rangeEnd ? actualEndAt : rangeEnd;
+            if (end <= start)
+                continue;
+
+            paidSegments.AddRange(ParkingRuleSetPeriodSegmenter.Segment(start, end, ruleSetArray)
+                .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
+                .Where(x => x.IsPaid));
+        }
+
+        return paidSegments;
     }
 }
 

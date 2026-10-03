@@ -121,16 +121,22 @@ internal sealed class VisitEndTimeProviderAdjuster(
                 var afterCancel = string.IsNullOrWhiteSpace(scheduled.ProviderProductId)
                     ? await provider.GetActionsAsync(cancellationToken)
                     : await provider.GetActionsForProductAsync(scheduled.ProviderProductId, cancellationToken);
-            if (afterCancel.Any(x => x.ProviderActionId == scheduledProviderActionId &&
-                                     !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
-            {
-                await MarkScheduledCancelUnknownAsync(
-                    visit.Id, scheduled!.Id, cancelOperationId, "read-back-unconfirmed", CancellationToken.None);
-                return new(true);
-            }
+                var matchingActions = afterCancel
+                    .Where(x => x.ProviderActionId == scheduledProviderActionId)
+                    .ToArray();
+                if (matchingActions.Any(x => !string.Equals(x.Status, "stopped", StringComparison.OrdinalIgnoreCase)))
+                {
+                    await MarkScheduledCancelUnknownAsync(
+                        visit.Id, scheduled!.Id, cancelOperationId, "read-back-unconfirmed", CancellationToken.None);
+                    return new(true);
+                }
 
                 await ConfirmScheduledCancelAsync(
-                    visit.Id, scheduled!.Id, cancelOperationId, CancellationToken.None);
+                    visit.Id,
+                    scheduled!.Id,
+                    cancelOperationId,
+                    matchingActions.Length == 1 ? matchingActions[0].Start : null,
+                    CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
@@ -327,7 +333,11 @@ internal sealed class VisitEndTimeProviderAdjuster(
     }
 
     private async Task ConfirmScheduledCancelAsync(
-        Guid visitId, Guid actionId, Guid operationId, CancellationToken cancellationToken)
+        Guid visitId,
+        Guid actionId,
+        Guid operationId,
+        DateTimeOffset? providerStartedAt,
+        CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var lockKey = VisitAdvisoryLock.For(visitId);
@@ -336,8 +346,10 @@ internal sealed class VisitEndTimeProviderAdjuster(
 
         var operation = await dbContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
-        action.MarkStopped(timeProvider.GetUtcNow(), "stopped");
-        operation.Succeed(timeProvider.GetUtcNow());
+        var stoppedAt = timeProvider.GetUtcNow();
+        action.MarkStopped(stoppedAt, "stopped", providerStartedAt);
+        await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, action, cancellationToken);
+        operation.Succeed(stoppedAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

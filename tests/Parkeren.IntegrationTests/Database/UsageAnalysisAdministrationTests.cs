@@ -33,6 +33,8 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
 
         var firstVisit = CompletedVisit(visitor1.Id, vehicle.Id, firstStart, firstEnd);
         var secondVisit = CompletedVisit(visitor2.Id, vehicle.Id, secondStart, secondEnd);
+        var firstAction = CompletedProviderAction(firstVisit.Id, firstStart, firstEnd);
+        var secondAction = CompletedProviderAction(secondVisit.Id, secondStart, secondEnd);
 
         visitor1.Deactivate();
         vehicle.Deactivate();
@@ -42,6 +44,7 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
             seed.Users.AddRange(admin, visitor1, visitor2);
             seed.Vehicles.Add(vehicle);
             seed.Visits.AddRange(firstVisit, secondVisit);
+            seed.ProviderParkingActions.AddRange(firstAction, secondAction);
             await seed.SaveChangesAsync(ct);
         }
 
@@ -85,6 +88,9 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
         finally
         {
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions
+                .Where(x => x.VisitId == firstVisit.Id || x.VisitId == secondVisit.Id)
+                .ExecuteDeleteAsync(ct);
             await cleanup.Visits.Where(x => x.Id == firstVisit.Id || x.Id == secondVisit.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor1.Id || x.Id == visitor2.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
@@ -111,6 +117,18 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
         visit.BeginStopping();
         visit.Complete(end);
         return visit;
+    }
+
+    private static ProviderParkingAction CompletedProviderAction(
+        Guid visitId,
+        DateTimeOffset start,
+        DateTimeOffset end)
+    {
+        var action = new ProviderParkingAction(Guid.NewGuid(), visitId, start, end);
+        action.MarkStarting();
+        action.MarkActive($"analysis-action-{Guid.NewGuid():N}", start);
+        action.MarkCompleted(end);
+        return action;
     }
 
     private async Task ResetAnalysisStateAsync(CancellationToken ct)

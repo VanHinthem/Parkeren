@@ -37,12 +37,21 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"jit-processor-{suffix}", $"JIT-PROCESSOR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"JP-{suffix[..2]}-{suffix[2..4]}", $"JP{suffix[..4]}", null);
+        var remoteProduct = await parkingProvider.GetProductAsync(cancellationToken);
         ParkingProviderProduct product;
         await using (var productContext = fixture.CreateDbContext())
         {
             product = await productContext.ParkingProviderProducts
-                .AsNoTracking()
-                .SingleAsync(x => x.ProviderProductId == "visitor", cancellationToken);
+                .SingleOrDefaultAsync(x => x.ProviderProductId == remoteProduct.Id, cancellationToken)
+                ?? new ParkingProviderProduct(
+                    Guid.NewGuid(), remoteProduct.Id, remoteProduct.Name, remoteProduct.CategoryId,
+                    remoteProduct.CategoryName, remoteProduct.Location, now);
+            if (!await productContext.ParkingProviderProducts
+                    .AnyAsync(x => x.Id == product.Id, cancellationToken))
+            {
+                productContext.ParkingProviderProducts.Add(product);
+                await productContext.SaveChangesAsync(cancellationToken);
+            }
         }
         var visit = new Visit(
             Guid.NewGuid(),
@@ -59,7 +68,8 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         visit.Activate();
 
         var remotePredecessor = await parkingProvider.StartActionAsync(
-            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, boundary, "Oss", product.ProviderProductId),
+            new ProviderParkingActionRequest(
+                vehicle.NormalizedLicensePlate, startAt, boundary, product.Location, product.ProviderProductId),
             cancellationToken);
         Assert.Equal("active", remotePredecessor.Status, ignoreCase: true);
 

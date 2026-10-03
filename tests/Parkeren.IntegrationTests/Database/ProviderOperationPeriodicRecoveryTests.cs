@@ -80,6 +80,76 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         await ClearVisitStateAsync(cancellationToken);
     }
 
+    [Fact]
+    public async Task Scheduled_cancel_confirmation_uses_readback_start_for_action_accounting()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var visitStart = now.AddHours(-1);
+        var scheduledStart = now.AddMinutes(-10);
+        var scheduledEnd = now.AddHours(1);
+        var requestedEnd = now.AddMinutes(-15);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"cancel-{suffix}", $"CANCEL-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"CA{suffix[..6]}", $"CA{suffix[..6]}", null);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            visitStart, now.AddHours(2), new EffectiveParkingPolicySnapshot(null, null, true));
+        visit.Activate();
+        var action = new DomainProviderParkingAction(Guid.NewGuid(), visit.Id, scheduledStart, scheduledEnd);
+        action.MarkStarting();
+        action.MarkScheduled("provider-scheduled-cancel", "scheduled");
+        var operationId = Guid.NewGuid();
+        var change = new VisitEndTimeChange(
+            Guid.NewGuid(), operationId, visit.Id, user.Id,
+            visit.DesiredEndAt, requestedEnd, now);
+        var parkingProvider = new ScheduledCancelProvider(new ApplicationProviderParkingAction(
+            "provider-scheduled-cancel", vehicle.NormalizedLicensePlate,
+            scheduledStart, scheduledEnd, "Oss", "scheduled"));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ProviderParkingActions.Add(action);
+            seed.VisitEndTimeChanges.Add(change);
+            await seed.SaveChangesAsync(cancellationToken);
+        }
+
+        await using var services = BuildServices(parkingProvider, new ManualTimeProvider(now));
+        await using (var scope = services.CreateAsyncScope())
+        {
+            var adjustment = await scope.ServiceProvider.GetRequiredService<IVisitEndTimeProviderAdjuster>()
+                .AdjustAsync(new ChangeVisitEndTimeCommand(operationId, visit.Id, user.Id, requestedEnd), cancellationToken);
+
+            Assert.False(adjustment.RequiresReconciliation);
+        }
+
+        await using (var verify = fixture.CreateDbContext())
+        {
+            var persistedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
+            var stopOperation = await verify.ProviderOperations.SingleAsync(
+                x => x.ProviderParkingActionId == action.Id && x.Type == ProviderOperationType.Stop,
+                cancellationToken);
+
+            Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+            Assert.InRange(
+                (persistedAction.ActualStartAt!.Value - scheduledStart).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.InRange(
+                (persistedAction.ActualEndAt!.Value - now).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
+        }
+
+        await ClearVisitStateAsync(cancellationToken);
+    }
+
     [Theory]
     [InlineData(ProviderOperationType.Start)]
     [InlineData(ProviderOperationType.ContinueStart)]
@@ -505,6 +575,40 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
 
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class ScheduledCancelProvider(ApplicationProviderParkingAction action) : IParkingProvider
+    {
+        private ApplicationProviderParkingAction current = action;
+
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ApplicationProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ApplicationProviderParkingAction>>([current]);
+
+        public Task<ApplicationProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ApplicationProviderParkingAction> ExtendActionAsync(
+            string providerActionId,
+            DateTimeOffset newEnd,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default)
+        {
+            current = current with { Status = "stopped" };
+            return Task.CompletedTask;
+        }
     }
 
     private async Task ClearVisitStateAsync(CancellationToken cancellationToken)

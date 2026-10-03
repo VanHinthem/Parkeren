@@ -60,32 +60,17 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, Notificati
         if (unresolvedStopExists)
             throw new InvalidOperationException("Visit cannot complete while another provider Stop operation is unresolved.");
 
-        var completionEndAt = actualEndAt;
-        if (visit.EndReason is not null && visit.EndReason != VisitEndReason.ManualStop)
-        {
-            var terminalBoundaryAt = await dbContext.VisitSchedulerWork
-                .AsNoTracking()
-                .Where(x => x.Id == operation.OperationId &&
-                            x.VisitId == visit.Id &&
-                            x.Type == VisitSchedulerWorkType.StopVisit &&
-                            x.EndReason == visit.EndReason)
-                .Select(x => (DateTimeOffset?)x.DueAt)
-                .SingleOrDefaultAsync(cancellationToken);
-            if (terminalBoundaryAt is not null)
-                completionEndAt = terminalBoundaryAt.Value;
-        }
-
         if (operation.Status == ProviderOperationStatus.Pending)
         {
             operation.BeginAttempt();
-            operation.Succeed(completionEndAt);
+            operation.Succeed(actualEndAt);
         }
         else if (operation.Status != ProviderOperationStatus.Succeeded)
         {
             throw new InvalidOperationException($"Root Stop operation must be Pending or Succeeded before completion, but was {operation.Status}.");
         }
 
-        visit.Complete(completionEndAt);
+        visit.Complete(actualEndAt);
 
         var discrepancies = await dbContext.ProviderDiscrepancies
             .Where(x => x.VisitId == visit.Id &&
@@ -96,13 +81,13 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, Notificati
             .ToListAsync(cancellationToken);
         foreach (var discrepancy in discrepancies)
         {
-            var resolvedAt = completionEndAt < discrepancy.LastObservedAt
+            var resolvedAt = actualEndAt < discrepancy.LastObservedAt
                 ? discrepancy.LastObservedAt
-                : completionEndAt;
+                : actualEndAt;
             discrepancy.Resolve(resolvedAt);
         }
 
-        var notificationEvent = new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, completionEndAt);
+        var notificationEvent = new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt);
         dbContext.NotificationEvents.Add(notificationEvent);
         await inboxWriter.WriteAsync(notificationEvent, NotificationType.VisitStopped, visit.UserId, includeVisitor: true, includeAdmins: false, cancellationToken);
         await budgetWarningService.EvaluateAsync(visit, cancellationToken);

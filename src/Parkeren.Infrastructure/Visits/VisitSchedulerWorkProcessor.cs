@@ -158,7 +158,10 @@ internal sealed class VisitSchedulerWorkProcessor(
                 .OrderByDescending(x => x.PlannedEndAt)
                 .FirstOrDefaultAsync(cancellationToken);
             if (predecessor is not null && predecessor.PlannedEndAt < timeProvider.GetUtcNow())
+            {
                 predecessor.MarkCompleted(predecessor.PlannedEndAt);
+                await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, predecessor, cancellationToken);
+            }
 
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -286,7 +289,10 @@ internal sealed class VisitSchedulerWorkProcessor(
             }
 
             if (latestAction.PlannedEndAt <= now)
+            {
                 latestAction.MarkCompleted(latestAction.PlannedEndAt);
+                await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, latestAction, cancellationToken);
+            }
 
             await dbContext.SaveChangesAsync(cancellationToken);
             await ProcessInitialCoverageAsync(work, visit, latestAction.PlannedEndAt, cancellationToken);

@@ -22,6 +22,73 @@ public sealed class ParkingTariffTests
     }
 
     [Fact]
+    public void Provider_action_cost_rounds_up_once_after_summing_tariff_segments()
+    {
+        var boundary = new DateTimeOffset(2027, 1, 1, 0, 1, 0, TimeSpan.Zero);
+        var oldTariff = new ParkingTariff(Guid.NewGuid(), DateTimeOffset.MinValue, boundary, 0.25m);
+        var newTariff = new ParkingTariff(Guid.NewGuid(), boundary, null, 0.25m);
+        var actionSegments = new[]
+        {
+            new ParkingTimeSegment(boundary.AddMinutes(-1), boundary, true),
+            new ParkingTimeSegment(boundary, boundary.AddMinutes(1), true)
+        };
+
+        var amount = ProviderActionCostCalculator.Calculate(actionSegments, new[] { oldTariff, newTariff });
+
+        Assert.Equal(0.01m, amount);
+    }
+
+    [Fact]
+    public void Provider_action_cost_rounds_each_action_once_before_summing_actions()
+    {
+        var start = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var tariff = new ParkingTariff(Guid.NewGuid(), DateTimeOffset.MinValue, null, 0.25m);
+        var actionSegments = new[]
+        {
+            new[] { new ParkingTimeSegment(start, start.AddMinutes(1), true) },
+            new[] { new ParkingTimeSegment(start.AddMinutes(2), start.AddMinutes(3), true) }
+        };
+
+        var amount = actionSegments.Sum(segments =>
+            ProviderActionCostCalculator.Calculate(segments, new[] { tariff }));
+        var roundedAsOneAction = ProviderActionCostCalculator.Calculate(
+            actionSegments.SelectMany(x => x), new[] { tariff });
+
+        Assert.Equal(0.02m, amount);
+        Assert.Equal(0.01m, roundedAsOneAction);
+    }
+
+    [Fact]
+    public void Provider_action_cost_rounds_any_positive_fraction_up_to_a_cent()
+    {
+        var start = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var tariff = new ParkingTariff(Guid.NewGuid(), DateTimeOffset.MinValue, null, 0.30m);
+        var actionSegments = new[]
+        {
+            new ParkingTimeSegment(start, start.AddSeconds(1), true)
+        };
+
+        var amount = ProviderActionCostCalculator.Calculate(actionSegments, new[] { tariff });
+
+        Assert.Equal(0.01m, amount);
+    }
+
+    [Fact]
+    public void Provider_action_cost_keeps_an_exact_cent_at_one_cent()
+    {
+        var start = new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var tariff = new ParkingTariff(Guid.NewGuid(), DateTimeOffset.MinValue, null, 36m);
+        var actionSegments = new[]
+        {
+            new ParkingTimeSegment(start, start.AddSeconds(1), true)
+        };
+
+        var amount = ProviderActionCostCalculator.Calculate(actionSegments, new[] { tariff });
+
+        Assert.Equal(0.01m, amount);
+    }
+
+    [Fact]
     public void Free_segment_has_no_tariff_cost()
     {
         var tariff = new ParkingTariff(Guid.NewGuid(), DateTimeOffset.MinValue, null, 2m);

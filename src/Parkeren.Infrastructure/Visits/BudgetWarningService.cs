@@ -48,7 +48,12 @@ internal sealed class BudgetWarningService(
                 .ToListAsync(cancellationToken);
             visits.Add(completedVisit);
 
-            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, ruleSets);
+            var visitIds = visits.Select(x => x.Id).ToArray();
+            var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
+                .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+                .ToListAsync(cancellationToken);
+
+            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, providerActions, ruleSets);
             var alreadyNotified = await dbContext.ParkingBudgetWarningStates
                 .Where(x => x.ParkingBudgetPeriodId == period.Id)
                 .Select(x => x.ThresholdPercentage)

@@ -185,6 +185,7 @@ public sealed class StopVisitProviderExecutor(
                     preparation.Action.ProviderActionId,
                     cancellationToken);
 
+            var actualEndAt = clock.GetUtcNow();
             var actions = string.IsNullOrWhiteSpace(preparation.Action.ProviderProductId)
                 ? await provider.GetActionsAsync(cancellationToken)
                 : await provider.GetActionsForProductAsync(preparation.Action.ProviderProductId, cancellationToken);
@@ -200,7 +201,6 @@ public sealed class StopVisitProviderExecutor(
                 return new(preparation, null, true);
             }
 
-            var actualEndAt = clock.GetUtcNow();
             var confirmed = remaining ?? new Parkeren.Application.ParkingProvider.ProviderParkingAction(
                 preparation.Action.ProviderActionId!,
                 string.Empty,

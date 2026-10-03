@@ -29,6 +29,7 @@ public sealed class ProviderParkingAction
     public DateTimeOffset PlannedEndAt { get; private set; }
     public DateTimeOffset? ActualStartAt { get; private set; }
     public DateTimeOffset? ActualEndAt { get; private set; }
+    public decimal? ProviderCostAmount { get; private set; }
     public string? ProviderStatus { get; private set; }
     public ProviderActionState State { get; private set; }
     public ProviderActionHealth Health { get; private set; }
@@ -83,6 +84,17 @@ public sealed class ProviderParkingAction
         Health = ProviderActionHealth.Healthy;
     }
 
+    public void SetInitialProviderCost(decimal amount)
+    {
+        if (amount < 0m) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (State is not (ProviderActionState.Stopped or ProviderActionState.Completed))
+            throw new InvalidOperationException("Initial provider cost requires a terminated provider action.");
+        if (ProviderCostAmount.HasValue)
+            throw new InvalidOperationException("Initial provider cost has already been set.");
+
+        ProviderCostAmount = amount;
+    }
+
     public void MarkExternallyStopped(string providerStatus)
     {
         Ensure(ProviderActionState.Active);
@@ -103,11 +115,21 @@ public sealed class ProviderParkingAction
         // Provider absence proves there is no action left to stop, but not when it ended.
     }
 
-    public void MarkStopped(DateTimeOffset actualEndAt, string? providerStatus = null)
+    public void MarkStopped(
+        DateTimeOffset actualEndAt,
+        string? providerStatus = null,
+        DateTimeOffset? providerStartedAt = null)
     {
         Ensure(ProviderActionState.Stopping);
-        if (ActualStartAt is not null && actualEndAt < ActualStartAt)
+        var actualStartAt = ActualStartAt;
+        if (!actualStartAt.HasValue && actualEndAt >= PlannedStartAt &&
+            providerStartedAt is DateTimeOffset readBackStartAt && readBackStartAt <= actualEndAt)
+        {
+            actualStartAt = readBackStartAt;
+        }
+        if (actualStartAt is not null && actualEndAt < actualStartAt)
             throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        ActualStartAt = actualStartAt;
         ActualEndAt = actualEndAt;
         ProviderStatus = providerStatus;
         State = ProviderActionState.Stopped;

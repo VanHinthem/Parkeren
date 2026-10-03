@@ -95,8 +95,9 @@ public sealed class ParkingBudgetCalculatorTests
         var visit = CompletedVisit(start, start.AddHours(5)); // through 22:00 Europe/Amsterdam
         var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
         var rules = Rules(start.AddDays(-1));
+        var action = CompletedAction(visit.Id, start, start.AddHours(5));
 
-        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { rules });
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { action }, new[] { rules });
 
         Assert.Equal(TimeSpan.FromHours(3), usage.UsedPaidDuration);
     }
@@ -109,10 +110,66 @@ public sealed class ParkingBudgetCalculatorTests
         var visit = CompletedVisit(periodStart.AddHours(-1), periodEnd.AddHours(1));
         var period = BudgetPeriod(periodStart, periodEnd, 100);
         var rules = Rules(periodStart.AddDays(-1));
+        var action = CompletedAction(visit.Id, periodStart.AddHours(-1), periodEnd.AddHours(1));
 
-        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { rules });
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { action }, new[] { rules });
 
         Assert.Equal(TimeSpan.FromHours(2), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Realized_budget_usage_excludes_gaps_between_provider_actions()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var visit = CompletedVisit(start, start.AddHours(5));
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+        var actions = new[]
+        {
+            CompletedAction(visit.Id, start, start.AddHours(1)),
+            CompletedAction(visit.Id, start.AddHours(2), start.AddHours(3))
+        };
+
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, actions, new[] { rules });
+
+        Assert.Equal(TimeSpan.FromHours(2), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Realized_budget_usage_counts_pre_start_cancelled_action_as_zero()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var visit = CompletedVisit(start, start.AddHours(5));
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, start.AddHours(1), start.AddHours(2));
+        action.MarkStarting();
+        action.MarkScheduled("scheduled-provider-action");
+        action.BeginStopping();
+        action.MarkStopped(start.AddMinutes(30), "stopped");
+
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { action }, new[] { rules });
+
+        Assert.Equal(TimeSpan.Zero, usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Realized_budget_usage_uses_provider_readback_start_for_scheduled_action()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var visit = CompletedVisit(start, start.AddHours(5));
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, start.AddHours(1), start.AddHours(3));
+        action.MarkStarting();
+        action.MarkScheduled("scheduled-provider-action");
+        action.BeginStopping();
+        action.MarkStopped(start.AddHours(2), "stopped", start.AddHours(1));
+
+        var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, new[] { visit }, new[] { action }, new[] { rules });
+
+        Assert.Equal(start.AddHours(1), action.ActualStartAt);
+        Assert.Equal(TimeSpan.FromHours(1), usage.UsedPaidDuration);
     }
 
     private static Visit CompletedVisit(DateTimeOffset start, DateTimeOffset end)
@@ -125,6 +182,15 @@ public sealed class ParkingBudgetCalculatorTests
         visit.BeginStopping();
         visit.Complete(end);
         return visit;
+    }
+
+    private static ProviderParkingAction CompletedAction(Guid visitId, DateTimeOffset start, DateTimeOffset end)
+    {
+        var action = new ProviderParkingAction(Guid.NewGuid(), visitId, start, end);
+        action.MarkStarting();
+        action.MarkActive($"provider-{Guid.NewGuid():N}", start);
+        action.MarkCompleted(end);
+        return action;
     }
 
     private static ParkingBudgetPeriod BudgetPeriod(DateTimeOffset start, DateTimeOffset end, double maximumHours) =>

@@ -74,12 +74,62 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             Assert.Equal(VisitEndReason.DesiredEndReached, persistedVisit.EndReason);
             Assert.NotNull(persistedVisit.ActualEndAt);
             Assert.InRange(
-                (persistedVisit.ActualEndAt.Value - boundary).Duration(),
+                (persistedVisit.ActualEndAt.Value - now).Duration(),
                 TimeSpan.Zero,
-                TimeSpan.FromMilliseconds(1));
+                TimeSpan.FromSeconds(5));
+            Assert.True(persistedVisit.ActualEndAt > boundary);
             Assert.Equal(VisitSchedulerWorkStatus.Completed, persistedWork.Status);
             Assert.Equal(ProviderOperationStatus.Succeeded, operation.Status);
+            Assert.Equal(persistedVisit.ActualEndAt, operation.CompletedAt);
             Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
+        }
+
+        await ClearVisitStateAsync(ct);
+    }
+
+    [Fact]
+    public async Task Stop_claim_preserves_pending_provider_action_reconciliation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var startAt = now.AddMinutes(-20);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"history-stop-{suffix}", $"HISTORY-STOP-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"HS{suffix[..6]}", $"HS{suffix[..6]}", null);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            startAt, now.AddHours(2), new EffectiveParkingPolicySnapshot(null, TimeSpan.FromHours(8), true));
+        visit.Activate();
+
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-action", startAt);
+        var reconciliation = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ReconcileProviderAction,
+            now.AddMinutes(1), providerParkingActionId: action.Id);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ProviderParkingActions.Add(action);
+            seed.VisitSchedulerWork.Add(reconciliation);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        await using (var scope = BuildServices().CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IStopVisitClaimer>()
+                .ClaimAsync(new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id), ct);
+        }
+
+        await using (var verify = fixture.CreateDbContext())
+        {
+            var persistedWork = await verify.VisitSchedulerWork.SingleAsync(x => x.Id == reconciliation.Id, ct);
+            Assert.Equal(VisitSchedulerWorkStatus.Pending, persistedWork.Status);
         }
 
         await ClearVisitStateAsync(ct);

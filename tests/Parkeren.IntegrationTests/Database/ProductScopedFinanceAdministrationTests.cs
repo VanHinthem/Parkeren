@@ -40,6 +40,8 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
         var rulesB = CreateRules(productB.Id);
         var visitA = CompletedVisit(visitorA.Id, vehicleA.Id, productA, start, end);
         var visitB = CompletedVisit(visitorB.Id, vehicleB.Id, productB, start, end);
+        var actionA = CompletedProviderAction(visitA.Id, start, end);
+        var actionB = CompletedProviderAction(visitB.Id, start, end);
 
         await using (var seed = fixture.CreateDbContext())
         {
@@ -48,6 +50,7 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
             seed.ParkingProviderProducts.AddRange(productA, productB);
             seed.ParkingRuleSets.AddRange(rulesA, rulesB);
             seed.Visits.AddRange(visitA, visitB);
+            seed.ProviderParkingActions.AddRange(actionA, actionB);
             await seed.SaveChangesAsync(ct);
         }
 
@@ -105,6 +108,9 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
         finally
         {
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions
+                .Where(x => x.VisitId == visitA.Id || x.VisitId == visitB.Id)
+                .ExecuteDeleteAsync(ct);
             await cleanup.Visits.Where(x => x.Id == visitA.Id || x.Id == visitB.Id).ExecuteDeleteAsync(ct);
             await cleanup.ParkingBudgetPeriods.Where(x => budgetIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
             await cleanup.ParkingTariffs.Where(x => tariffIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
@@ -164,6 +170,18 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
         visit.BeginStopping();
         visit.Complete(end);
         return visit;
+    }
+
+    private static ProviderParkingAction CompletedProviderAction(
+        Guid visitId,
+        DateTimeOffset start,
+        DateTimeOffset end)
+    {
+        var action = new ProviderParkingAction(Guid.NewGuid(), visitId, start, end);
+        action.MarkStarting();
+        action.MarkActive($"finance-action-{Guid.NewGuid():N}", start);
+        action.MarkCompleted(end);
+        return action;
     }
 
     private async Task ResetStateAsync(CancellationToken ct)

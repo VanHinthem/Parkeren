@@ -163,6 +163,56 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Cost_report_uses_provider_action_interval_instead_of_visit_interval()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var localOffset = TimeSpan.FromHours(2);
+        var start = new DateTimeOffset(2026, 9, 28, 10, 0, 0, localOffset).ToUniversalTime();
+        var end = start.AddHours(2);
+        var actionStart = start.AddMinutes(15);
+        var actionEnd = start.AddMinutes(45);
+        var tariffIds = new List<Guid>();
+        CompletedVisitSeed? visitSeed = null;
+
+        try
+        {
+            visitSeed = await CreateCompletedVisitAsync(start, end, ct, actionStart, actionEnd);
+
+            await using var administration = CreateAdministration();
+            var tariff = await administration.Service.CreateParkingTariffAsync(
+                admin.Id, start.AddHours(-1), end.AddHours(1), 1m, ParkingTariffUnit.Hour, ct);
+            Assert.Equal(AdminParkingTariffCreateOutcome.Created, tariff.Outcome);
+            tariffIds.Add(tariff.Tariff!.Id);
+
+            var report = await administration.Service.GetCostReportAsync(
+                admin.Id, start.AddMinutes(-1), end.AddMinutes(1), ct);
+
+            Assert.True(report.IsComplete);
+            Assert.Equal(30, report.TotalPaidDurationMinutes);
+            Assert.Equal(0.5m, report.TotalAmount);
+            var visit = Assert.Single(report.Visits);
+            Assert.Equal(30, visit.PaidDurationMinutes);
+            Assert.Equal(0.5m, visit.Amount);
+
+            var visitSummaries = await administration.Service.GetVisitsAsync(
+                admin.Id, visitSeed.UserId, null, null, null, VisitStatus.Completed, end, ct);
+            Assert.Equal(30, Assert.Single(visitSummaries).PaidDurationMinutes);
+            var visitDetail = await administration.Service.GetVisitDetailAsync(
+                admin.Id, visitSeed.VisitId, end, ct);
+            Assert.NotNull(visitDetail);
+            Assert.Equal(30, visitDetail.Visit.PaidDurationMinutes);
+        }
+        finally
+        {
+            if (visitSeed is not null)
+                await CleanupVisitorAsync(visitSeed.UserId, visitSeed.VehicleId, ct);
+            await CleanupAsync(admin.Id, [], tariffIds, ct);
+        }
+    }
+
+    [Fact]
     public async Task Cost_report_is_incomplete_when_paid_time_has_no_historical_tariff()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -241,7 +291,9 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
     private async Task<CompletedVisitSeed> CreateCompletedVisitAsync(
         DateTimeOffset start,
         DateTimeOffset end,
-        CancellationToken ct)
+        CancellationToken ct,
+        DateTimeOffset? actionStartAt = null,
+        DateTimeOffset? actionEndAt = null)
     {
         var suffix = Guid.NewGuid().ToString("N");
         var visitor = new User(Guid.NewGuid(), $"visitor-{suffix}", $"VISITOR-{suffix}", "hash", UserRole.Visitor);
@@ -259,13 +311,18 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         visit.Activate();
         visit.BeginStopping();
         visit.Complete(end);
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        action.MarkActive($"provider-{Guid.NewGuid():N}", actionStartAt ?? start);
+        action.MarkCompleted(actionEndAt ?? end);
 
         await using var context = fixture.CreateDbContext();
         context.Users.Add(visitor);
         context.Vehicles.Add(vehicle);
         context.Visits.Add(visit);
+        context.ProviderParkingActions.Add(action);
         await context.SaveChangesAsync(ct);
-        return new CompletedVisitSeed(visitor.Id, vehicle.Id);
+        return new CompletedVisitSeed(visitor.Id, vehicle.Id, visit.Id);
     }
 
     private async Task CleanupVisitorAsync(Guid userId, Guid vehicleId, CancellationToken ct)
@@ -315,7 +372,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         return new AdministrationScope(provider, scope, scope.ServiceProvider.GetRequiredService<IAdministrationService>());
     }
 
-    private sealed record CompletedVisitSeed(Guid UserId, Guid VehicleId);
+    private sealed record CompletedVisitSeed(Guid UserId, Guid VehicleId, Guid VisitId);
 
     private sealed class AdministrationScope(
         ServiceProvider provider,

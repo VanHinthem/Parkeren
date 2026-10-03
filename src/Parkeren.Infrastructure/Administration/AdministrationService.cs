@@ -1280,10 +1280,14 @@ internal sealed class AdministrationService(
             period.ValidUntil,
             period.ProviderProductId,
             cancellationToken);
+        var visitIds = visits.Select(x => x.Id).ToArray();
+        var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
+            .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+            .ToListAsync(cancellationToken);
 
         try
         {
-            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, ruleSets);
+            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, providerActions, ruleSets);
             return new AdminBudgetUsageSummary(
                 ToAdminBudgetPeriodSummary(period),
                 (int)Math.Floor(usage.UsedPaidDuration.TotalMinutes),
@@ -1490,8 +1494,13 @@ internal sealed class AdministrationService(
             join vehicle in dbContext.Vehicles.AsNoTracking() on visit.VehicleId equals vehicle.Id
             where visit.Status == VisitStatus.Completed &&
                   visit.ActualEndAt.HasValue &&
-                  visit.StartAt < reportTo &&
-                  visit.ActualEndAt.Value > reportFrom
+                  ((visit.StartAt < reportTo && visit.ActualEndAt.Value > reportFrom) ||
+                   dbContext.ProviderParkingActions.Any(action =>
+                       action.VisitId == visit.Id &&
+                       action.ActualStartAt.HasValue &&
+                       action.ActualEndAt.HasValue &&
+                       action.ActualStartAt.Value < reportTo &&
+                       action.ActualEndAt.Value > reportFrom))
             orderby visit.StartAt descending
             select new
             {
@@ -1500,6 +1509,13 @@ internal sealed class AdministrationService(
                 vehicle.LicensePlate
             })
             .ToListAsync(cancellationToken);
+
+        var visitIds = rows.Select(x => x.Visit.Id).ToArray();
+        var actionsByVisitId = (await dbContext.ProviderParkingActions.AsNoTracking()
+                .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.VisitId!.Value)
+            .ToDictionary(x => x.Key, x => x.ToArray());
 
         var ruleSets = await LoadRuleSetsAsync(reportFrom, reportTo, cancellationToken);
         var tariffs = await dbContext.ParkingTariffs.AsNoTracking()
@@ -1510,31 +1526,31 @@ internal sealed class AdministrationService(
         var visitCosts = new List<AdminVisitCostSummary>(rows.Count);
         foreach (var row in rows)
         {
-            var segmentStart = row.Visit.StartAt > reportFrom ? row.Visit.StartAt : reportFrom;
             var actualEnd = row.Visit.ActualEndAt!.Value;
-            var segmentEnd = actualEnd < reportTo ? actualEnd : reportTo;
             var visitRuleSets = ruleSets
                 .Where(x => x.ProviderProductId == row.Visit.ProviderProductId)
                 .ToArray();
             var visitTariffs = tariffs
                 .Where(x => x.ProviderProductId == row.Visit.ProviderProductId)
                 .ToArray();
+            var visitActions = actionsByVisitId.GetValueOrDefault(row.Visit.Id) ?? [];
+            int? paidDurationMinutes = null;
 
             try
             {
-                var paidSegments = ParkingRuleSetPeriodSegmenter
-                    .Segment(segmentStart, segmentEnd, visitRuleSets)
-                    .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
-                    .Where(x => x.IsPaid)
+                var actionPaidSegments = visitActions
+                    .Select(action => ProviderActionPaidTimeCalculator.CalculatePaidSegments(
+                        [action], reportFrom, reportTo, visitRuleSets))
                     .ToArray();
 
-                var paidDuration = paidSegments.Aggregate(
+                var paidDuration = actionPaidSegments.SelectMany(x => x).Aggregate(
                     TimeSpan.Zero,
                     (total, segment) => total + (segment.End - segment.Start));
+                paidDurationMinutes = (int)Math.Floor(paidDuration.TotalMinutes);
 
                 decimal amount = 0m;
-                foreach (var paidSegment in paidSegments)
-                    amount += ParkingTariffCostCalculator.Calculate(paidSegment, visitTariffs).Sum(x => x.Amount);
+                foreach (var actionSegments in actionPaidSegments)
+                    amount += ProviderActionCostCalculator.Calculate(actionSegments, visitTariffs);
 
                 visitCosts.Add(new AdminVisitCostSummary(
                     row.Visit.Id,
@@ -1543,29 +1559,13 @@ internal sealed class AdministrationService(
                     row.LicensePlate,
                     row.Visit.StartAt,
                     actualEnd,
-                    (int)Math.Floor(paidDuration.TotalMinutes),
+                    paidDurationMinutes,
                     amount,
                     true,
                     null));
             }
             catch (InvalidOperationException exception)
             {
-                int? paidDurationMinutes = null;
-                try
-                {
-                    paidDurationMinutes = (int)Math.Floor(
-                        ParkingRuleSetPeriodSegmenter
-                            .Segment(segmentStart, segmentEnd, visitRuleSets)
-                            .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
-                            .Where(x => x.IsPaid)
-                            .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start))
-                            .TotalMinutes);
-                }
-                catch (InvalidOperationException)
-                {
-                    // Rules are incomplete too; keep paid duration unknown.
-                }
-
                 visitCosts.Add(new AdminVisitCostSummary(
                     row.Visit.Id,
                     row.Visit.UserId,
@@ -1749,12 +1749,32 @@ internal sealed class AdministrationService(
         if (rows.Count == 0)
             return Array.Empty<AdminVisitSummary>();
 
+        var visitIds = rows.Select(x => x.Visit.Id).ToArray();
+        var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
+            .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+            .ToListAsync(cancellationToken);
         var earliestStart = rows.Min(x => x.Visit.StartAt);
         var latestEnd = rows.Max(x => x.Visit.ActualEndAt ?? x.Visit.DesiredEndAt ?? now);
+        var actionStarts = providerActions
+            .Where(x => x.ActualStartAt.HasValue)
+            .Select(x => x.ActualStartAt!.Value)
+            .ToArray();
+        var actionEnds = providerActions
+            .Where(x => x.ActualEndAt.HasValue)
+            .Select(x => x.ActualEndAt!.Value)
+            .ToArray();
+        if (actionStarts.Length > 0 && actionStarts.Min() < earliestStart)
+            earliestStart = actionStarts.Min();
+        if (actionEnds.Length > 0 && actionEnds.Max() > latestEnd)
+            latestEnd = actionEnds.Max();
         if (latestEnd <= earliestStart)
             latestEnd = earliestStart.AddSeconds(1);
 
         var ruleSets = await LoadRuleSetsAsync(earliestStart, latestEnd, cancellationToken);
+        var actionsByVisitId = providerActions
+            .Where(x => x.VisitId.HasValue)
+            .GroupBy(x => x.VisitId!.Value)
+            .ToDictionary(x => x.Key, x => x.ToArray());
 
         return rows
             .Select(x => ToAdminVisitSummary(
@@ -1763,6 +1783,7 @@ internal sealed class AdministrationService(
                 x.Vehicle.LicensePlate,
                 x.StartedByUsername,
                 now,
+                actionsByVisitId.GetValueOrDefault(x.Visit.Id) ?? [],
                 ruleSets.Where(ruleSet => ruleSet.ProviderProductId == x.Visit.ProviderProductId).ToArray()))
             .ToArray();
     }
@@ -1793,13 +1814,31 @@ internal sealed class AdministrationService(
         if (row is null)
             return null;
 
+        var providerActionEntities = await dbContext.ProviderParkingActions.AsNoTracking()
+            .Where(x => x.VisitId == visitId)
+            .OrderBy(x => x.PlannedStartAt)
+            .ToListAsync(cancellationToken);
         var effectiveEnd = row.Visit.ActualEndAt ?? row.Visit.DesiredEndAt ?? now;
         if (effectiveEnd <= row.Visit.StartAt)
             effectiveEnd = row.Visit.StartAt.AddSeconds(1);
+        var actionStarts = providerActionEntities
+            .Where(x => x.ActualStartAt.HasValue)
+            .Select(x => x.ActualStartAt!.Value)
+            .ToArray();
+        var actionEnds = providerActionEntities
+            .Where(x => x.ActualEndAt.HasValue)
+            .Select(x => x.ActualEndAt!.Value)
+            .ToArray();
+        var ruleStart = actionStarts.Length > 0 && actionStarts.Min() < row.Visit.StartAt
+            ? actionStarts.Min()
+            : row.Visit.StartAt;
+        var ruleEnd = actionEnds.Length > 0 && actionEnds.Max() > effectiveEnd
+            ? actionEnds.Max()
+            : effectiveEnd;
 
         var ruleSets = await LoadRuleSetsForProductAsync(
-            row.Visit.StartAt,
-            effectiveEnd,
+            ruleStart,
+            ruleEnd,
             row.Visit.ProviderProductId,
             cancellationToken);
         var visitSummary = ToAdminVisitSummary(
@@ -1808,6 +1847,7 @@ internal sealed class AdministrationService(
             row.LicensePlate,
             row.StartedByUsername,
             now,
+            providerActionEntities,
             ruleSets);
 
         var providerProductName = row.Visit.ProviderProductId is Guid providerProductId
@@ -1817,9 +1857,7 @@ internal sealed class AdministrationService(
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
 
-        var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
-            .Where(x => x.VisitId == visitId)
-            .OrderBy(x => x.PlannedStartAt)
+        var providerActions = providerActionEntities
             .Select(x => new AdminProviderParkingActionSummary(
                 x.Id,
                 x.ProviderActionId,
@@ -1832,7 +1870,7 @@ internal sealed class AdministrationService(
                 x.ProviderStatus,
                 x.State,
                 x.Health))
-            .ToListAsync(cancellationToken);
+            .ToArray();
 
         var providerOperations = await dbContext.ProviderOperations.AsNoTracking()
             .Where(x => x.VisitId == visitId)
@@ -1928,6 +1966,7 @@ internal sealed class AdministrationService(
         string licensePlate,
         string startedByUsername,
         DateTimeOffset now,
+        IReadOnlyList<ProviderParkingAction> providerActions,
         IReadOnlyList<ParkingRuleSet> ruleSets)
     {
         int? paidDurationMinutes = null;
@@ -1935,7 +1974,22 @@ internal sealed class AdministrationService(
             ? null
             : visit.ActualEndAt ?? (visit.Status == VisitStatus.Completed ? null : now);
 
-        if (end.HasValue && end.Value > visit.StartAt && ruleSets.Count > 0)
+        if (visit.Status == VisitStatus.Completed)
+        {
+            try
+            {
+                var paidDuration = providerActions
+                    .SelectMany(action => ProviderActionPaidTimeCalculator.CalculatePaidSegments(
+                        [action], DateTimeOffset.MinValue, DateTimeOffset.MaxValue, ruleSets))
+                    .Aggregate(TimeSpan.Zero, (duration, segment) => duration + (segment.End - segment.Start));
+                paidDurationMinutes = (int)Math.Floor(paidDuration.TotalMinutes);
+            }
+            catch (InvalidOperationException)
+            {
+                // Historical configuration or action data can be incomplete; keep the Visit visible for audit.
+            }
+        }
+        else if (end.HasValue && end.Value > visit.StartAt && ruleSets.Count > 0)
         {
             try
             {

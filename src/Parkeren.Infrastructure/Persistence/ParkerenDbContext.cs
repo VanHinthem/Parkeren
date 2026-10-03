@@ -215,6 +215,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.ProviderProductId).HasMaxLength(200);
             entity.Property(x => x.ProviderLocation).HasMaxLength(100);
             entity.Property(x => x.ProviderStatus).HasMaxLength(100);
+            entity.Property(x => x.ProviderCostAmount);
             entity.Property(x => x.State).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Health).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Version).IsRowVersion();

@@ -779,8 +779,10 @@ internal sealed class VisitRecoveryService(
 
         persistedOperation.BeginReconciliation();
         persistedAction.BeginReconciliation();
-        persistedAction.MarkStopped(DateTimeOffset.UtcNow, remote.Status);
-        persistedOperation.Succeed(DateTimeOffset.UtcNow);
+        var stoppedAt = timeProvider.GetUtcNow();
+        persistedAction.MarkStopped(stoppedAt, remote.Status, remote.Start);
+        await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, persistedAction, cancellationToken);
+        persistedOperation.Succeed(stoppedAt);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

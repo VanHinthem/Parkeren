@@ -21,6 +21,11 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 {
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
     [Fact]
     public async Task Database_can_be_created_from_current_model()
     {
@@ -401,6 +406,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             startAt, actualEndAt.AddHours(1),
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
         visit.Activate();
+        var providerAction = CreateCompletedProviderAction(visit.Id, startAt, actualEndAt);
 
         var paidWindows = new[]
         {
@@ -416,6 +422,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Users.AddRange(visitor, activeAdmin, inactiveAdmin);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(providerAction);
             seedContext.ParkingBudgetPeriods.Add(budgetPeriod);
             seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
                 Guid.NewGuid(), startAt.AddDays(-2), null, TimeSpan.FromHours(4), paidWindows));
@@ -488,6 +495,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
         firstVisit.Activate();
         secondVisit.Activate();
+        var providerActions = new[]
+        {
+            CreateCompletedProviderAction(firstVisit.Id, firstStart, firstStart.AddHours(1)),
+            CreateCompletedProviderAction(secondVisit.Id, secondStart, secondStart.AddHours(1))
+        };
 
         var paidWindows = Enumerable.Range(0, 7)
             .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
@@ -502,6 +514,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             seedContext.Users.Add(visitor);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.AddRange(firstVisit, secondVisit);
+            seedContext.ProviderParkingActions.AddRange(providerActions);
             seedContext.ParkingBudgetPeriods.Add(budgetPeriod);
             seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
                 Guid.NewGuid(), firstStart.AddDays(-2), null, TimeSpan.FromHours(4), paidWindows));
@@ -1421,18 +1434,37 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         var user = new User(Guid.NewGuid(), "paid-stop", "PAID-STOP", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), "PS-44-OP", "PS44OP", null);
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(), $"PAID-STOP-{Guid.NewGuid():N}", "Paid stop", "test", "Test", "STOP_TEST", DateTimeOffset.UtcNow);
         var startOperationId = Guid.NewGuid();
         var stopOperationId = Guid.NewGuid();
         var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
         var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
         var endAt = startAt.AddHours(2);
-        var visit = new Visit(Guid.NewGuid(), startOperationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot);
+        var visit = new Visit(
+            Guid.NewGuid(), startOperationId, user.Id, vehicle.Id, user.Id, startAt, endAt, snapshot,
+            product.Id, product.ProviderProductId, product.Location);
+        var ruleSet = new ParkingRuleSet(
+            Guid.NewGuid(), startAt.AddDays(-1), null, TimeSpan.FromHours(4),
+            Enumerable.Range(0, 7)
+                .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                .ToArray());
+        ruleSet.AssignProviderProduct(product.Id);
+        var tariff = new ParkingTariff(Guid.NewGuid(), startAt.AddDays(-1), null, 2m);
+        tariff.AssignProviderProduct(product.Id);
+        var budgetPeriod = new ParkingBudgetPeriod(
+            Guid.NewGuid(), startAt.AddDays(-1), endAt.AddDays(1), TimeSpan.FromMinutes(1));
+        budgetPeriod.AssignProviderProduct(product.Id);
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
+            seedContext.ParkingProviderProducts.Add(product);
             seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(ruleSet);
+            seedContext.ParkingTariffs.Add(tariff);
+            seedContext.ParkingBudgetPeriods.Add(budgetPeriod);
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -1456,6 +1488,15 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 new Parkeren.Application.ParkingProvider.ProviderParkingAction(
                     "provider-paid-stop-1", "PS44OP", startAt, endAt, "Oss", "active"),
                 cancellationToken);
+        }
+
+        await using (var scheduledContext = fixture.CreateDbContext())
+        {
+            await scheduledContext.ProviderParkingActions
+                .Where(x => x.VisitId == visit.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.State, ProviderActionState.Scheduled)
+                    .SetProperty(x => x.ActualStartAt, (DateTimeOffset?)null), cancellationToken);
         }
 
         StopVisitClaim stopClaim;
@@ -1486,22 +1527,63 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
                 cancellationToken);
         }
 
+        await using (var finalizeScope = provider.CreateAsyncScope())
+        {
+            await finalizeScope.ServiceProvider.GetRequiredService<IStopVisitFinalizer>()
+                .CompleteWithoutProviderActionAsync(stopClaim, actualEndAt, cancellationToken);
+        }
+
         await using var verifyContext = fixture.CreateDbContext();
         var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
         var action = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
         var stopOperation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == stopOperationId, cancellationToken);
 
-        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
         Assert.Equal(VisitHealth.Healthy, persistedVisit.Health);
-        Assert.True(persistedVisit.OccupiesCapacity);
+        Assert.False(persistedVisit.OccupiesCapacity);
         Assert.Equal(ProviderActionState.Stopped, action.State);
+        Assert.InRange((action.ActualStartAt!.Value - startAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.InRange((action.ActualEndAt!.Value - actualEndAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(ProviderActionHealth.Healthy, action.Health);
         Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
         Assert.Equal(action.Id, stopOperation.ProviderParkingActionId);
         Assert.Equal(1, stopOperation.AttemptCount);
-        Assert.Empty(await verifyContext.NotificationEvents
+        Assert.NotNull(action.ProviderCostAmount);
+        var actionDuration = action.ActualEndAt!.Value - action.ActualStartAt!.Value;
+        var expectedCost = decimal.Ceiling(
+            (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
+        Assert.Equal(expectedCost, action.ProviderCostAmount);
+        Assert.NotEmpty(await verifyContext.ParkingBudgetWarningStates
+            .Where(x => x.ParkingBudgetPeriodId == budgetPeriod.Id)
+            .ToListAsync(cancellationToken));
+        Assert.Single(await verifyContext.NotificationEvents
             .Where(x => x.Type == NotificationEventType.VisitStopped && x.AggregateId == visit.Id)
             .ToListAsync(cancellationToken));
+
+        await using var cleanup = fixture.CreateDbContext();
+        await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        var warningStateIds = await cleanup.ParkingBudgetWarningStates
+            .Where(x => x.ParkingBudgetPeriodId == budgetPeriod.Id)
+            .Select(x => x.Id)
+            .ToArrayAsync(cancellationToken);
+        await cleanup.NotificationEvents
+            .Where(x => warningStateIds.Contains(x.AggregateId))
+            .ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingBudgetWarningStates
+            .Where(x => x.ParkingBudgetPeriodId == budgetPeriod.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        await cleanup.NotificationEvents.Where(x => x.AggregateId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingBudgetPeriods.Where(x => x.Id == budgetPeriod.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingTariffs.Where(x => x.Id == tariff.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
 
@@ -1610,16 +1692,43 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var stopOperationId = Guid.NewGuid();
         var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
         var endAt = startAt.AddHours(2);
+        var remoteProduct = await parkingProvider.GetProductAsync(cancellationToken);
+        ParkingProviderProduct product;
+        await using (var productContext = fixture.CreateDbContext())
+        {
+            product = await productContext.ParkingProviderProducts
+                .SingleOrDefaultAsync(x => x.ProviderProductId == remoteProduct.Id, cancellationToken)
+                ?? new ParkingProviderProduct(
+                    Guid.NewGuid(), remoteProduct.Id, remoteProduct.Name, remoteProduct.CategoryId,
+                    remoteProduct.CategoryName, remoteProduct.Location, startAt);
+            if (!await productContext.ParkingProviderProducts
+                    .AnyAsync(x => x.Id == product.Id, cancellationToken))
+            {
+                productContext.ParkingProviderProducts.Add(product);
+                await productContext.SaveChangesAsync(cancellationToken);
+            }
+        }
         var visit = new Visit(
             Guid.NewGuid(), startOperationId, user.Id, vehicle.Id, user.Id,
             startAt, endAt,
-            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true),
+            product.Id, product.ProviderProductId, product.Location);
+        var ruleSet = new ParkingRuleSet(
+            Guid.NewGuid(), startAt.AddDays(-1), null, TimeSpan.FromHours(4),
+            Enumerable.Range(0, 7)
+                .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                .ToArray());
+        ruleSet.AssignProviderProduct(product.Id);
+        var tariff = new ParkingTariff(Guid.NewGuid(), startAt.AddDays(-1), null, 2m);
+        tariff.AssignProviderProduct(product.Id);
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
+            seedContext.ParkingRuleSets.Add(ruleSet);
+            seedContext.ParkingTariffs.Add(tariff);
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -1634,7 +1743,8 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using var provider = services.BuildServiceProvider();
 
         var remoteAction = await parkingProvider.StartActionAsync(
-            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, endAt, "Oss"),
+            new ProviderParkingActionRequest(
+                vehicle.NormalizedLicensePlate, startAt, endAt, product.Location, product.ProviderProductId),
             cancellationToken);
 
         await using (var startScope = provider.CreateAsyncScope())
@@ -1683,8 +1793,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
         Assert.True(persistedVisit.OccupiesCapacity);
         Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        Assert.NotNull(persistedAction.ProviderCostAmount);
+        var actionDuration = persistedAction.ActualEndAt!.Value - persistedAction.ActualStartAt!.Value;
+        var expectedCost = decimal.Ceiling(
+            (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
+        Assert.Equal(expectedCost, persistedAction.ProviderCostAmount);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedStopOperation.Status);
         Assert.Equal(1, persistedStopOperation.AttemptCount);
+
+        await using var cleanup = fixture.CreateDbContext();
+        await cleanup.ParkingTariffs.Where(x => x.Id == tariff.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
     [Fact]
@@ -3111,30 +3229,54 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var user = new User(Guid.NewGuid(), $"scheduled-stop-{suffix}", $"SCHEDULED-STOP-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"SS-{suffix[..4]}", $"SS{suffix[..4]}".ToUpperInvariant(), null);
         var now = DateTimeOffset.UtcNow;
+        var remoteProduct = await parkingProvider.GetProductAsync(cancellationToken);
+        await using var productLookup = fixture.CreateDbContext();
+        var existingProduct = await productLookup.ParkingProviderProducts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.ProviderProductId == remoteProduct.Id, cancellationToken);
+        var product = existingProduct ?? new ParkingProviderProduct(
+            Guid.NewGuid(), remoteProduct.Id, remoteProduct.Name, remoteProduct.CategoryId,
+            remoteProduct.CategoryName, remoteProduct.Location, now);
+        var ownsProduct = existingProduct is null;
         var startAt = now.AddMinutes(-30);
         var desiredEndAt = now.AddMinutes(-1);
         var providerEndAt = now.AddHours(1);
         var remote = await parkingProvider.StartActionAsync(
-            new ProviderParkingActionRequest(vehicle.NormalizedLicensePlate, startAt, providerEndAt, "Oss"),
+            new ProviderParkingActionRequest(
+                vehicle.NormalizedLicensePlate, startAt, providerEndAt, remoteProduct.Location, remoteProduct.Id),
             cancellationToken);
 
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
             startAt, desiredEndAt,
-            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true),
+            product.Id, product.ProviderProductId, product.Location);
         visit.Activate();
-        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, startAt, providerEndAt);
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, startAt, providerEndAt, product.ProviderProductId, product.Location);
         action.MarkStarting();
         action.MarkActive(remote.ProviderActionId, startAt);
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.StopVisit, desiredEndAt);
         work.Claim("worker-scheduled-stop", now);
+        var ruleSet = new ParkingRuleSet(
+            Guid.NewGuid(), now.AddDays(-1), null, TimeSpan.FromHours(4),
+            Enumerable.Range(0, 7)
+                .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                .ToArray());
+        ruleSet.AssignProviderProduct(product.Id);
+        var tariff = new ParkingTariff(Guid.NewGuid(), now.AddDays(-1), null, 2m);
+        tariff.AssignProviderProduct(product.Id);
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
+            if (ownsProduct)
+                seedContext.ParkingProviderProducts.Add(product);
             seedContext.Visits.Add(visit);
             seedContext.ProviderParkingActions.Add(action);
             seedContext.VisitSchedulerWork.Add(work);
+            seedContext.ParkingRuleSets.Add(ruleSet);
+            seedContext.ParkingTariffs.Add(tariff);
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -3168,11 +3310,29 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.False(persistedVisit.OccupiesCapacity);
         Assert.Equal(VisitSchedulerWorkStatus.Completed, persistedWork.Status);
         Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        Assert.NotNull(persistedAction.ProviderCostAmount);
+        var actionDuration = persistedAction.ActualEndAt!.Value - persistedAction.ActualStartAt!.Value;
+        var expectedCost = decimal.Ceiling(
+            (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
+        Assert.Equal(expectedCost, persistedAction.ProviderCostAmount);
         Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
 
         var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
         var stoppedRemote = Assert.Single(remoteActions, x => x.ProviderActionId == remote.ProviderActionId);
         Assert.Equal("stopped", stoppedRemote.Status, ignoreCase: true);
+
+        await using var cleanup = fixture.CreateDbContext();
+        await cleanup.VisitSchedulerWork.Where(x => x.Id == work.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.NotificationEvents.Where(x => x.AggregateId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.ParkingTariffs.Where(x => x.Id == tariff.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
     [Fact]
@@ -3934,6 +4094,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             await seedContext.SaveChangesAsync(cancellationToken);
         }
 
+        (await http.PostAsJsonAsync(
+            "api/test/clock/set",
+            new { UtcNow = scheduledStart.AddMinutes(5) },
+            cancellationToken)).EnsureSuccessStatusCode();
         await parkingProvider.StopActionAsync(remote.ProviderActionId, cancellationToken);
 
         var configuration = new ConfigurationManager();
@@ -3944,6 +4108,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var services = new ServiceCollection();
         services.AddInfrastructure(configuration);
         services.AddSingleton<IParkingProvider>(parkingProvider);
+        services.AddSingleton<TimeProvider>(new FixedTimeProvider(scheduledStart.AddMinutes(5)));
         services.AddLogging();
         await using var provider = services.BuildServiceProvider();
 
@@ -3963,6 +4128,11 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.Equal(ProviderOperationStatus.Succeeded, recoveredOperation.Status);
         Assert.Equal(ProviderActionState.Stopped, recoveredAction.State);
+        Assert.InRange(
+            (recoveredAction.ActualStartAt!.Value - scheduledStart).Duration(),
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(1));
+        Assert.True(recoveredAction.ActualEndAt >= scheduledStart);
         Assert.InRange((recoveredVisit.DesiredEndAt!.Value - requestedEnd).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndTimeChangeResult.Applied, recoveredChange.Result);
         var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
@@ -4838,6 +5008,19 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await context.ParkingCalendarExceptions.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingRuleSets.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingBudgetPeriods.ExecuteDeleteAsync(cancellationToken);
+    }
+
+    private static Parkeren.Domain.Visits.ProviderParkingAction CreateCompletedProviderAction(
+        Guid visitId,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt)
+    {
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visitId, startAt, endAt);
+        action.MarkStarting();
+        action.MarkActive($"budget-action-{Guid.NewGuid():N}", startAt);
+        action.MarkCompleted(endAt);
+        return action;
     }
 
 

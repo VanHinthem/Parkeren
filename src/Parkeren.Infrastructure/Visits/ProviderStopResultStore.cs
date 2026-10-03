@@ -66,7 +66,8 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
         {
             if (!string.Equals(providerAction.Status, "stopped", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Provider action is not confirmed stopped.");
-            action.MarkStopped(actualEndAt, providerAction.Status);
+            action.MarkStopped(actualEndAt, providerAction.Status, providerAction.Start);
+            await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, action, cancellationToken);
         }
 
         operation.Succeed(actualEndAt);
