@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
@@ -30,6 +31,7 @@ internal sealed class ProviderExtendResultStore(
         var visit = await dbContext.Visits.SingleAsync(
             x => x.Id == preparation.Operation.VisitId.Value,
             cancellationToken);
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         var action = await dbContext.ProviderParkingActions.SingleAsync(
             x => x.Id == preparation.Action.Id,
             cancellationToken);
@@ -124,6 +126,7 @@ internal sealed class ProviderExtendResultStore(
         var visit = await dbContext.Visits.SingleAsync(
             x => x.Id == preparation.Operation.VisitId!.Value,
             cancellationToken);
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         if (visit.Status == VisitStatus.Active)
             visit.SetHealth(VisitHealth.Reconciling);
 
@@ -167,6 +170,7 @@ internal sealed class ProviderExtendResultStore(
         var visit = await dbContext.Visits.SingleAsync(
             x => x.Id == preparation.Operation.VisitId!.Value,
             cancellationToken);
+        await dbContext.Entry(visit).ReloadAsync(cancellationToken);
         if (visit.Status == VisitStatus.Active)
             visit.SetHealth(VisitHealth.Reconciling);
 
@@ -183,6 +187,67 @@ internal sealed class ProviderExtendResultStore(
             includeVisitor: true,
             includeAdmins: true,
             cancellationToken);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RecordStopRaceReadBackAsync(
+        ProviderExtendPreparation preparation,
+        ProviderAction providerAction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        ArgumentNullException.ThrowIfNull(providerAction);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var action = await dbContext.ProviderParkingActions.SingleAsync(
+            x => x.Id == preparation.Action.Id,
+            cancellationToken);
+        var operation = await dbContext.ProviderOperations.SingleAsync(
+            x => x.Id == preparation.Operation.Id,
+            cancellationToken);
+        if (operation.Status != ProviderOperationStatus.Unknown)
+            throw new InvalidOperationException("Only an unknown provider continuation can be resolved from the Stop read-back.");
+
+        operation.BeginReconciliation();
+        if (providerAction.End > action.PlannedEndAt)
+            action.ExtendPlannedEnd(providerAction.End);
+
+        if (ProviderActionMatchPolicy.TimestampsMatch(providerAction.End, preparation.ProviderEndAt))
+            operation.Succeed(timeProvider.GetUtcNow());
+        else
+            operation.Fail("extend-state-observed-before-stop", timeProvider.GetUtcNow());
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RecordBlockedAsync(
+        ProviderExtendPreparation preparation,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("A block reason is required.", nameof(reason));
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(preparation.Operation.VisitId!.Value);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})",
+            cancellationToken);
+
+        var operation = await dbContext.ProviderOperations.SingleAsync(
+            x => x.Id == preparation.Operation.Id,
+            cancellationToken);
+        if (operation.Status == ProviderOperationStatus.InProgress)
+            operation.Fail(reason, timeProvider.GetUtcNow());
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

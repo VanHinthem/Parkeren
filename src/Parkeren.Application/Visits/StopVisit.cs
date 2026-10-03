@@ -48,6 +48,13 @@ public interface IStopVisitFinalizer
         CancellationToken cancellationToken = default);
 }
 
+    public interface IProviderExtendStopCoordinator
+    {
+        Task<bool> WaitForInFlightExtensionsAsync(
+        Guid visitId,
+        CancellationToken cancellationToken = default);
+    }
+
 public sealed record ProviderStopPreparation(
     ProviderOperation Operation,
     ProviderParkingAction Action,

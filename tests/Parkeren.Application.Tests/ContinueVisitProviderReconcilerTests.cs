@@ -188,6 +188,10 @@ public sealed class ContinueVisitProviderReconcilerTests
             return Task.CompletedTask;
         }
         public Task RecordDefinitiveFailureAsync(ProviderExtendPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RecordStopRaceReadBackAsync(ProviderExtendPreparation preparation, ProviderAction providerAction, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RecordBlockedAsync(ProviderExtendPreparation preparation, string reason, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
 

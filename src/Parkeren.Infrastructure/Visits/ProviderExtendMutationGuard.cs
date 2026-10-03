@@ -20,9 +20,11 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
             $"SELECT pg_advisory_xact_lock({lockKey})",
             cancellationToken);
 
-        var visit = await dbContext.Visits.SingleOrDefaultAsync(
-            x => x.Id == visitId,
-            cancellationToken);
+        var visit = await dbContext.Visits
+            .AsNoTracking()
+            .Where(x => x.Id == visitId)
+            .Select(x => new { x.Status, x.Health })
+            .SingleOrDefaultAsync(cancellationToken);
 
         if (visit is null || visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
@@ -30,9 +32,11 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
             return false;
         }
 
-        var action = await dbContext.ProviderParkingActions.SingleOrDefaultAsync(
-            x => x.Id == providerParkingActionId,
-            cancellationToken);
+        var action = await dbContext.ProviderParkingActions
+            .AsNoTracking()
+            .Where(x => x.Id == providerParkingActionId)
+            .Select(x => new { x.VisitId, x.State, x.ProviderActionId })
+            .SingleOrDefaultAsync(cancellationToken);
 
         if (action is null ||
             action.VisitId != visitId ||
@@ -44,10 +48,12 @@ internal sealed class ProviderExtendMutationGuard(ParkerenDbContext dbContext)
         }
 
         var unresolvedOperations = await dbContext.ProviderOperations
+            .AsNoTracking()
             .Where(x => x.VisitId == visitId &&
                         (x.Status == ProviderOperationStatus.InProgress ||
                          x.Status == ProviderOperationStatus.Unknown ||
                          x.Status == ProviderOperationStatus.Reconciling))
+            .Select(x => new { x.Status, x.Type, x.ProviderParkingActionId })
             .ToListAsync(cancellationToken);
 
         var hasConflictingMutation = unresolvedOperations.Any(x =>

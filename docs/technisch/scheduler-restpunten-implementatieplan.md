@@ -1,6 +1,6 @@
 # Implementatieplan scheduler-restpunten
 
-**Status:** uitvoering gestart (SR-004)\
+**Status:** uitvoering gestart (SR-001)\
 **Bron:** [Scheduler restpunten](scheduler-restpunten.md)\
 **Scope:** SR-001 t/m SR-005. SCHED-018 (scheduler-observability) valt buiten scope.
 

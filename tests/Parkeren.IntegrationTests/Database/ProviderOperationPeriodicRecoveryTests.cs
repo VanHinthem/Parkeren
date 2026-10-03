@@ -80,6 +80,98 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         await ClearVisitStateAsync(cancellationToken);
     }
 
+    [Theory]
+    [InlineData(ProviderOperationType.Start)]
+    [InlineData(ProviderOperationType.ContinueStart)]
+    public async Task Startup_recovery_skips_stop_with_unresolved_start_and_keeps_other_work_claimable(
+        ProviderOperationType unresolvedOperationType)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var stoppingUser = new User(Guid.NewGuid(), $"stopping-{suffix}", $"STOPPING-{suffix}", "hash", UserRole.Visitor);
+        var stoppingVehicle = new Vehicle(Guid.NewGuid(), $"ST{suffix[..6]}", $"ST{suffix[..6]}", null);
+        var stoppingVisit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), stoppingUser.Id, stoppingVehicle.Id, stoppingUser.Id,
+            now.AddHours(-1), now.AddHours(2), new EffectiveParkingPolicySnapshot(null, null, true));
+        stoppingVisit.Activate();
+        stoppingVisit.BeginStopping(VisitEndReason.ManualStop);
+
+        var uncertainAction = new DomainProviderParkingAction(
+            Guid.NewGuid(), stoppingVisit.Id, now.AddHours(-1), now.AddMinutes(15));
+        uncertainAction.MarkStarting();
+        uncertainAction.MarkUnknown();
+        var uncertainOperation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), stoppingVisit.Id, uncertainAction.Id, unresolvedOperationType);
+        uncertainOperation.BeginAttempt();
+        uncertainOperation.MarkUnknown("provider-timeout");
+        var pendingStop = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), stoppingVisit.Id, null, ProviderOperationType.Stop);
+
+        var workUser = new User(Guid.NewGuid(), $"work-{suffix}", $"WORK-{suffix}", "hash", UserRole.Visitor);
+        var workVehicle = new Vehicle(Guid.NewGuid(), $"WK{suffix[..6]}", $"WK{suffix[..6]}", null);
+        var workVisit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), workUser.Id, workVehicle.Id, workUser.Id,
+            now.AddHours(-1), now.AddHours(2), new EffectiveParkingPolicySnapshot(null, null, true));
+        workVisit.Activate();
+        var workAction = new DomainProviderParkingAction(
+            Guid.NewGuid(), workVisit.Id, now.AddHours(-1), now.AddHours(3));
+        workAction.MarkStarting();
+        workAction.MarkActive($"work-provider-{suffix}", now.AddHours(-1));
+        var remoteWorkAction = new ApplicationProviderParkingAction(
+            workAction.ProviderActionId!, workVehicle.NormalizedLicensePlate,
+            workAction.PlannedStartAt, workAction.PlannedEndAt, "Oss", "active");
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(), workVisit.Id, VisitSchedulerWorkType.LongVisitWarning, now.AddMinutes(-1));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.AddRange(stoppingUser, workUser);
+            seed.Vehicles.AddRange(stoppingVehicle, workVehicle);
+            seed.Visits.AddRange(stoppingVisit, workVisit);
+            seed.ProviderParkingActions.AddRange(uncertainAction, workAction);
+            seed.ProviderOperations.AddRange(uncertainOperation, pendingStop);
+            seed.VisitSchedulerWork.Add(work);
+            await seed.SaveChangesAsync(cancellationToken);
+        }
+
+        await using var services = BuildServices(new RecoveryActionProvider(remoteWorkAction));
+        await using (var recoveryScope = services.CreateAsyncScope())
+        {
+            await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                .RecoverAsync(cancellationToken);
+        }
+
+        await using (var verify = fixture.CreateDbContext())
+        {
+            Assert.Equal(VisitStatus.Stopping,
+                (await verify.Visits.SingleAsync(x => x.Id == stoppingVisit.Id, cancellationToken)).Status);
+            Assert.Equal(VisitHealth.AttentionRequired,
+                (await verify.Visits.SingleAsync(x => x.Id == stoppingVisit.Id, cancellationToken)).Health);
+            Assert.Equal(ProviderOperationStatus.Pending,
+                (await verify.ProviderOperations.SingleAsync(x => x.Id == pendingStop.Id, cancellationToken)).Status);
+            Assert.Equal(ProviderOperationStatus.Unknown,
+                (await verify.ProviderOperations.SingleAsync(x => x.Id == uncertainOperation.Id, cancellationToken)).Status);
+            Assert.Equal(VisitStatus.Active,
+                (await verify.Visits.SingleAsync(x => x.Id == workVisit.Id, cancellationToken)).Status);
+            var recoveredWork = await verify.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+            Assert.Equal(VisitSchedulerWorkStatus.Pending, recoveredWork.Status);
+            Assert.True(recoveredWork.DueAt <= now);
+        }
+
+        await using (var claimScope = services.CreateAsyncScope())
+        {
+            var claimed = await claimScope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>()
+                .ClaimNextDueAsync("recovery-after-uncertain-start", now, cancellationToken);
+            Assert.NotNull(claimed);
+            Assert.Equal(work.Id, claimed.Id);
+        }
+
+        await ClearVisitStateAsync(cancellationToken);
+    }
+
     [Fact]
     public async Task Periodic_recovery_does_not_take_over_an_expired_attempt_active_in_this_process()
     {
@@ -384,6 +476,35 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
 
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) =>
             inner.StopActionAsync(providerActionId, cancellationToken);
+    }
+
+    private sealed class RecoveryActionProvider(ApplicationProviderParkingAction action) : IParkingProvider
+    {
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ApplicationProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ApplicationProviderParkingAction>>([action]);
+
+        public Task<ApplicationProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ApplicationProviderParkingAction> ExtendActionAsync(
+            string providerActionId,
+            DateTimeOffset newEnd,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private async Task ClearVisitStateAsync(CancellationToken cancellationToken)

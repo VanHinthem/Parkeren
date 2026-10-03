@@ -26,6 +26,7 @@ internal sealed class VisitRecoveryService(
     NotificationInboxWriter inboxWriter,
     IProviderOperationExecutionTracker executionTracker,
     TimeProvider timeProvider,
+    StopVisitFlow stopVisitFlow,
     Microsoft.Extensions.Logging.ILogger<VisitRecoveryService> logger) : IVisitRecoveryService
 {
     public async Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default)
@@ -396,10 +397,14 @@ internal sealed class VisitRecoveryService(
     private async Task ReconcileAsync(bool startup, CancellationToken cancellationToken)
     {
         await RecoverPendingEndTimeChangesAsync(cancellationToken);
+        var resumedStops = await ResumeStoppingVisitsAsync(cancellationToken);
         var items = await LoadAsync(cancellationToken);
 
         foreach (var item in items)
         {
+            if (resumedStops.Contains(item.Visit.Id))
+                continue;
+
             var hasUnknownOperation = item.UnresolvedOperations
                 .Any(x => x.Status == ProviderOperationStatus.Unknown);
             if (!hasUnknownOperation)
@@ -551,6 +556,46 @@ internal sealed class VisitRecoveryService(
 
             await ReevaluateAfterReconciliationAsync(item.Visit.Id, cancellationToken);
         }
+    }
+
+    private async Task<HashSet<Guid>> ResumeStoppingVisitsAsync(CancellationToken cancellationToken)
+    {
+        var visits = await dbContext.Visits.AsNoTracking()
+            .Where(x => x.Status == VisitStatus.Stopping)
+            .OrderBy(x => x.StartAt)
+            .ToListAsync(cancellationToken);
+        var resumed = new HashSet<Guid>();
+
+        foreach (var visit in visits)
+        {
+            var stopOperation = await dbContext.ProviderOperations.AsNoTracking()
+                .Where(x => x.VisitId == visit.Id &&
+                            x.Type == ProviderOperationType.Stop &&
+                            x.Status != ProviderOperationStatus.Failed)
+                .OrderByDescending(x => x.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (stopOperation is null)
+                continue;
+
+            var hasUnresolvedNonExtendMutation = await dbContext.ProviderOperations.AsNoTracking()
+                .AnyAsync(x => x.VisitId == visit.Id &&
+                               x.Type != ProviderOperationType.Stop &&
+                               x.Type != ProviderOperationType.Extend &&
+                               (x.Status == ProviderOperationStatus.Pending ||
+                                x.Status == ProviderOperationStatus.InProgress ||
+                                x.Status == ProviderOperationStatus.Unknown ||
+                                x.Status == ProviderOperationStatus.Reconciling),
+                    cancellationToken);
+            if (hasUnresolvedNonExtendMutation)
+                continue;
+
+            resumed.Add(visit.Id);
+            await stopVisitFlow.ResumePersistedStopAsync(
+                new StopVisitClaim(visit, stopOperation, IsReplay: true, IsAlreadyCompleted: false),
+                cancellationToken);
+        }
+
+        return resumed;
     }
 
     private async Task<string?> GetRecoveryLicensePlateAsync(

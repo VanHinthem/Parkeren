@@ -34,6 +34,16 @@ public interface IProviderExtendResultStore
         ProviderExtendPreparation preparation,
         string errorCode,
         CancellationToken cancellationToken = default);
+
+    Task RecordStopRaceReadBackAsync(
+        ProviderExtendPreparation preparation,
+        ProviderAction providerAction,
+        CancellationToken cancellationToken = default);
+
+    Task RecordBlockedAsync(
+        ProviderExtendPreparation preparation,
+        string reason,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ContinueVisitProviderExecutor(
@@ -82,13 +92,18 @@ public sealed class ContinueVisitProviderExecutor(
             if (executionTracker is not null && activeAttempt is null)
                 return new(preparation, null, true);
 
-            if (!preparation.Operation.VisitId.HasValue ||
-                (mutationGuard is not null &&
-                 !await mutationGuard.CanExtendAsync(
-                     preparation.Operation.VisitId.Value,
-                     preparation.Action.Id,
-                     cancellationToken)))
-                return new(preparation, null, true);
+            if (!preparation.Operation.VisitId.HasValue)
+                throw new InvalidOperationException("Provider continuation requires a Visit id.");
+
+            if (mutationGuard is not null &&
+                !await mutationGuard.CanExtendAsync(
+                    preparation.Operation.VisitId.Value,
+                    preparation.Action.Id,
+                    cancellationToken))
+            {
+                await resultStore.RecordBlockedAsync(preparation, "mutation-guard-blocked", CancellationToken.None);
+                return new(preparation, null, false, true);
+            }
 
             // A scheduler/recovery continuation must never rely on local state alone.
             // Read the current provider action immediately before the mutation so a

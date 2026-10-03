@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
@@ -192,6 +193,403 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public Task Extend_is_blocked_when_stop_starts_after_scheduler_load() =>
+        AssertExtendBlockedAfterExternalChangeAsync(beginStop: true);
+
+    [Fact]
+    public Task Extend_is_blocked_when_health_changes_after_scheduler_load() =>
+        AssertExtendBlockedAfterExternalChangeAsync(beginStop: false);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Stop_reads_back_an_uncertain_extend_and_stops_the_observed_action(bool providerAppliedExtend)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"extend-stop-{suffix}", $"EXTEND-STOP-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"ES{suffix[..6]}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var now = DateTimeOffset.UtcNow;
+        var requestedEnd = now.AddHours(1);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive($"provider-{suffix}", now.AddHours(-1));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ProviderParkingActions.Add(action);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        var parkingProvider = new RecordingExtendProvider(
+            action.ProviderActionId!, plate, action.PlannedStartAt, action.PlannedEndAt,
+            blockExtend: true, throwAfterExtend: true, applyExtend: providerAppliedExtend);
+        var services = CreateServices();
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        await using var extendScope = provider.CreateAsyncScope();
+        var extendContext = extendScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+        var trackedVisit = await extendContext.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var trackedAction = await extendContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var preparation = await extendScope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
+            .PrepareAttemptAsync(trackedVisit, trackedAction, Guid.NewGuid(), requestedEnd, ct);
+        var extendTask = extendScope.ServiceProvider.GetRequiredService<ContinueVisitProviderExecutor>()
+            .ExecuteAsync(preparation, ct);
+        await parkingProvider.ExtendStarted.Task.WaitAsync(ct);
+
+        await using var stopScope = provider.CreateAsyncScope();
+        var stopFlow = stopScope.ServiceProvider.GetRequiredService<StopVisitFlow>();
+        var stopTask = stopFlow.StopAsync(
+            new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id),
+            new StopVisitContext(new StopVisitActor(user.Id, UserRole.Visitor, true), visit),
+            ct);
+
+        await WaitForVisitStatusAsync(visit.Id, VisitStatus.Stopping, ct);
+        Assert.False(stopTask.IsCompleted);
+        Assert.Equal(0, parkingProvider.StopCalls);
+
+        parkingProvider.CompleteExtend();
+        var extension = await extendTask;
+        var stop = await stopTask.WaitAsync(TimeSpan.FromSeconds(10), ct);
+
+        Assert.True(extension.RequiresReconciliation);
+        Assert.Equal(StopVisitFlowOutcome.Completed, stop.Outcome);
+        Assert.Equal(1, parkingProvider.ExtendCalls);
+        Assert.Equal(1, parkingProvider.StopCalls);
+
+        await using var verify = fixture.CreateDbContext();
+        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var persistedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var extendOperation = await verify.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Extend, ct);
+        var stopOperation = await verify.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Stop, ct);
+        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+        Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        if (providerAppliedExtend)
+        {
+            Assert.InRange(
+                (persistedAction.PlannedEndAt - requestedEnd).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.Equal(ProviderOperationStatus.Succeeded, extendOperation.Status);
+        }
+        else
+        {
+            Assert.InRange(
+                (persistedAction.PlannedEndAt - action.PlannedEndAt).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.Equal(ProviderOperationStatus.Failed, extendOperation.Status);
+        }
+        Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
+        await ClearVisitsAsync(ct);
+    }
+
+    [Fact]
+    public Task Stop_recovers_after_request_cancellation_during_extend_wait() =>
+        AssertPersistedStopRecoversAsync(cancelDuringWait: true, failFirstReadBack: false);
+
+    [Fact]
+    public Task Stop_recovers_after_temporary_extend_readback_failure() =>
+        AssertPersistedStopRecoversAsync(cancelDuringWait: false, failFirstReadBack: true);
+
+    private async Task AssertPersistedStopRecoversAsync(bool cancelDuringWait, bool failFirstReadBack)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"extend-recovery-{suffix}", $"EXTEND-RECOVERY-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"ER{suffix[..6]}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var now = DateTimeOffset.UtcNow;
+        var requestedEnd = now.AddHours(1);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive($"provider-{suffix}", now.AddHours(-1));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ProviderParkingActions.Add(action);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        var parkingProvider = new RecordingExtendProvider(
+            action.ProviderActionId!, plate, action.PlannedStartAt, action.PlannedEndAt,
+            blockExtend: true, throwAfterExtend: true, failFirstPostExtendReadBack: failFirstReadBack);
+        var services = CreateServices();
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        await using var extendScope = provider.CreateAsyncScope();
+        var extendContext = extendScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+        var trackedVisit = await extendContext.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var trackedAction = await extendContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var preparation = await extendScope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
+            .PrepareAttemptAsync(trackedVisit, trackedAction, Guid.NewGuid(), requestedEnd, ct);
+        var extendTask = extendScope.ServiceProvider.GetRequiredService<ContinueVisitProviderExecutor>()
+            .ExecuteAsync(preparation, ct);
+        await parkingProvider.ExtendStarted.Task.WaitAsync(ct);
+
+        using var stopCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        await using var stopScope = provider.CreateAsyncScope();
+        var stopTask = stopScope.ServiceProvider.GetRequiredService<StopVisitFlow>()
+            .StopAsync(
+                new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id),
+                new StopVisitContext(new StopVisitActor(user.Id, UserRole.Visitor, true), visit),
+                stopCancellation.Token);
+        await WaitForVisitStatusAsync(visit.Id, VisitStatus.Stopping, ct);
+
+        if (cancelDuringWait)
+        {
+            stopCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stopTask);
+        }
+
+        parkingProvider.CompleteExtend();
+        var extension = await extendTask;
+        Assert.True(extension.RequiresReconciliation);
+
+        if (!cancelDuringWait)
+        {
+            var stop = await stopTask.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            Assert.Equal(StopVisitFlowOutcome.ReconciliationRequired, stop.Outcome);
+        }
+
+        Assert.Equal(0, parkingProvider.StopCalls);
+        await using (var pending = fixture.CreateDbContext())
+        {
+            Assert.Equal(VisitStatus.Stopping,
+                (await pending.Visits.SingleAsync(x => x.Id == visit.Id, ct)).Status);
+            Assert.Equal(ProviderOperationStatus.Unknown,
+                (await pending.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Extend, ct)).Status);
+            Assert.Equal(ProviderOperationStatus.Pending,
+                (await pending.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Stop, ct)).Status);
+        }
+
+        await using (var recoveryScope = provider.CreateAsyncScope())
+        {
+            await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                .ReconcileUnknownOperationsAsync(ct);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var persistedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var extendOperation = await verify.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Extend, ct);
+        var stopOperation = await verify.ProviderOperations.SingleAsync(x => x.Type == ProviderOperationType.Stop, ct);
+        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+        Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        Assert.Equal(ProviderOperationStatus.Succeeded, extendOperation.Status);
+        Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
+        Assert.Equal(1, parkingProvider.StopCalls);
+        await ClearVisitsAsync(ct);
+    }
+
+    private async Task WaitForVisitStatusAsync(Guid visitId, VisitStatus expected, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+
+        while (true)
+        {
+            await using var context = fixture.CreateDbContext();
+            if (await context.Visits.AsNoTracking().AnyAsync(x => x.Id == visitId && x.Status == expected, timeout.Token))
+                return;
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+        }
+    }
+
+    private async Task AssertExtendBlockedAfterExternalChangeAsync(bool beginStop)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"extend-guard-{suffix}", $"EXTEND-GUARD-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"EG{suffix[..6]}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive($"provider-{suffix}", now.AddHours(-1));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ProviderParkingActions.Add(action);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        var parkingProvider = new RecordingExtendProvider(
+            action.ProviderActionId!, plate, action.PlannedStartAt, action.PlannedEndAt);
+        var services = CreateServices();
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+        await using var schedulerScope = provider.CreateAsyncScope();
+        var schedulerContext = schedulerScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+        var trackedVisit = await schedulerContext.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var trackedAction = await schedulerContext.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var preparation = await schedulerScope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
+            .PrepareAttemptAsync(trackedVisit, trackedAction, Guid.NewGuid(), now.AddHours(1), ct);
+
+        StopVisitCommand? stopCommand = null;
+        await using (var secondScope = provider.CreateAsyncScope())
+        {
+            if (beginStop)
+            {
+                stopCommand = new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id);
+                await secondScope.ServiceProvider.GetRequiredService<IStopVisitClaimer>()
+                    .ClaimAsync(stopCommand, ct);
+            }
+            else
+            {
+                var secondContext = secondScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+                var changedVisit = await secondContext.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+                changedVisit.SetHealth(VisitHealth.Reconciling);
+                await secondContext.SaveChangesAsync(ct);
+            }
+        }
+
+        var execution = await schedulerScope.ServiceProvider.GetRequiredService<ContinueVisitProviderExecutor>()
+            .ExecuteAsync(preparation, ct);
+
+        Assert.False(execution.RequiresReconciliation);
+        Assert.True(execution.DefinitiveFailure);
+        Assert.Equal(0, parkingProvider.ExtendCalls);
+
+        await using (var verifyBlocked = fixture.CreateDbContext())
+        {
+            var blockedOperation = await verifyBlocked.ProviderOperations.SingleAsync(
+                x => x.Type == ProviderOperationType.Extend,
+                ct);
+            Assert.Equal(ProviderOperationStatus.Failed, blockedOperation.Status);
+        }
+
+        stopCommand ??= new StopVisitCommand(Guid.NewGuid(), visit.Id, user.Id);
+        await using (var stopScope = provider.CreateAsyncScope())
+        {
+            var stopped = await stopScope.ServiceProvider.GetRequiredService<StopVisitFlow>()
+                .StopAsync(
+                    stopCommand,
+                    new StopVisitContext(new StopVisitActor(user.Id, UserRole.Visitor, true), visit),
+                    ct);
+            Assert.Equal(StopVisitFlowOutcome.Completed, stopped.Outcome);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var persistedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+        var persistedStop = await verify.ProviderOperations.SingleAsync(
+            x => x.Type == ProviderOperationType.Stop,
+            ct);
+        Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+        Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
+        Assert.Equal(ProviderOperationStatus.Succeeded, persistedStop.Status);
+        Assert.Equal(1, parkingProvider.StopCalls);
+        await ClearVisitsAsync(ct);
+    }
+
+    private sealed class RecordingExtendProvider(
+        string providerActionId,
+        string licensePlate,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        bool blockExtend = false,
+        bool throwAfterExtend = false,
+        bool applyExtend = true,
+        bool failFirstPostExtendReadBack = false) : IParkingProvider
+    {
+        private Parkeren.Application.ParkingProvider.ProviderParkingAction current = new(
+            providerActionId, licensePlate, start, end, "Oss", "active");
+        private readonly TaskCompletionSource extendGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int readBackFailed;
+
+        public int ExtendCalls { get; private set; }
+        public int StopCalls { get; private set; }
+        public TaskCompletionSource ExtendStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void CompleteExtend() => extendGate.TrySetResult();
+
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProviderCategory>>([]);
+
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderProduct("product", "test", "Oss"));
+
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderBalance(0, ProviderBalanceUnit.Euro, DateTimeOffset.UtcNow));
+
+        public Task<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>> GetActionsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (failFirstPostExtendReadBack && ExtendCalls > 0 && Interlocked.Exchange(ref readBackFailed, 1) == 0)
+                throw new HttpRequestException("Temporary provider read-back failure.");
+
+            return Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>([current]);
+        }
+
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public async Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> ExtendActionAsync(
+            string actionId,
+            DateTimeOffset newEnd,
+            CancellationToken cancellationToken = default)
+        {
+            ExtendCalls++;
+            ExtendStarted.TrySetResult();
+            if (blockExtend)
+                await extendGate.Task.WaitAsync(cancellationToken);
+
+            if (applyExtend)
+                current = current with { End = newEnd };
+            if (throwAfterExtend)
+                throw new HttpRequestException("The provider response was lost after the mutation.");
+
+            return current;
+        }
+
+        public Task StopActionAsync(string actionId, CancellationToken cancellationToken = default)
+        {
+            StopCalls++;
+            current = current with { Status = "stopped" };
+            return Task.CompletedTask;
+        }
+    }
+
     private async Task<(Visit Visit, VisitSchedulerWork Work)> SeedActiveVisitWithWorkAsync(
         DateTimeOffset now,
         VisitSchedulerWorkType type,
@@ -236,6 +634,7 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
             ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
         });
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddInfrastructure(configuration);
         return services;
     }
@@ -247,6 +646,8 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(ct);
         await context.ProviderOperations.ExecuteDeleteAsync(ct);
         await context.ProviderParkingActions.ExecuteDeleteAsync(ct);
+        await context.Notifications.ExecuteDeleteAsync(ct);
+        await context.NotificationEvents.ExecuteDeleteAsync(ct);
         await context.Visits.ExecuteDeleteAsync(ct);
     }
 }

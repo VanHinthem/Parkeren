@@ -124,6 +124,16 @@ public sealed class ContinueVisitProviderMatchingPolicyTests
             ProviderExtendPreparation preparation,
             string errorCode,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RecordStopRaceReadBackAsync(
+            ProviderExtendPreparation preparation,
+            ProviderAction providerAction,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RecordBlockedAsync(
+            ProviderExtendPreparation preparation,
+            string reason,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class SequencedProvider : IParkingProvider

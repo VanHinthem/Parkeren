@@ -18,7 +18,8 @@ public sealed class StopVisitFlow(
     IStopVisitFinalizer finalizer,
     IProviderStopStore providerStopStore,
     StopVisitProviderExecutor providerExecutor,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IProviderExtendStopCoordinator? extendStopCoordinator = null)
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
@@ -30,9 +31,32 @@ public sealed class StopVisitFlow(
         StopVisitPreconditions.Validate(command, context);
 
         var claim = await claimer.ClaimAsync(command, cancellationToken);
+        return await ContinueAsync(claim, cancellationToken);
+    }
 
+    public Task<StopVisitFlowResult> ResumePersistedStopAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(claim);
+        if (claim.Visit.Status != VisitStatus.Stopping ||
+            claim.Operation?.Type != ProviderOperationType.Stop ||
+            claim.IsAlreadyCompleted)
+            throw new InvalidOperationException("Only a persisted Stop for a Stopping Visit can be resumed.");
+
+        return ContinueAsync(claim, cancellationToken);
+    }
+
+    private async Task<StopVisitFlowResult> ContinueAsync(
+        StopVisitClaim claim,
+        CancellationToken cancellationToken)
+    {
         if (claim.IsAlreadyCompleted)
             return new(claim.Visit, claim.IsReplay, StopVisitFlowOutcome.Completed);
+
+        if (extendStopCoordinator is not null &&
+            !await extendStopCoordinator.WaitForInFlightExtensionsAsync(claim.Visit.Id, cancellationToken))
+            return new(claim.Visit, claim.IsReplay, StopVisitFlowOutcome.ReconciliationRequired);
 
         while (await finalizer.RequiresProviderActionAsync(claim, cancellationToken))
         {
