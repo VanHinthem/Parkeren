@@ -2853,7 +2853,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Failed_scheduler_work_is_released_only_by_its_owner()
+    public async Task Failed_scheduler_work_release_is_retried_by_its_owner_after_transient_failure()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await ClearVisitsAsync(cancellationToken);
@@ -2899,17 +2899,110 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             Assert.Equal("worker-owner", stillClaimed.ClaimedBy);
         }
 
+        var releaseQueue = new FailedSchedulerWorkReleaseQueue();
+        releaseQueue.Enqueue(work.Id, "worker-owner");
         await using (var scope = provider.CreateAsyncScope())
         {
             var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
-            await claimer.ReleaseFailedAsync(work.Id, "worker-owner", now.AddMinutes(1), cancellationToken);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                releaseQueue.RetryPendingAsync(
+                    new FailOnceReleaseClaimer(claimer),
+                    now.AddMinutes(1),
+                    cancellationToken));
+        }
+
+        Assert.Equal(1, releaseQueue.Count);
+        await using var verifyContext = fixture.CreateDbContext();
+        var workAfterFailedRelease = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Claimed, workAfterFailedRelease.Status);
+        Assert.Equal("worker-owner", workAfterFailedRelease.ClaimedBy);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
+            await releaseQueue.RetryPendingAsync(claimer, now.AddMinutes(1), cancellationToken);
+        }
+
+        await using var releasedContext = fixture.CreateDbContext();
+        var persisted = await releasedContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
+        Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
+        Assert.Null(persisted.ClaimedBy);
+        Assert.Equal(0, releaseQueue.Count);
+        Assert.InRange((persisted.DueAt - now.AddMinutes(1)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Theory]
+    [InlineData(VisitSchedulerWorkStatus.Completed)]
+    [InlineData(VisitSchedulerWorkStatus.Cancelled)]
+    public async Task Stale_scheduler_release_does_not_change_terminal_work(VisitSchedulerWorkStatus terminalStatus)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"terminal-release-{suffix}", $"TERMINAL-RELEASE-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"TR-{suffix}", $"TR{suffix}".ToUpperInvariant(), null);
+        var now = DateTimeOffset.UtcNow;
+        var dueAt = now.AddMinutes(-1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
+            VisitSchedulerWorkType.ContinueProviderCoverage, dueAt);
+        work.Claim("worker-owner", now);
+        if (terminalStatus == VisitSchedulerWorkStatus.Completed)
+            work.Complete(now.AddSeconds(1));
+        else
+            work.Cancel();
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(work);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>()
+                .ReleaseFailedAsync(work.Id, "worker-owner", now.AddMinutes(1), cancellationToken);
         }
 
         await using var verifyContext = fixture.CreateDbContext();
         var persisted = await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken);
-        Assert.Equal(VisitSchedulerWorkStatus.Pending, persisted.Status);
-        Assert.Null(persisted.ClaimedBy);
-        Assert.InRange((persisted.DueAt - now.AddMinutes(1)).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        Assert.Equal(terminalStatus, persisted.Status);
+        Assert.InRange((persisted.DueAt - dueAt).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
+        await ClearVisitsAsync(cancellationToken);
+    }
+
+    private sealed class FailOnceReleaseClaimer(IVisitSchedulerWorkClaimer inner) : IVisitSchedulerWorkClaimer
+    {
+        private int releaseCalls;
+
+        public Task<VisitSchedulerWork?> ClaimNextDueAsync(
+            string workerId,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            inner.ClaimNextDueAsync(workerId, now, cancellationToken);
+
+        public Task ReleaseFailedAsync(
+            Guid workId,
+            string workerId,
+            DateTimeOffset retryAt,
+            CancellationToken cancellationToken = default) =>
+            Interlocked.Increment(ref releaseCalls) == 1
+                ? Task.FromException(new InvalidOperationException("Transient persistence failure."))
+                : inner.ReleaseFailedAsync(workId, workerId, retryAt, cancellationToken);
     }
 
     [Theory]

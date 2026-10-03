@@ -23,6 +23,7 @@ builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<FailedSchedulerWorkReleaseQueue>();
 builder.Services.AddHostedService<VisitSchedulerWorker>();
 builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));

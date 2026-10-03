@@ -4,6 +4,7 @@ namespace Parkeren.Api;
 
 internal sealed class VisitSchedulerWorker(
     IServiceScopeFactory scopeFactory,
+    FailedSchedulerWorkReleaseQueue failedReleaseQueue,
     TimeProvider timeProvider,
     ILogger<VisitSchedulerWorker> logger) : BackgroundService
 {
@@ -45,6 +46,26 @@ internal sealed class VisitSchedulerWorker(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
+                var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
+                if (failedReleaseQueue.Count > 0)
+                {
+                    try
+                    {
+                        await failedReleaseQueue.RetryPendingAsync(
+                            claimer,
+                            timeProvider.GetUtcNow().AddMinutes(1),
+                            stoppingToken);
+                    }
+                    catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                    {
+                        logger.LogError(
+                            exception,
+                            "Failed to retry pending scheduler work releases; new claims are paused.");
+                        await Task.Delay(IdleDelay, timeProvider, stoppingToken);
+                        continue;
+                    }
+                }
+
                 if (timeProvider.GetUtcNow() >= nextProviderCheckAt)
                 {
                     nextProviderCheckAt = timeProvider.GetUtcNow() + ProviderCheckInterval;
@@ -62,7 +83,6 @@ internal sealed class VisitSchedulerWorker(
                         logger.LogError(exception, "Periodic provider action check failed; scheduler work continues.");
                     }
                 }
-                var claimer = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>();
                 var processor = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>();
 
                 var work = await claimer.ClaimNextDueAsync(workerId, timeProvider.GetUtcNow(), stoppingToken);
@@ -93,6 +113,7 @@ internal sealed class VisitSchedulerWorker(
                     }
                     catch (Exception releaseException) when (!stoppingToken.IsCancellationRequested)
                     {
+                        failedReleaseQueue.Enqueue(workId, workerId);
                         logger.LogError(releaseException, "Failed to release scheduler work {WorkId} after processing error.", workId);
                     }
                 }
