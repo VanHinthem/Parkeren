@@ -9,16 +9,17 @@ namespace Parkeren.IntegrationTests;
 public sealed class VisitSchedulerWorkerTests
 {
     [Fact]
-    public async Task Startup_recovery_failure_does_not_log_exception_details_or_claim_work()
+    public async Task Startup_recovery_retries_and_claims_only_after_success_without_logging_exception_details()
     {
         const string exceptionCanary = "startup-recovery-sensitive-canary";
         var cancellationToken = TestContext.Current.CancellationToken;
-        var claimer = new FailReleaseTwiceClaimer();
+        var claimer = new RecordingWorkClaimer();
         var processor = new ThrowingWorkProcessor();
         var releaseQueue = new FailedSchedulerWorkReleaseQueue();
+        var recovery = new GatedRetryVisitRecoveryService(exceptionCanary);
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IVisitRecoveryService>(new ThrowingVisitRecoveryService(exceptionCanary));
+        services.AddSingleton<IVisitRecoveryService>(recovery);
         services.AddSingleton<IVisitTerminalRecoveryService, NoOpVisitTerminalRecoveryService>();
         services.AddSingleton<IVisitSchedulerWorkClaimer>(claimer);
         services.AddSingleton<IVisitSchedulerWorkProcessor>(processor);
@@ -41,6 +42,18 @@ public sealed class VisitSchedulerWorkerTests
             Assert.Null(error.Exception);
             Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains(exceptionCanary, StringComparison.Ordinal));
             Assert.Equal(0, claimer.ClaimCalls);
+            Assert.Equal(0, processor.Calls);
+
+            await recovery.SecondAttemptStarted.Task.WaitAsync(cancellationToken);
+            Assert.Equal(2, recovery.AttemptCount);
+            Assert.Equal(0, claimer.ClaimCalls);
+            Assert.Equal(0, processor.Calls);
+
+            recovery.AllowSecondAttemptToSucceed.TrySetResult();
+            await claimer.FirstClaim.Task.WaitAsync(cancellationToken);
+
+            Assert.True(recovery.SuccessfulRecoveryCompleted.Task.IsCompletedSuccessfully);
+            Assert.Equal(1, claimer.ClaimCalls);
             Assert.Equal(0, processor.Calls);
         }
         finally
@@ -166,6 +179,31 @@ public sealed class VisitSchedulerWorkerTests
         }
     }
 
+    private sealed class RecordingWorkClaimer : IVisitSchedulerWorkClaimer
+    {
+        private int claimCalls;
+
+        public int ClaimCalls => Volatile.Read(ref claimCalls);
+        public TaskCompletionSource FirstClaim { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<VisitSchedulerWork?> ClaimNextDueAsync(
+            string workerId,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref claimCalls);
+            FirstClaim.TrySetResult();
+            return Task.FromResult<VisitSchedulerWork?>(null);
+        }
+
+        public Task ReleaseFailedAsync(
+            Guid workId,
+            string workerId,
+            DateTimeOffset retryAt,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     private sealed class NoOpVisitRecoveryService : IVisitRecoveryService
     {
         public Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(CancellationToken cancellationToken = default) =>
@@ -177,13 +215,31 @@ public sealed class VisitSchedulerWorkerTests
         public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class ThrowingVisitRecoveryService(string exceptionMessage) : IVisitRecoveryService
+    private sealed class GatedRetryVisitRecoveryService(string exceptionMessage) : IVisitRecoveryService
     {
+        private int attemptCount;
+
+        public int AttemptCount => Volatile.Read(ref attemptCount);
+        public TaskCompletionSource SecondAttemptStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource AllowSecondAttemptToSucceed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SuccessfulRecoveryCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<VisitRecoveryItem>>([]);
 
-        public Task RecoverAsync(CancellationToken cancellationToken = default) =>
-            Task.FromException(new InvalidOperationException(exceptionMessage));
+        public async Task RecoverAsync(CancellationToken cancellationToken = default)
+        {
+            var attempt = Interlocked.Increment(ref attemptCount);
+            if (attempt == 1)
+                throw new InvalidOperationException(exceptionMessage);
+
+            if (attempt != 2)
+                throw new InvalidOperationException("Unexpected additional startup recovery attempt.");
+
+            SecondAttemptStarted.TrySetResult();
+            await AllowSecondAttemptToSucceed.Task.WaitAsync(cancellationToken);
+            SuccessfulRecoveryCompleted.TrySetResult();
+        }
 
         public Task RecoverExpiredInProgressOperationsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
