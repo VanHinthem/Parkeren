@@ -10,7 +10,7 @@ Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterh
 
 | Issue | Huidige stand en resterende reden om open te blijven |
 | --- | --- |
-| [#94 PWA-hardening](https://github.com/VanHinthem/Parkeren/issues/94) | Implementatie in werkboom: commit-build-id in Instellingen, offlinewaarschuwing/no-store API-verzoeken, manifest/service-workerchecks en JS/CSS-budget. Lokale build, PWA-check en frontendtests slagen; remote CI volgt na publicatie. Echte iOS/Android-devicevalidatie blijft bij #78. |
+| [#94 PWA-hardening](https://github.com/VanHinthem/Parkeren/issues/94) | **Afgerond 4 oktober 2026.** Build-id, offlineveiligheid, manifest/service-workerchecks, toegankelijkheidsbasis en JS/CSS-budget zijn geïmplementeerd. CI-run [37207178116](https://github.com/VanHinthem/Parkeren/actions/runs/37207178116) slaagde; echte iOS/Android-devicevalidatie blijft bij #78. |
 | [#93 Historie-import](https://github.com/VanHinthem/Parkeren/issues/93) | Actief. De 2Park-historie-reader bestaat, maar een idempotente import van oude transacties en opname in het Oss-budget is niet aangetroffen. |
 | [#92 V1-plan](https://github.com/VanHinthem/Parkeren/issues/92) | Actief als overkoepelende planning. De oude hoofdfasenlijst beschreef niet meer welke openstaande werkzaamheden nog over zijn; dit document vervangt die lijst als uitvoeringsplan. |
 | [#86 2Park-mock](https://github.com/VanHinthem/Parkeren/issues/86) | Grotendeels gerealiseerd. Mockserver en failure-injection bestaan; de issue meldt zelf dat de basis klaar is. Resterende contractdetails hangen af van #71. Rond af met een checklist-audit, geen nieuwe mock vanaf nul. |
