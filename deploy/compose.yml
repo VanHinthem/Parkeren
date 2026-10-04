@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: src/Parkeren.Api/Dockerfile
+      args:
+        PARKEREN_BUILD_ID: ${PARKEREN_BUILD_ID:-local}
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Production

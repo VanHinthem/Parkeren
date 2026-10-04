@@ -118,6 +118,11 @@ export function SettingsPage({user,onLoggedOut}:{user:AuthenticatedUser;onLogged
     </Card>
 
     <Card className="settings-card">
+      <h2>Diagnostiek</h2>
+      <p className="settings-copy">Build-id <code title={__PARKEREN_BUILD_ID__}>{__PARKEREN_BUILD_ID__.slice(0,7)}</code></p>
+    </Card>
+
+    <Card className="settings-card">
       <h2>Meldingen</h2>
       {!pushSupported
         ? <p className="settings-copy">Pushmeldingen worden niet ondersteund op dit apparaat.</p>

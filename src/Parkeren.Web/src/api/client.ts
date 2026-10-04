@@ -1,29 +1,56 @@
 export type AuthenticatedUser = { id: string; username: string; role: "Visitor" | "Admin" };
 let csrfToken: string | null = null;
+const offlineMessage = "Je bent offline. Getoonde parkeerinformatie kan verouderd zijn; starten, stoppen en verlengen zijn niet beschikbaar.";
+const networkErrorMessage = "De serververbinding is weggevallen. Controleer de actuele parkeerstatus voordat je een actie opnieuw probeert.";
+
+function ensureOnline(){
+  if(typeof navigator!=="undefined"&&!navigator.onLine)throw new Error(offlineMessage);
+}
+
+async function fetchWithoutCache(input:RequestInfo|URL,init:RequestInit={}):Promise<Response>{
+  ensureOnline();
+  try{
+    return await fetch(input,{...init,cache:"no-store"});
+  }catch(error){
+    if(error instanceof TypeError)throw new Error(networkErrorMessage);
+    throw error;
+  }
+}
+
+async function readJson<T>(response:Response):Promise<T>{
+  try{
+    return await response.json() as T;
+  }catch(error){
+    if(error instanceof TypeError)throw new Error(networkErrorMessage);
+    throw error;
+  }
+}
+
 async function getCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
-  const response = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+  const response = await fetchWithoutCache("/api/auth/csrf", { credentials: "same-origin" });
   if (!response.ok) throw new Error("CSRF-token kon niet worden opgehaald.");
-  csrfToken = ((await response.json()) as { token: string }).token;
+  csrfToken = (await readJson<{ token: string }>(response)).token;
   return csrfToken;
 }
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  ensureOnline();
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!["GET","HEAD","OPTIONS","TRACE"].includes(method)) headers.set("X-CSRF-TOKEN", await getCsrfToken());
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type","application/json");
-  return fetch(input,{...init,headers,credentials:"same-origin"});
+  return fetchWithoutCache(input,{...init,headers,credentials:"same-origin"});
 }
 export async function login(username:string,pin:string):Promise<AuthenticatedUser>{
- const response=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({username,pin})});
+ const response=await fetchWithoutCache("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({username,pin})});
  if(!response.ok) throw new Error("Gebruikersnaam of PIN is onjuist.");
- csrfToken=null; return response.json() as Promise<AuthenticatedUser>;
+ csrfToken=null; return readJson<AuthenticatedUser>(response);
 }
 export async function getCurrentUser():Promise<AuthenticatedUser|null>{
- const response=await fetch("/api/auth/me",{credentials:"same-origin"});
+ const response=await fetchWithoutCache("/api/auth/me",{credentials:"same-origin"});
  if(response.status===401)return null;
  if(!response.ok)throw new Error("Sessie kon niet worden gecontroleerd.");
- return response.json() as Promise<AuthenticatedUser>;
+ return readJson<AuthenticatedUser>(response);
 }
 
 export type ActiveVisit={
@@ -66,7 +93,7 @@ export async function getVisit(visitId:string):Promise<ActiveVisit|null>{
 }
 
 async function visitError(response:Response,fallback:string):Promise<Error>{
-  try{const body=await response.json() as {error?:string;detail?:string};const message=body.error??body.detail;if(message)return new Error(message);}catch{}
+  try{const body=await response.json() as {error?:string;detail?:string};const message=body.error??body.detail;if(message)return new Error(message);}catch(error){if(error instanceof TypeError)return new Error(networkErrorMessage);}
   return new Error(`${fallback} (HTTP ${response.status}).`);
 }
 
@@ -77,7 +104,7 @@ export async function startVisit(vehicleId:string,desiredEndAt:string|null,opera
     body:JSON.stringify({operationId,vehicleId,desiredEndAt,ownerUserId:ownerUserId??null})
   });
   if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gestart");
-  const result=await response.json() as {visit:ActiveVisit};
+  const result=await readJson<{visit:ActiveVisit}>(response);
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
@@ -88,7 +115,7 @@ export async function stopVisit(visitId:string,operationId:string):Promise<StopV
     body:JSON.stringify({operationId})
   });
   if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gestopt");
-  const result=await response.json() as {visit:ActiveVisit};
+  const result=await readJson<{visit:ActiveVisit}>(response);
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
@@ -103,7 +130,7 @@ export async function changeVisitEndTime(
     body:JSON.stringify({operationId,desiredEndAt})
   });
   if(!response.ok)throw await visitError(response,"Eindtijd kon niet worden gewijzigd");
-  const result=await response.json() as {visit:ActiveVisit};
+  const result=await readJson<{visit:ActiveVisit}>(response);
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
@@ -652,7 +679,7 @@ export async function getAdminVisit(visitId:string){
   if(response.status===404)return null;
   return json<AdminVisitDetail>(response);
 }
-async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return response.json() as Promise<T>;}
+async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return readJson<T>(response);}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
 export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
 export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw await visitError(r,"Gebruiker kon niet worden gewijzigd");}

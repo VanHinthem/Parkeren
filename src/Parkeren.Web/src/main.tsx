@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { registerSW } from "virtual:pwa-register";
 import { applyTheme, getThemePreference } from "./design/theme/theme";
+import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
 import "./design/styles/global.css";
 
 applyTheme(getThemePreference());
@@ -89,5 +90,5 @@ media.addEventListener("change", () => {
 });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>
+  <React.StrictMode><NetworkStatusBanner/><BrowserRouter><App /></BrowserRouter></React.StrictMode>
 );

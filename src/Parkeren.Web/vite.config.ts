@@ -1,8 +1,23 @@
+import { execFileSync } from "node:child_process";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+function resolveBuildId(): string {
+  const configuredBuildId = process.env.PARKEREN_BUILD_ID ?? process.env.GITHUB_SHA;
+  if (configuredBuildId) return configuredBuildId;
+
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    return "local";
+  }
+}
+
 export default defineConfig({
+  define: {
+    __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId())
+  },
   plugins: [
     react(),
     VitePWA({
@@ -21,6 +36,7 @@ export default defineConfig({
         lang: "nl",
         display: "standalone",
         start_url: "/",
+        scope: "/",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         icons: [

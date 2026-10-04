@@ -15,3 +15,15 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent); outline-offset: 2px; }
+.network-status {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: .65rem 1rem;
+  border-bottom: 1px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-surface));
+  color: var(--color-text);
+  text-align: center;
+  font-size: .875rem;
+  font-weight: 600;
+}

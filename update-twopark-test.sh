@@ -10,7 +10,8 @@ sudo docker run --rm \
   alpine/git pull
 
 echo "==> Parkeren: development-stack met echte 2Park-provider bouwen en starten"
-sudo docker compose \
+PARKEREN_BUILD_ID=$(sudo docker run --rm -v "$PWD:/workspace" -w /workspace alpine/git rev-parse HEAD)
+sudo env PARKEREN_BUILD_ID="$PARKEREN_BUILD_ID" docker compose \
   --env-file .env \
   -p parkeren-dev \
   -f deploy/compose.yml \

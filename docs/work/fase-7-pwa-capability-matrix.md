@@ -16,7 +16,7 @@ Deze matrix is de uitvoerbasis voor spike #78. Een capability is pas **Validated
 | Actieve Visit prominent in app | Supported | Android gevalideerd; iOS open | Android ✅ |
 | Persistente OS-notificatie actieve Visit | Best effort | Geen V1-afhankelijkheid | onderzoeken |
 | Herstel actieve Visit na restart | Supported | Android gevalideerd; iOS open | Android app + telefoonrestart ✅ |
-| Offline/netwerkverlies en herstel | Supported with constraints | Te valideren | iOS + Android |
+| Offline/netwerkverlies en herstel | Supported with constraints | Offlinebanner, geblokkeerde mutaties, no-store API-reads en veilige melding wanneer `fetch` of response-JSON faalt zijn getest in [NetworkStatusBanner.test.tsx](../../src/Parkeren.Web/src/components/NetworkStatusBanner.test.tsx) en [client.test.ts](../../src/Parkeren.Web/src/api/client.test.ts). | iOS + Android: offline/herstel op geïnstalleerde devices nog valideren |
 | Service-worker precache/update/cache | Supported | Android gevalideerd; iOS open | Android: consecutive deployments/auto-refresh ✅ |
 | Push subscription vervallen/vernieuwen | Supported with constraints | Server-side key update bij herregistratie getest in [PushSubscriptionServiceTests.cs](../../tests/Parkeren.IntegrationTests/Database/PushSubscriptionServiceTests.cs); 404/410-opruiming is geïmplementeerd maar heeft geen gerichte test gevonden. | iOS + Android: echte expiry/refresh nog valideren |
 | Notification click bij gesloten app | Supported with constraints | Android gevalideerd; iOS open | Android ✅ |
@@ -49,7 +49,7 @@ Extra bevindingen:
 - unread count en badge volgen daarna direct de server-side inboxstate;
 - pushrouting is per type bewust verschillend: start/succes naar dashboard, stop/attention/long-visit naar detail;
 - service-worker/cacheproblemen met een stale app-shell zijn tijdens de test opgelost;
-- aanvullende offline UX en build/versiondiagnostiek zijn afgesplitst naar #94.
+- offline UX, no-store API-verzoeken en build/versiondiagnostiek zijn onder #94 geïmplementeerd; dit vervangt de openstaande devicevalidatie niet.
 
 Nog open voor #78:
 

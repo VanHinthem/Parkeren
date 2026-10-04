@@ -1,4 +1,6 @@
 FROM node:24-alpine AS web-build
+ARG PARKEREN_BUILD_ID=local
+ENV PARKEREN_BUILD_ID=$PARKEREN_BUILD_ID
 WORKDIR /web
 COPY src/Parkeren.Web/package*.json ./
 RUN npm install
