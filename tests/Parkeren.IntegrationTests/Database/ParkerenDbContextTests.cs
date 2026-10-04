@@ -37,11 +37,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Archived_user_and_vehicle_statuses_round_trip_and_audit_events_restrict_visit_deletion()
+    public async Task Archived_user_and_vehicle_statuses_round_trip_and_historical_deletes_are_restricted()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var suffix = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
         var user = new User(Guid.NewGuid(), $"archived-{suffix}", $"ARCHIVED-{suffix}", "hash", UserRole.Visitor);
+        var actor = new User(Guid.NewGuid(), $"archive-actor-{suffix}", $"ARCHIVE-ACTOR-{suffix}", "hash", UserRole.Admin);
         var vehicle = new Vehicle(Guid.NewGuid(), $"Z{suffix}", $"Z{suffix}", null);
         user.Archive();
         vehicle.Archive();
@@ -51,7 +52,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             Guid.NewGuid(),
             user.Id,
             vehicle.Id,
-            user.Id,
+            actor.Id,
             now,
             null,
             new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
@@ -60,10 +61,32 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         {
             await using (var writeContext = fixture.CreateDbContext())
             {
-                writeContext.Users.Add(user);
+                writeContext.Users.AddRange(user, actor);
                 writeContext.Vehicles.Add(vehicle);
                 writeContext.Visits.Add(visit);
                 await writeContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await using (var deleteUserContext = fixture.CreateDbContext())
+            {
+                var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                    deleteUserContext.Users
+                        .Where(x => x.Id == user.Id)
+                        .ExecuteDeleteAsync(cancellationToken));
+
+                Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
+                Assert.Equal("FK_visits_users_UserId", exception.ConstraintName);
+            }
+
+            await using (var deleteVehicleContext = fixture.CreateDbContext())
+            {
+                var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                    deleteVehicleContext.Vehicles
+                        .Where(x => x.Id == vehicle.Id)
+                        .ExecuteDeleteAsync(cancellationToken));
+
+                Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
+                Assert.Equal("FK_visits_vehicles_VehicleId", exception.ConstraintName);
             }
 
             await using (var deleteContext = fixture.CreateDbContext())
@@ -98,7 +121,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             await cleanupContext.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
             await cleanupContext.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanupContext.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
-            await cleanupContext.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.Users.Where(x => x.Id == user.Id || x.Id == actor.Id).ExecuteDeleteAsync(cancellationToken);
         }
     }
 
