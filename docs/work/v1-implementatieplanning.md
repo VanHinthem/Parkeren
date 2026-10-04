@@ -12,7 +12,7 @@ Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterh
 | --- | --- |
 | [#94 PWA-hardening](https://github.com/VanHinthem/Parkeren/issues/94) | **Afgerond 4 oktober 2026.** Build-id, offlineveiligheid, manifest/service-workerchecks, toegankelijkheidsbasis en JS/CSS-budget zijn geïmplementeerd. CI-run [37207178116](https://github.com/VanHinthem/Parkeren/actions/runs/37207178116) slaagde; echte iOS/Android-devicevalidatie blijft bij #78. |
 | [#93 Historie-import](https://github.com/VanHinthem/Parkeren/issues/93) | Actief. De 2Park-historie-reader bestaat, maar een idempotente import van oude transacties en opname in het Oss-budget is niet aangetroffen. |
-| [#92 V1-plan](https://github.com/VanHinthem/Parkeren/issues/92) | Actief als overkoepelende planning. De oude hoofdfasenlijst beschreef niet meer welke openstaande werkzaamheden nog over zijn; dit document vervangt die lijst als uitvoeringsplan. |
+| [#92 V1-plan](https://github.com/VanHinthem/Parkeren/issues/92) | **Afgerond 4 oktober 2026.** De uitvoerbare fasering en afhankelijkheden zijn vastgelegd in dit document. Resterend implementatie- en releasewerk wordt gevolgd via de betreffende issues en releasegates. |
 | [#86 2Park-mock](https://github.com/VanHinthem/Parkeren/issues/86) | Grotendeels gerealiseerd. Mockserver en failure-injection bestaan; de issue meldt zelf dat de basis klaar is. Resterende contractdetails hangen af van #71. Rond af met een checklist-audit, geen nieuwe mock vanaf nul. |
 | [#84 Transactionele Stop](https://github.com/VanHinthem/Parkeren/issues/84) | **Gesloten 4 oktober 2026.** Beide resterende criteria zijn getest: [Stop versus eindtijdwijziging](../../tests/Parkeren.IntegrationTests/Database/VisitSchedulerLockingTests.cs) en [pushfout na succesvolle Stop](../../tests/Parkeren.IntegrationTests/Database/PushDeliveryProcessorTests.cs). De twee betrokken testklassen slagen met 19/19 tests. |
 | [#82 Domeinmodel/invarianten](https://github.com/VanHinthem/Parkeren/issues/82) | Checklist 60/60 afgehandeld op 4 oktober 2026; GitHub-issue is gereed voor closeout. Zie de [criterium-naar-code/schema/test-matrix](issue-82-evidence-map.md). Niet-terminale Visits tellen lokaal als slots; vijf actieve provideractions zijn bevestigd, terwijl `scheduled`-capaciteit en overflow als niet-blokkerende risico's zijn geaccepteerd. Lost-start matching gebruikt één unieke kandidaat op product, genormaliseerd kenteken, status en tijden; tijdelijke provider-readback na responseverlies blijft een geaccepteerd risico. Het onderscheid `Stopped`/natuurlijke `Completed` is eveneens onbevestigd en geaccepteerd. #71 is afgesloten; er zijn geen nieuwe live tests gepland. Testhistorie staat hieronder. |
@@ -24,7 +24,7 @@ Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterh
 | [#11 Deactiveren/archiveren](https://github.com/VanHinthem/Parkeren/issues/11) | **Gesloten 4 oktober 2026** na implementatie en review. API/UI ondersteunen veilig archiveren en verwijderen; PostgreSQL-tests bewijzen Visit-blokkade, statusconcurrency en historiebehoud. Commit `e2c1ee7`. |
 | [#8 2Park-integratie-epic](https://github.com/VanHinthem/Parkeren/issues/8) | Relevant als parent van de nog open provider-sync-, storings- en capaciteitswerkzaamheden (#64, #68, #73) en de bijbehorende validatie. Geen apart implementatieproject naast de children. |
 | [#6 Monitoring/notificaties-epic](https://github.com/VanHinthem/Parkeren/issues/6) | Relevant als parent; de issue meldt dat #78 de resterende child is. Sluit na afronding van die capability-spike. |
-| [#1 Bezoekers/toegang-epic](https://github.com/VanHinthem/Parkeren/issues/1) | Parent van de bezoekers-/toegangswerkzaamheden; #11 is gesloten. Sluit pas na controle van de overige children. |
+| [#1 Bezoekers/toegang-epic](https://github.com/VanHinthem/Parkeren/issues/1) | **Gesloten 4 oktober 2026** nadat alle zes children (#9–#12, #69–#70) gecontroleerd gesloten bleken. |
 
 ## Uitvoeringsvolgorde
 
@@ -73,7 +73,7 @@ Voor #86 en het lokale deel van #73 gelden de bevindingen en risicoacceptaties u
 
 - **#11:** gesloten op 4 oktober 2026. Archiveren behoudt historie en blokkeert bij actieve Visits; permanent verwijderen is beperkt tot records zonder parkeerhistorie.
 - **#93:** bouw pas na bevestiging van providerdata en budgetsemantiek een idempotente import met expliciete herkomst en provider-ID. Importeer gerealiseerd providerverbruik zonder actuele parkeerregels over oude transacties heen te rekenen; test herhaalde sync, correcties en samenvoeging met nieuwe Visits.
-- Sluit parent **#1** nadat #11 en de overige children van de epic zijn gecontroleerd.
+- Parent **#1** is gesloten nadat alle zes children (#9–#12, #69–#70) gecontroleerd gesloten bleken.
 
 **Exit:** import is herhaalbaar zonder duplicaten en sluit aan op het Oss-budget; gebruikers-/voertuighistorie blijft intact bij archivering/verwijdering.
 
@@ -82,4 +82,4 @@ Voor #86 en het lokale deel van #73 gelden de bevindingen en risicoacceptaties u
 - Werk na iedere slice de betreffende GitHub-checklist en functionele/technische documentatie bij.
 - Voer gerichte tests uit tijdens de slice en de relevante volledige suites vóór merge; providerproeven blijven beperkt tot het expliciete testaccount.
 - Behandel #82 als afrondwerk zolang de audit geen ontbrekend gedrag aantoont. #84 is gesloten met checklist- en testbewijs (19/19 gerichte tests).
-- Sluit epics pas nadat hun children zijn afgerond. Sluit #92 als alle niet-epic implementatie-issues zijn afgehandeld en de resterende deployment/releasebesluiten expliciet zijn overgedragen.
+- Sluit epics pas nadat hun children zijn afgerond. #92 is gesloten als planningsdeliverable; resterende implementatie- en deployment/releasebesluiten blijven bij de betreffende issues en releasegates.
