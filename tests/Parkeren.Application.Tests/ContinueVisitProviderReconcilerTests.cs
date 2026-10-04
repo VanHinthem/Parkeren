@@ -116,9 +116,13 @@ public sealed class ContinueVisitProviderReconcilerTests
             preparation.Action.ProviderActionId!, "TK01HF", preparation.Action.PlannedStartAt,
             preparation.Action.PlannedEndAt, "Oss", "active");
         var store = new TrackingResultStore();
+        const string providerDetails = "sensitive-provider-details";
         var provider = new ActionsProvider(
             [providerAction],
-            new ProviderResponseException("PROVIDER_FAILURE", "Extension unavailable", "provider error"));
+            new ProviderResponseException(
+                "PROVIDER_FAILURE",
+                providerDetails,
+                $"provider error: {providerDetails}"));
 
         var result = await new ContinueVisitProviderExecutor(provider, store)
             .ExecuteAsync(preparation, TestContext.Current.CancellationToken);
@@ -126,6 +130,7 @@ public sealed class ContinueVisitProviderReconcilerTests
         Assert.True(result.RequiresReconciliation);
         Assert.False(result.DefinitiveFailure);
         Assert.Equal("PROVIDER_FAILURE", store.UnknownErrorCode);
+        Assert.DoesNotContain(providerDetails, store.UnknownErrorCode, StringComparison.Ordinal);
         Assert.Equal(0, store.ConfirmedCalls);
     }
 

@@ -92,7 +92,11 @@ public sealed class StartVisitProviderExecutorTests
         var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
         operation.BeginAttempt();
         var resultStore = new TrackingResultStore();
-        var provider = new CountingProvider(new ProviderResponseException("PROVIDER_FAILURE", "Start unavailable", "provider error"));
+        const string providerDetails = "sensitive-provider-details";
+        var provider = new CountingProvider(new ProviderResponseException(
+            "PROVIDER_FAILURE",
+            providerDetails,
+            $"provider error: {providerDetails}"));
 
         var result = await new StartVisitProviderExecutor(provider, resultStore).ExecuteAsync(
             new ProviderStartPreparation(operation, action, false, AttemptStartedNow: true),
@@ -104,6 +108,7 @@ public sealed class StartVisitProviderExecutorTests
         Assert.Equal(1, provider.StartCalls);
         Assert.Equal(1, resultStore.UnknownCalls);
         Assert.Equal("PROVIDER_FAILURE", resultStore.LastErrorCode);
+        Assert.DoesNotContain(providerDetails, resultStore.LastErrorCode, StringComparison.Ordinal);
         Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
         Assert.Equal(ProviderActionHealth.Unknown, action.Health);
     }

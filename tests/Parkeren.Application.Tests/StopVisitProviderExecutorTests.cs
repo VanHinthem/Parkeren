@@ -138,10 +138,14 @@ public sealed class StopVisitProviderExecutorTests
         action.BeginStopping();
         var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
         operation.BeginAttempt();
+        const string providerDetails = "sensitive-provider-details";
         var provider = new SuccessfulStopProvider(
             new Parkeren.Application.ParkingProvider.ProviderParkingAction(
                 "provider-stop-error", "ST01OP", now.AddMinutes(-30), now.AddHours(1), "Oss", "active"),
-            stopException: new ProviderResponseException("PROVIDER_FAILURE", "Stop unavailable", "provider error"));
+            stopException: new ProviderResponseException(
+                "PROVIDER_FAILURE",
+                providerDetails,
+                $"provider error: {providerDetails}"));
         var store = new TrackingStopResultStore();
 
         var result = await new StopVisitProviderExecutor(provider, store).ExecuteAsync(
@@ -154,6 +158,7 @@ public sealed class StopVisitProviderExecutorTests
         Assert.Equal(0, store.ConfirmedCalls);
         Assert.Equal(1, store.UnknownCalls);
         Assert.Equal("PROVIDER_FAILURE", store.LastErrorCode);
+        Assert.DoesNotContain(providerDetails, store.LastErrorCode, StringComparison.Ordinal);
     }
 
     [Fact]
