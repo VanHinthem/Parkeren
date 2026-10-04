@@ -847,6 +847,7 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
         await context.ProviderParkingActions.ExecuteDeleteAsync(ct);
         await context.Notifications.ExecuteDeleteAsync(ct);
         await context.NotificationEvents.ExecuteDeleteAsync(ct);
+        await context.DeleteVisitSchedulerAuditEventsAsync(ct);
         await context.Visits.ExecuteDeleteAsync(ct);
     }
 }

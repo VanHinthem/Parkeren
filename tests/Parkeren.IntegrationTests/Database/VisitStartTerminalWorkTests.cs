@@ -96,6 +96,7 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
         await cleanup.ProviderParkingActions.ExecuteDeleteAsync(ct);
         await cleanup.Notifications.ExecuteDeleteAsync(ct);
         await cleanup.NotificationEvents.ExecuteDeleteAsync(ct);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct);
         await cleanup.Visits.ExecuteDeleteAsync(ct);
         await cleanup.PaidWindows.ExecuteDeleteAsync(ct);
         await cleanup.ParkingCalendarExceptions.ExecuteDeleteAsync(ct);

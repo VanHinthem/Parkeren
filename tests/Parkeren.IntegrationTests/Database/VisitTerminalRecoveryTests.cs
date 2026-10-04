@@ -155,6 +155,7 @@ public sealed class VisitTerminalRecoveryTests(PostgreSqlFixture fixture)
         await cleanup.ProviderParkingActions.ExecuteDeleteAsync(ct);
         await cleanup.Notifications.ExecuteDeleteAsync(ct);
         await cleanup.NotificationEvents.ExecuteDeleteAsync(ct);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct);
         await cleanup.Visits.ExecuteDeleteAsync(ct);
     }
 }

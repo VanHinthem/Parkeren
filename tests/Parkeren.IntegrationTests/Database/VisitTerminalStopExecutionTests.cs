@@ -290,6 +290,7 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.NotificationEvents.Where(x => x.AggregateId == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(ct);
+            await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct, visit.Id);
             await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.ParkingBudgetPeriods
                 .Where(x => x.Id == previousPeriod.Id || x.Id == currentPeriod.Id)
@@ -601,6 +602,7 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
         await cleanup.ProviderParkingActions.ExecuteDeleteAsync(ct);
         await cleanup.Notifications.ExecuteDeleteAsync(ct);
         await cleanup.NotificationEvents.ExecuteDeleteAsync(ct);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct);
         await cleanup.Visits.ExecuteDeleteAsync(ct);
     }
 

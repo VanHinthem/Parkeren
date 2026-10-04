@@ -1,5 +1,12 @@
 namespace Parkeren.Domain.Vehicles;
 
+public enum VehicleStatus
+{
+    Active,
+    Inactive,
+    Archived
+}
+
 public sealed class Vehicle
 {
     private Vehicle() { }
@@ -14,7 +21,7 @@ public sealed class Vehicle
         LicensePlate = canonicalPlate;
         NormalizedLicensePlate = canonicalPlate;
         DisplayName = displayName;
-        IsActive = true;
+        Status = VehicleStatus.Active;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -22,11 +29,25 @@ public sealed class Vehicle
     public string LicensePlate { get; private set; } = string.Empty;
     public string NormalizedLicensePlate { get; private set; } = string.Empty;
     public string? DisplayName { get; private set; }
-    public bool IsActive { get; private set; }
+    public VehicleStatus Status { get; private set; }
+    public bool IsActive => Status == VehicleStatus.Active;
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public void Activate() => IsActive = true;
-    public void Deactivate() => IsActive = false;
+    public void Activate()
+    {
+        if (Status == VehicleStatus.Archived)
+            throw new InvalidOperationException("Archived vehicles cannot be activated.");
+
+        Status = VehicleStatus.Active;
+    }
+
+    public void Deactivate()
+    {
+        if (Status != VehicleStatus.Archived)
+            Status = VehicleStatus.Inactive;
+    }
+
+    public void Archive() => Status = VehicleStatus.Archived;
 
     public static string NormalizeLicensePlate(string plate) =>
         new(plate.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());

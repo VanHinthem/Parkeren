@@ -24,7 +24,7 @@ internal sealed class NotificationInboxWriter(ParkerenDbContext dbContext)
         if (includeAdmins)
         {
             recipientIds.AddRange(await dbContext.Users
-                .Where(x => x.IsActive && x.Role == UserRole.Admin)
+                .Where(x => x.Status == UserStatus.Active && x.Role == UserRole.Admin)
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken));
         }

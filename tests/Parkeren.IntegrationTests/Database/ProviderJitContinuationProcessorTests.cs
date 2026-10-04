@@ -212,6 +212,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             await cleanupContext.Notifications
                 .Where(x => x.VisitId == visit.Id)
                 .ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
             await cleanupContext.Visits
                 .Where(x => x.Id == visit.Id)
                 .ExecuteDeleteAsync(cancellationToken);

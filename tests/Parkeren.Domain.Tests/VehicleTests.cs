@@ -19,4 +19,16 @@ public sealed class VehicleTests
     {
         Assert.Throws<ArgumentException>(() => new Vehicle(Guid.NewGuid(), "AB-12-CD", "XY12CD", null));
     }
+
+    [Fact]
+    public void Archived_vehicle_cannot_be_reactivated()
+    {
+        var vehicle = new Vehicle(Guid.NewGuid(), "AB-12-CD", "AB12CD", null);
+
+        vehicle.Archive();
+
+        Assert.Equal(VehicleStatus.Archived, vehicle.Status);
+        Assert.False(vehicle.IsActive);
+        Assert.Throws<InvalidOperationException>(vehicle.Activate);
+    }
 }

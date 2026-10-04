@@ -15,7 +15,7 @@ internal sealed class AdminAuditQueryService(ParkerenDbContext dbContext) : IAdm
         ArgumentNullException.ThrowIfNull(query);
 
         if (!await dbContext.Users.AsNoTracking().AnyAsync(
-                x => x.Id == actorUserId && x.IsActive && x.Role == UserRole.Admin,
+            x => x.Id == actorUserId && x.Status == UserStatus.Active && x.Role == UserRole.Admin,
                 cancellationToken))
             throw new UnauthorizedAccessException("Active administrator required.");
 

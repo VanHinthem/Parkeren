@@ -31,7 +31,7 @@ internal sealed class AdministrationService(
                 user.Id,
                 user.Username,
                 user.Role,
-                user.IsActive,
+                user.Status == UserStatus.Active,
                 policyOverride == null ? null : policyOverride.MaxConcurrentVisits))
             .ToListAsync(cancellationToken);
     }
@@ -188,7 +188,7 @@ internal sealed class AdministrationService(
         await EnsureAdminAsync(actorUserId, cancellationToken);
         return await dbContext.Vehicles.AsNoTracking()
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.IsActive))
+            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
             .ToListAsync(cancellationToken);
     }
 
@@ -293,7 +293,7 @@ internal sealed class AdministrationService(
 
     public async Task<IReadOnlyList<VehicleSummary>?> GetAuthorizedVehiclesAsync(Guid userId, CancellationToken cancellationToken)
     {
-        if (!await dbContext.Users.AnyAsync(x => x.Id == userId && x.IsActive, cancellationToken))
+        if (!await dbContext.Users.AnyAsync(x => x.Id == userId && x.Status == UserStatus.Active, cancellationToken))
             return null;
 
         var vehicleIds = await dbContext.UserVehicles.AsNoTracking()
@@ -302,9 +302,9 @@ internal sealed class AdministrationService(
             .ToListAsync(cancellationToken);
 
         return await dbContext.Vehicles.AsNoTracking()
-            .Where(x => x.IsActive && vehicleIds.Contains(x.Id))
+            .Where(x => x.Status == VehicleStatus.Active && vehicleIds.Contains(x.Id))
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.IsActive))
+            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
             .ToListAsync(cancellationToken);
     }
 
@@ -322,7 +322,7 @@ internal sealed class AdministrationService(
         return await dbContext.Vehicles.AsNoTracking()
             .Where(x => vehicleIds.Contains(x.Id))
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.IsActive))
+            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
             .ToListAsync(cancellationToken);
     }
 
@@ -404,7 +404,7 @@ internal sealed class AdministrationService(
         await EnsureAdminAsync(actorUserId, cancellationToken);
 
         var isActiveVisitor = await dbContext.Users.AsNoTracking()
-            .AnyAsync(x => x.Id == userId && x.IsActive && x.Role == UserRole.Visitor, cancellationToken);
+            .AnyAsync(x => x.Id == userId && x.Status == UserStatus.Active && x.Role == UserRole.Visitor, cancellationToken);
         if (!isActiveVisitor)
             return null;
 
@@ -1626,12 +1626,12 @@ internal sealed class AdministrationService(
 
         var activeUsers = await dbContext.Users.AsNoTracking()
             .Where(x => userIds.Contains(x.Id))
-            .ToDictionaryAsync(x => x.Id, x => x.IsActive, cancellationToken);
+            .ToDictionaryAsync(x => x.Id, x => x.Status == UserStatus.Active, cancellationToken);
 
         var plates = report.Visits.Select(x => x.LicensePlate).Distinct().ToArray();
         var plateStates = await dbContext.Vehicles.AsNoTracking()
             .Where(x => plates.Contains(x.LicensePlate))
-            .Select(x => new { x.LicensePlate, x.IsActive })
+            .Select(x => new { x.LicensePlate, IsActive = x.Status == VehicleStatus.Active })
             .ToListAsync(cancellationToken);
         var activePlates = plateStates
             .GroupBy(x => x.LicensePlate)
@@ -2113,7 +2113,7 @@ internal sealed class AdministrationService(
 
     private async Task EnsureAdminAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
-        if (!await dbContext.Users.AnyAsync(x => x.Id == actorUserId && x.IsActive && x.Role == UserRole.Admin, cancellationToken))
+        if (!await dbContext.Users.AnyAsync(x => x.Id == actorUserId && x.Status == UserStatus.Active && x.Role == UserRole.Admin, cancellationToken))
             throw new UnauthorizedAccessException("Active administrator required.");
     }
 

@@ -449,10 +449,12 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("users");
             entity.HasKey(x => x.Id);
+            entity.Ignore(x => x.IsActive);
             entity.Property(x => x.Username).HasMaxLength(100).IsRequired();
             entity.Property(x => x.NormalizedUsername).HasMaxLength(100).IsRequired();
             entity.Property(x => x.PinHash).HasMaxLength(512).IsRequired();
             entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.HasIndex(x => x.NormalizedUsername).IsUnique();
         });
 
@@ -470,9 +472,11 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("vehicles");
             entity.HasKey(x => x.Id);
+            entity.Ignore(x => x.IsActive);
             entity.Property(x => x.LicensePlate).HasMaxLength(20).IsRequired();
             entity.Property(x => x.NormalizedLicensePlate).HasMaxLength(16).IsRequired();
             entity.Property(x => x.DisplayName).HasMaxLength(100);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.HasIndex(x => x.NormalizedLicensePlate).IsUnique();
         });
 
@@ -741,7 +745,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasIndex(x => x.EventKey).IsUnique();
             entity.HasIndex(x => new { x.VisitId, x.OccurredAt });
             entity.HasIndex(x => new { x.VisitId, x.GroupKey, x.OccurredAt });
-            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Visit>(entity =>

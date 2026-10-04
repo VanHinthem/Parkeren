@@ -1,5 +1,12 @@
 namespace Parkeren.Domain.Users;
 
+public enum UserStatus
+{
+    Active,
+    Inactive,
+    Archived
+}
+
 public sealed class User
 {
     private User() { }
@@ -11,7 +18,7 @@ public sealed class User
         NormalizedUsername = normalizedUsername;
         PinHash = pinHash;
         Role = role;
-        IsActive = true;
+        Status = UserStatus.Active;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -20,10 +27,24 @@ public sealed class User
     public string NormalizedUsername { get; private set; } = string.Empty;
     public string PinHash { get; private set; } = string.Empty;
     public UserRole Role { get; private set; }
-    public bool IsActive { get; private set; }
+    public UserStatus Status { get; private set; }
+    public bool IsActive => Status == UserStatus.Active;
     public DateTimeOffset CreatedAt { get; private set; }
 
     public void ChangePinHash(string pinHash) => PinHash = pinHash;
-    public void Deactivate() => IsActive = false;
-    public void Activate() => IsActive = true;
+    public void Deactivate()
+    {
+        if (Status != UserStatus.Archived)
+            Status = UserStatus.Inactive;
+    }
+
+    public void Activate()
+    {
+        if (Status == UserStatus.Archived)
+            throw new InvalidOperationException("Archived users cannot be activated.");
+
+        Status = UserStatus.Active;
+    }
+
+    public void Archive() => Status = UserStatus.Archived;
 }

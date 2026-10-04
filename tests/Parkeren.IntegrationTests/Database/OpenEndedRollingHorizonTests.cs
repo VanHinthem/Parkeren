@@ -126,6 +126,7 @@ public sealed class OpenEndedRollingHorizonTests(PostgreSqlFixture fixture)
             await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
             await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(cancellationToken);

@@ -23,7 +23,7 @@ internal sealed class AuthenticationService(
 
         var normalized = NormalizeUsername(username);
         var user = await dbContext.Users.SingleOrDefaultAsync(x => x.NormalizedUsername == normalized, cancellationToken);
-        if (user is null || !user.IsActive)
+        if (user is null || user.Status != UserStatus.Active)
             return null;
 
         var verification = passwordHasher.VerifyHashedPassword(user, user.PinHash, pin);
@@ -145,11 +145,11 @@ internal sealed class AuthenticationService(
             .Include(x => x.User)
             .SingleOrDefaultAsync(x => x.TokenHash == tokenHash, cancellationToken);
 
-        return session is not null && session.IsValidAt(now) && session.User.IsActive ? session : null;
+        return session is not null && session.IsValidAt(now) && session.User.Status == UserStatus.Active ? session : null;
     }
 
     private Task<bool> IsActiveAdminAsync(Guid userId, CancellationToken cancellationToken) =>
-        dbContext.Users.AnyAsync(x => x.Id == userId && x.IsActive && x.Role == UserRole.Admin, cancellationToken);
+        dbContext.Users.AnyAsync(x => x.Id == userId && x.Status == UserStatus.Active && x.Role == UserRole.Admin, cancellationToken);
 
     private async Task RevokeSessionsAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken)
     {

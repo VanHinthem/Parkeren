@@ -407,6 +407,7 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
             .ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.Where(x => x.VisitId == visitId)
             .ExecuteDeleteAsync(cancellationToken);
+        await context.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visitId);
         await context.Visits.Where(x => x.Id == visitId)
             .ExecuteDeleteAsync(cancellationToken);
         await context.Vehicles.Where(x => x.Id == vehicleId)

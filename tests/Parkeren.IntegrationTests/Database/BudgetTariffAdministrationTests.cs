@@ -510,6 +510,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(ct);
         await context.ProviderOperations.ExecuteDeleteAsync(ct);
         await context.ProviderParkingActions.ExecuteDeleteAsync(ct);
+        await context.DeleteVisitSchedulerAuditEventsAsync(ct);
         await context.Visits.ExecuteDeleteAsync(ct);
     }
 

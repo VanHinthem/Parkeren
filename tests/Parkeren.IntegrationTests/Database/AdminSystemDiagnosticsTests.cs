@@ -130,6 +130,7 @@ public sealed class AdminSystemDiagnosticsTests(PostgreSqlFixture fixture)
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
+        await context.DeleteVisitSchedulerAuditEventsAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
     }
 

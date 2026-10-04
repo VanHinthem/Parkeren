@@ -735,6 +735,7 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         await cleanup.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await cleanup.Notifications.ExecuteDeleteAsync(cancellationToken);
         await cleanup.NotificationEvents.ExecuteDeleteAsync(cancellationToken);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken);
         await cleanup.Visits.ExecuteDeleteAsync(cancellationToken);
     }
 }

@@ -111,6 +111,7 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
             await cleanup.ProviderParkingActions
                 .Where(x => x.VisitId == visitA.Id || x.VisitId == visitB.Id)
                 .ExecuteDeleteAsync(ct);
+            await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct, visitA.Id, visitB.Id);
             await cleanup.Visits.Where(x => x.Id == visitA.Id || x.Id == visitB.Id).ExecuteDeleteAsync(ct);
             await cleanup.ParkingBudgetPeriods.Where(x => budgetIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
             await cleanup.ParkingTariffs.Where(x => tariffIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
@@ -191,6 +192,7 @@ public sealed class ProductScopedFinanceAdministrationTests(PostgreSqlFixture fi
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(ct);
         await context.ProviderOperations.ExecuteDeleteAsync(ct);
         await context.ProviderParkingActions.ExecuteDeleteAsync(ct);
+        await context.DeleteVisitSchedulerAuditEventsAsync(ct);
         await context.Visits.ExecuteDeleteAsync(ct);
         await context.ParkingBudgetWarningStates.ExecuteDeleteAsync(ct);
         await context.ParkingBudgetPeriods.ExecuteDeleteAsync(ct);

@@ -15,7 +15,7 @@ Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterh
 | [#92 V1-plan](https://github.com/VanHinthem/Parkeren/issues/92) | Actief als overkoepelende planning. De oude hoofdfasenlijst beschreef niet meer welke openstaande werkzaamheden nog over zijn; dit document vervangt die lijst als uitvoeringsplan. |
 | [#86 2Park-mock](https://github.com/VanHinthem/Parkeren/issues/86) | Grotendeels gerealiseerd. Mockserver en failure-injection bestaan; de issue meldt zelf dat de basis klaar is. Resterende contractdetails hangen af van #71. Rond af met een checklist-audit, geen nieuwe mock vanaf nul. |
 | [#84 Transactionele Stop](https://github.com/VanHinthem/Parkeren/issues/84) | **Gesloten 4 oktober 2026.** Beide resterende criteria zijn getest: [Stop versus eindtijdwijziging](../../tests/Parkeren.IntegrationTests/Database/VisitSchedulerLockingTests.cs) en [pushfout na succesvolle Stop](../../tests/Parkeren.IntegrationTests/Database/PushDeliveryProcessorTests.cs). De twee betrokken testklassen slagen met 19/19 tests. |
-| [#82 Domeinmodel/invarianten](https://github.com/VanHinthem/Parkeren/issues/82) | Closeout-kandidaat. De domeinentiteiten, operationele lifecycle, unieke sleutels en concurrencybescherming zijn aanwezig. Maak eerst een criterium-naar-databaseconstraint/test-mapping; implementeer alleen eventuele echte hiaten. |
+| [#82 Domeinmodel/invarianten](https://github.com/VanHinthem/Parkeren/issues/82) | Open. De [criterium-naar-code/schema/test-matrix](issue-82-evidence-map.md) is opgesteld. De Visit-audit-FK wordt nu daadwerkelijk tegen PostgreSQL getest; gerichte tests voor genormaliseerde unique constraints en sessie-revocatie ontbreken nog, en providercriteria hangen deels aan #71. |
 | [#78 PWA-capabilityvalidatie](https://github.com/VanHinthem/Parkeren/issues/78) | Actief. Android is gevalideerd; de iOS-matrix, offline herstel, meerdere devices/sessie-intrekking, subscription-refresh en productie-hostcheck staan nog open. Zie de [capabilitymatrix](fase-7-pwa-capability-matrix.md). |
 | [#73 Visit-capaciteit](https://github.com/VanHinthem/Parkeren/issues/73) | Gedeeltelijk gerealiseerd. De lokale globale en per-user capaciteit wordt atomair geclaimd en getest. Providerlimiet, providerfout en resterende admin-/rapportagecriteria moeten met #71 worden afgerond. |
 | [#71 2Park-gedrag](https://github.com/VanHinthem/Parkeren/issues/71) | Gedeeltelijk gevalideerd. Echte tests bevestigden action-ID/read-back, 240 minuten maximum, toekomstige `scheduled` acties en de vereiste seconde tussen opvolgers. De issue noemt capaciteit, retries/onzekere responses en foutgevallen nog als gerichte vervolgvalidatie. Voer geen onnodige ketens van muterende acties uit. |
@@ -32,11 +32,11 @@ De tracks hieronder kunnen naast elkaar lopen zodra hun expliciete afhankelijkhe
 
 ### Gate 0 — Afsluiten wat al gebouwd is
 
-Voer voor #82 een criterium-naar-code/databaseconstraint/test-mapping uit. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Betrek voor de resterende audit bestaande PostgreSQL-tests voor capacity claims, Stop/replay, Stop-versus-continuation, end-time-mutaties en recovery. Herhaal geen al bewezen provider- of mockimplementatie.
+De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). Vul de daar gemarkeerde testgaten aan en wacht voor providergebonden criteria op #71; sluit #82 pas wanneer elk criterium bewezen is of expliciet is overgedragen. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Herhaal geen al bewezen provider- of mockimplementatie.
 
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 
-**Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.
+**Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; de issue wordt niet gesloten zolang bewijsleemtes of #71-afhankelijkheden onopgelost zijn. #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.
 
 ### Provider- en recoverytrack
 

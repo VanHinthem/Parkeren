@@ -91,6 +91,7 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
             await cleanup.ProviderParkingActions
                 .Where(x => x.VisitId == firstVisit.Id || x.VisitId == secondVisit.Id)
                 .ExecuteDeleteAsync(ct);
+            await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct, firstVisit.Id, secondVisit.Id);
             await cleanup.Visits.Where(x => x.Id == firstVisit.Id || x.Id == secondVisit.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor1.Id || x.Id == visitor2.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
@@ -138,6 +139,7 @@ public sealed class UsageAnalysisAdministrationTests(PostgreSqlFixture fixture)
         await context.VisitEndTimeChanges.ExecuteDeleteAsync(ct);
         await context.ProviderOperations.ExecuteDeleteAsync(ct);
         await context.ProviderParkingActions.ExecuteDeleteAsync(ct);
+        await context.DeleteVisitSchedulerAuditEventsAsync(ct);
         await context.Visits.ExecuteDeleteAsync(ct);
         await context.ParkingTariffs.ExecuteDeleteAsync(ct);
         await context.PaidWindows.ExecuteDeleteAsync(ct);

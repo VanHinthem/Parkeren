@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System.Net.Http.Json;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Infrastructure.ParkingProvider;
@@ -33,6 +34,72 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         Assert.True(await context.Database.CanConnectAsync(TestContext.Current.CancellationToken));
         Assert.True(await context.Users.AnyAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Archived_user_and_vehicle_statuses_round_trip_and_audit_events_restrict_visit_deletion()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+        var user = new User(Guid.NewGuid(), $"archived-{suffix}", $"ARCHIVED-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"Z{suffix}", $"Z{suffix}", null);
+        user.Archive();
+        vehicle.Archive();
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            now,
+            null,
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+
+        try
+        {
+            await using (var writeContext = fixture.CreateDbContext())
+            {
+                writeContext.Users.Add(user);
+                writeContext.Vehicles.Add(vehicle);
+                writeContext.Visits.Add(visit);
+                await writeContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await using (var deleteContext = fixture.CreateDbContext())
+            {
+                var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                    deleteContext.Visits
+                        .Where(x => x.Id == visit.Id)
+                        .ExecuteDeleteAsync(cancellationToken));
+
+                Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
+                Assert.Equal("FK_visit_scheduler_audit_events_visits_VisitId", exception.ConstraintName);
+            }
+
+            await using var verifyContext = fixture.CreateDbContext();
+            var persistedUser = await verifyContext.Users.SingleAsync(x => x.Id == user.Id, cancellationToken);
+            var persistedVehicle = await verifyContext.Vehicles.SingleAsync(x => x.Id == vehicle.Id, cancellationToken);
+            var auditEventExists = await verifyContext.VisitSchedulerAuditEvents
+                .AnyAsync(x => x.VisitId == visit.Id, cancellationToken);
+            var auditVisitForeignKey = verifyContext.Model.FindEntityType(typeof(VisitSchedulerAuditEvent))!
+                .GetForeignKeys()
+                .Single(foreignKey => foreignKey.PrincipalEntityType.ClrType == typeof(Visit));
+
+            Assert.Equal(UserStatus.Archived, persistedUser.Status);
+            Assert.Equal(VehicleStatus.Archived, persistedVehicle.Status);
+            Assert.True(await verifyContext.Visits.AnyAsync(x => x.Id == visit.Id, cancellationToken));
+            Assert.True(auditEventExists);
+            Assert.Equal(DeleteBehavior.Restrict, auditVisitForeignKey.DeleteBehavior);
+        }
+        finally
+        {
+            await using var cleanupContext = fixture.CreateDbContext();
+            await cleanupContext.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
+            await cleanupContext.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        }
     }
 
     [Fact]
@@ -1240,7 +1307,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             x => x.Type == NotificationEventType.VisitStarted && x.AggregateId == visit.Id,
             cancellationToken);
         var activeAdminIds = await verifyContext.Users
-            .Where(x => x.IsActive && x.Role == UserRole.Admin)
+            .Where(x => x.Status == UserStatus.Active && x.Role == UserRole.Admin)
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
         var inboxNotifications = await verifyContext.Notifications
@@ -1585,6 +1652,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await cleanup.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
         await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ParkingBudgetPeriods.Where(x => x.Id == budgetPeriod.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
@@ -3354,6 +3422,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await cleanup.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Notifications.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.NotificationEvents.Where(x => x.AggregateId == visit.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
         await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(cancellationToken);
@@ -5049,6 +5118,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await context.Notifications.ExecuteDeleteAsync(cancellationToken);
         await context.NotificationEvents.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingBudgetWarningStates.ExecuteDeleteAsync(cancellationToken);
+        await context.DeleteVisitSchedulerAuditEventsAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
         await context.PaidWindows.ExecuteDeleteAsync(cancellationToken);
         await context.ParkingCalendarExceptions.ExecuteDeleteAsync(cancellationToken);
