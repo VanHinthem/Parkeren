@@ -35,14 +35,7 @@ public sealed class AuthenticationLifecycleTests(PostgreSqlFixture fixture)
 
         try
         {
-            var configuration = new ConfigurationManager();
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
-            });
-            var services = new ServiceCollection();
-            services.AddInfrastructure(configuration);
-            await using var provider = services.BuildServiceProvider();
+            await using var provider = CreateServices();
             var authentication = provider.GetRequiredService<IAuthenticationService>();
 
             Assert.Null(await authentication.LoginAsync(username, pin, ct));
@@ -56,5 +49,185 @@ public sealed class AuthenticationLifecycleTests(PostgreSqlFixture fixture)
             await cleanup.UserSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
         }
+    }
+
+    [Fact]
+    public async Task Existing_session_cannot_authenticate_after_user_is_deactivated()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var username = $"lifecycle-deactivate-{suffix}";
+        const string pin = "123456";
+        var user = CreateUser(username, pin, UserRole.Visitor);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            string sessionToken;
+            await using (var provider = CreateServices())
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var authentication = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+                var login = await authentication.LoginAsync(username, pin, ct);
+                Assert.NotNull(login);
+                sessionToken = login.SessionToken;
+            }
+
+            await using (var deactivate = fixture.CreateDbContext())
+            {
+                var persistedUser = await deactivate.Users.SingleAsync(x => x.Id == user.Id, ct);
+                persistedUser.Deactivate();
+                await deactivate.SaveChangesAsync(ct);
+            }
+
+            await using var verifyProvider = CreateServices();
+            await using var verifyScope = verifyProvider.CreateAsyncScope();
+            var verifyAuthentication = verifyScope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+            Assert.Null(await verifyAuthentication.AuthenticateAsync(sessionToken, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Admin_can_revoke_all_existing_user_sessions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        const string pin = "123456";
+        var admin = CreateUser($"lifecycle-admin-{suffix}", pin, UserRole.Admin);
+        var user = CreateUser($"lifecycle-revoke-{suffix}", pin, UserRole.Visitor);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.AddRange(admin, user);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            string firstToken;
+            string secondToken;
+            await using (var provider = CreateServices())
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var authentication = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+                var firstLogin = await authentication.LoginAsync(user.Username, pin, ct);
+                var secondLogin = await authentication.LoginAsync(user.Username, pin, ct);
+                Assert.NotNull(firstLogin);
+                Assert.NotNull(secondLogin);
+                firstToken = firstLogin.SessionToken;
+                secondToken = secondLogin.SessionToken;
+            }
+
+            await using (var provider = CreateServices())
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var authentication = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+                Assert.True(await authentication.RevokeAllSessionsAsync(admin.Id, user.Id, ct));
+            }
+
+            await using (var verify = fixture.CreateDbContext())
+            {
+                var sessions = await verify.UserSessions.AsNoTracking()
+                    .Where(x => x.UserId == user.Id)
+                    .ToListAsync(ct);
+                Assert.Equal(2, sessions.Count);
+                Assert.All(sessions, session => Assert.NotNull(session.RevokedAt));
+            }
+
+            await using var verifyProvider = CreateServices();
+            await using var verifyScope = verifyProvider.CreateAsyncScope();
+            var verifyAuthentication = verifyScope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+            Assert.Null(await verifyAuthentication.AuthenticateAsync(firstToken, ct));
+            Assert.Null(await verifyAuthentication.AuthenticateAsync(secondToken, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.AdminAuditEvents.Where(x => x.ActorUserId == admin.Id).ExecuteDeleteAsync(ct);
+            await cleanup.UserSessions.Where(x => x.UserId == admin.Id || x.UserId == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == user.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Logout_revokes_only_the_selected_session()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var username = $"lifecycle-logout-{suffix}";
+        const string pin = "123456";
+        var user = CreateUser(username, pin, UserRole.Visitor);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            string firstToken;
+            string secondToken;
+            await using (var provider = CreateServices())
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var authentication = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+                var firstLogin = await authentication.LoginAsync(username, pin, ct);
+                var secondLogin = await authentication.LoginAsync(username, pin, ct);
+                Assert.NotNull(firstLogin);
+                Assert.NotNull(secondLogin);
+                firstToken = firstLogin.SessionToken;
+                secondToken = secondLogin.SessionToken;
+            }
+
+            await using (var provider = CreateServices())
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var authentication = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+                await authentication.LogoutAsync(firstToken, ct);
+            }
+
+            await using var verifyProvider = CreateServices();
+            await using var verifyScope = verifyProvider.CreateAsyncScope();
+            var verifyAuthentication = verifyScope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+            Assert.Null(await verifyAuthentication.AuthenticateAsync(firstToken, ct));
+            Assert.NotNull(await verifyAuthentication.AuthenticateAsync(secondToken, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    private static User CreateUser(string username, string pin, UserRole role)
+    {
+        var user = new User(Guid.NewGuid(), username, username.ToUpperInvariant(), "pending", role);
+        user.ChangePinHash(new PasswordHasher<User>().HashPassword(user, pin));
+        return user;
+    }
+
+    private ServiceProvider CreateServices()
+    {
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        return services.BuildServiceProvider();
     }
 }
