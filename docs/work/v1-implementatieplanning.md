@@ -38,6 +38,8 @@ De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). De 
 
 **Vervolg loggercaptures 4 oktober 2026:** directe tests dekken het falende startup-product-sync-pad (`Initial_product_sync_failure_does_not_log_exception_object_or_details`) en scheduler startup-recovery vóór work-claims (`Startup_recovery_retries_and_claims_only_after_success_without_logging_exception_details`). De aangescherpte retrytest wacht op de tweede recoverypoging, controleert nul claims terwijl die poging geblokkeerd is en geeft pas daarna herstel vrij. De gerichte Release-regressieset slaagde met 5/5; de volledige suite is na deze wijziging niet opnieuw gedraaid. De oudere 478/478 solution-suite en 262/262 Release-integratiesuite zijn historische resultaten.
 
+**Retentie follow-up 4 oktober 2026:** `Retention_cleanup_deletes_only_notifications_older_than_cutoff` dekt zowel de defaultretentie van 90 dagen als een ingestelde 30 dagen en bevestigt dat een scheduler-audit-event behouden blijft. De gerichte Release-test slaagde met 1/1; de volledige suite is niet opnieuw gedraaid.
+
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 
 **Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; de issue wordt niet gesloten zolang bewijsleemtes of #71-afhankelijkheden onopgelost zijn. #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.

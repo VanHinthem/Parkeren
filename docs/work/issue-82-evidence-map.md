@@ -85,6 +85,8 @@ Suitehistorie: de volledige Release-integratiesuite slaagde met 262/262 vóór d
 
 De aangescherpte retry-gated test en de gerichte worker/startup loggingregressieset slagen met respectievelijk 1/1 en 5/5 in Release. De volledige suite is na deze wijziging niet opnieuw gedraaid.
 
+De retentieslice scherpt `Retention_cleanup_deletes_only_notifications_older_than_cutoff` in [NotificationRetentionWorkerTests.cs](../../tests/Parkeren.IntegrationTests/Database/NotificationRetentionWorkerTests.cs) aan: de PostgreSQL-test bewijst de default van 90 dagen, een ingestelde retentie van 30 dagen met behoud van de cutoff en een scheduler-audit-event dat beide cleanup-runs overleeft. De gerichte Release-test slaagde met 1/1; de volledige suite is niet opnieuw gedraaid.
+
 - Voeg gerichte tests toe voor de ontbrekende historische/retentiegevallen hierboven. Genormaliseerde username-/kentekenuniciteit en sessie-revocatie/inactieve gebruiker zijn met PostgreSQL-integratietests aangetoond.
 - Beslis of de default-policy-versie en overlappende tariff-/budget-/ruleset-perioden database-side beschermd moeten worden; huidige overlapvalidatie is grotendeels applicatie-/domeinlogica.
 - Correctie op het beslispunt hierboven: overlapbeveiliging voor ParkingRuleSet, tariff en budget is inmiddels database-side geïmplementeerd en getest. Alleen de singleton-garantie voor `DefaultParkingPolicy` vraagt nog een expliciet besluit.
