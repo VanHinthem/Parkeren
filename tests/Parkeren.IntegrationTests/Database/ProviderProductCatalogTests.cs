@@ -98,7 +98,13 @@ public sealed class ProviderProductCatalogTests(PostgreSqlFixture fixture)
     private async Task ClearProductsAsync(CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
+        var productIds = await context.ParkingProviderProducts
+            .Select(x => x.Id)
+            .ToArrayAsync(cancellationToken);
         await context.ProviderDiscrepancies.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingRuleSets
+            .Where(x => x.ProviderProductId.HasValue && productIds.Contains(x.ProviderProductId.Value))
+            .ExecuteDeleteAsync(cancellationToken);
         await context.ParkingProviderProducts.ExecuteDeleteAsync(cancellationToken);
     }
 

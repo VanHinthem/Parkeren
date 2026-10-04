@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
@@ -218,12 +219,14 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
         var originalStart = visitStart.AddMinutes(2);
         var actionEnd = correctedStart.AddMinutes(11);
         var now = correctedStart.AddMinutes(12);
+        var productId = Guid.NewGuid();
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"history-budget-{suffix}", $"HISTORY-BUDGET-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"HB{suffix[..6]}", $"HB{suffix[..6]}", null);
         var visit = new Visit(
             Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
-            visitStart, now.AddHours(1), new EffectiveParkingPolicySnapshot(null, TimeSpan.FromHours(8), true));
+            visitStart, now.AddHours(1), new EffectiveParkingPolicySnapshot(null, TimeSpan.FromHours(8), true),
+            providerProductId: productId);
         visit.Activate();
         visit.BeginStopping();
         visit.Complete(now);
@@ -245,6 +248,23 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             Guid.NewGuid(), correctedStart.AddHours(-1), visitStart, TimeSpan.FromMinutes(2));
         var currentPeriod = new ParkingBudgetPeriod(
             Guid.NewGuid(), visitStart, correctedStart.AddHours(1), TimeSpan.FromMinutes(30));
+        previousPeriod.AssignProviderProduct(productId);
+        currentPeriod.AssignProviderProduct(productId);
+        var ruleSet = new ParkingRuleSet(
+            Guid.NewGuid(),
+            correctedStart.AddHours(-1),
+            correctedStart.AddHours(2),
+            TimeSpan.FromHours(4),
+            [new PaidWindow(DayOfWeek.Wednesday, new TimeOnly(9, 0), new TimeOnly(20, 0))]);
+        ruleSet.AssignProviderProduct(productId);
+        var product = new ParkingProviderProduct(
+            productId,
+            $"history-budget-{suffix}",
+            "History budget test product",
+            "test",
+            "Test",
+            "LOC_TEST",
+            now);
         var originalThresholds = Array.Empty<int>();
 
         await using (var seed = fixture.CreateDbContext())
@@ -252,12 +272,14 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             var settings = await seed.ParkingSystemSettings.SingleAsync(ct);
             originalThresholds = settings.BudgetWarningThresholdPercentages.ToArray();
             settings.SetBudgetWarningThresholdPercentages([80]);
+            seed.ParkingProviderProducts.Add(product);
             seed.Users.Add(user);
             seed.Vehicles.Add(vehicle);
             seed.Visits.Add(visit);
             seed.ProviderParkingActions.Add(action);
             seed.VisitSchedulerWork.Add(work);
             seed.ParkingBudgetPeriods.AddRange(previousPeriod, currentPeriod);
+            seed.ParkingRuleSets.Add(ruleSet);
             await seed.SaveChangesAsync(ct);
         }
 
@@ -295,6 +317,8 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             await cleanup.ParkingBudgetPeriods
                 .Where(x => x.Id == previousPeriod.Id || x.Id == currentPeriod.Id)
                 .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingRuleSets.Where(x => x.Id == ruleSet.Id).ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == productId).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
             var settings = await cleanup.ParkingSystemSettings.SingleAsync(ct);
