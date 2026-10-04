@@ -33,6 +33,48 @@ public sealed class ProgramStartupLoggingTests
             entry.Exception?.ToString().Contains(ExceptionCanary, StringComparison.Ordinal) == true);
     }
 
+    [Theory]
+    [InlineData("Failed to clean up active-extension diagnostic action {ProviderActionId}.")]
+    [InlineData("Failed to clean up JIT-extension diagnostic action {ProviderActionId}.")]
+    [InlineData("Failed to clean up active-shortening diagnostic action {ProviderActionId}.")]
+    public async Task Diagnostic_action_cleanup_does_not_log_exception_details(string warningMessage)
+    {
+        var loggerProvider = new CapturingLoggerProvider();
+        var logger = LoggerFactory.Create(logging => logging.AddProvider(loggerProvider))
+            .CreateLogger("Parkeren.Api.DiagnosticActionCleanup");
+        const string providerActionId = "diagnostic-action-123";
+
+        await DiagnosticActionCleanup.StopAsync(
+            () => Task.FromException(new InvalidOperationException(ExceptionCanary)),
+            logger,
+            warningMessage,
+            providerActionId);
+
+        var warning = Assert.Single(loggerProvider.Entries);
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Equal(
+            warningMessage.Replace("{ProviderActionId}", providerActionId, StringComparison.Ordinal),
+            warning.Message);
+        Assert.DoesNotContain(ExceptionCanary, warning.Message, StringComparison.Ordinal);
+        Assert.Null(warning.Exception);
+    }
+
+    [Fact]
+    public async Task Diagnostic_action_cleanup_does_not_log_when_stop_succeeds()
+    {
+        var loggerProvider = new CapturingLoggerProvider();
+        var logger = LoggerFactory.Create(logging => logging.AddProvider(loggerProvider))
+            .CreateLogger("Parkeren.Api.DiagnosticActionCleanup");
+
+        await DiagnosticActionCleanup.StopAsync(
+            () => Task.CompletedTask,
+            logger,
+            "Failed to clean up diagnostic action {ProviderActionId}.",
+            "diagnostic-action-123");
+
+        Assert.Empty(loggerProvider.Entries);
+    }
+
     private sealed class ThrowingProviderProductCatalogService : IProviderProductCatalogService
     {
         public Task<IReadOnlyList<ProviderProductSummary>> GetProductsAsync(CancellationToken cancellationToken = default) =>

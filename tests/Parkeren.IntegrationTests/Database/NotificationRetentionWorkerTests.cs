@@ -117,6 +117,24 @@ public sealed class NotificationRetentionWorkerTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task Retention_cleanup_rejects_nonpositive_retention_days(int retentionDays)
+    {
+        await using var services = new ServiceCollection().BuildServiceProvider();
+        var worker = new NotificationRetentionWorker(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new NotificationRetentionOptions { RetentionDays = retentionDays }),
+            new FixedTimeProvider(new DateTimeOffset(2026, 10, 4, 12, 0, 0, TimeSpan.Zero)),
+            NullLogger<NotificationRetentionWorker>.Instance);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            worker.DeleteExpiredNotificationsAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("Notifications:RetentionDays must be greater than zero.", exception.Message);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;

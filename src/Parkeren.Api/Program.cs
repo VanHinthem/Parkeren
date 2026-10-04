@@ -330,16 +330,11 @@ if (app.Environment.IsDevelopment())
         {
             if (created is not null)
             {
-                try
-                {
-                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    app.Logger.LogWarning(
-                        "Failed to clean up active-extension diagnostic action {ProviderActionId}.",
-                        created.ProviderActionId);
-                }
+                await DiagnosticActionCleanup.StopAsync(
+                    () => provider.StopActionAsync(created.ProviderActionId, CancellationToken.None),
+                    app.Logger,
+                    "Failed to clean up active-extension diagnostic action {ProviderActionId}.",
+                    created.ProviderActionId);
             }
         }
     });
@@ -427,16 +422,11 @@ if (app.Environment.IsDevelopment())
         {
             if (created is not null)
             {
-                try
-                {
-                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    app.Logger.LogWarning(
-                        "Failed to clean up JIT-extension diagnostic action {ProviderActionId}.",
-                        created.ProviderActionId);
-                }
+                await DiagnosticActionCleanup.StopAsync(
+                    () => provider.StopActionAsync(created.ProviderActionId, CancellationToken.None),
+                    app.Logger,
+                    "Failed to clean up JIT-extension diagnostic action {ProviderActionId}.",
+                    created.ProviderActionId);
             }
         }
     });
@@ -499,16 +489,11 @@ if (app.Environment.IsDevelopment())
         {
             if (created is not null)
             {
-                try
-                {
-                    await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
-                }
-                catch (Exception)
-                {
-                    app.Logger.LogWarning(
-                        "Failed to clean up active-shortening diagnostic action {ProviderActionId}.",
-                        created.ProviderActionId);
-                }
+                await DiagnosticActionCleanup.StopAsync(
+                    () => provider.StopActionAsync(created.ProviderActionId, CancellationToken.None),
+                    app.Logger,
+                    "Failed to clean up active-shortening diagnostic action {ProviderActionId}.",
+                    created.ProviderActionId);
             }
         }
     });
