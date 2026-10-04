@@ -2,11 +2,11 @@
 
 **Reviewdatum:** 4 oktober 2026
 **GitHub-planning:** [issue #92](https://github.com/VanHinthem/Parkeren/issues/92)
-**Scope:** alle 15 openstaande issues op de reviewdatum.
+**Scope:** de 15 issues die op de reviewdatum openstonden; #84 is na de closeout-audit gesloten, dus 14 issues blijven open.
 
 ## Uitkomst relevantiecheck
 
-Geen van de 15 open issues is duidelijk achterhaald. Meerdere issues zijn wel gedeeltelijk gerealiseerd of vragen vooral nog een acceptatie-audit. Bouw die onderdelen niet opnieuw: werk de GitHub-checklists bij op basis van bestaand bewijs en maak alleen concrete ontbrekende punten tot implementatiewerk. Deze review sluit geen issues; afronding gebeurt nadat de genoemde gates zijn aangetoond.
+Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterhaald. Meerdere issues zijn wel gedeeltelijk gerealiseerd of vragen vooral nog een acceptatie-audit. Bouw die onderdelen niet opnieuw: werk de GitHub-checklists bij op basis van bestaand bewijs en maak alleen concrete ontbrekende punten tot implementatiewerk. #84 is na verificatie van alle criteria gesloten; de overige issues blijven open totdat hun gates zijn aangetoond.
 
 | Issue | Huidige stand en resterende reden om open te blijven |
 | --- | --- |
@@ -14,7 +14,7 @@ Geen van de 15 open issues is duidelijk achterhaald. Meerdere issues zijn wel ge
 | [#93 Historie-import](https://github.com/VanHinthem/Parkeren/issues/93) | Actief. De 2Park-historie-reader bestaat, maar een idempotente import van oude transacties en opname in het Oss-budget is niet aangetroffen. |
 | [#92 V1-plan](https://github.com/VanHinthem/Parkeren/issues/92) | Actief als overkoepelende planning. De oude hoofdfasenlijst beschreef niet meer welke openstaande werkzaamheden nog over zijn; dit document vervangt die lijst als uitvoeringsplan. |
 | [#86 2Park-mock](https://github.com/VanHinthem/Parkeren/issues/86) | Grotendeels gerealiseerd. Mockserver en failure-injection bestaan; de issue meldt zelf dat de basis klaar is. Resterende contractdetails hangen af van #71. Rond af met een checklist-audit, geen nieuwe mock vanaf nul. |
-| [#84 Transactionele Stop](https://github.com/VanHinthem/Parkeren/issues/84) | Closeout-kandidaat. De transactionele/idempotente stopclaim, reconciliation en concurrencytests bestaan. Verifieer nog de issuecriteria voor gelijktijdige eindtijdwijziging en notificatiefalen tegen de huidige tests en werk daarna de checklist bij. |
+| [#84 Transactionele Stop](https://github.com/VanHinthem/Parkeren/issues/84) | **Gesloten 4 oktober 2026.** Beide resterende criteria zijn getest: [Stop versus eindtijdwijziging](../../tests/Parkeren.IntegrationTests/Database/VisitSchedulerLockingTests.cs) en [pushfout na succesvolle Stop](../../tests/Parkeren.IntegrationTests/Database/PushDeliveryProcessorTests.cs). De twee betrokken testklassen slagen met 19/19 tests. |
 | [#82 Domeinmodel/invarianten](https://github.com/VanHinthem/Parkeren/issues/82) | Closeout-kandidaat. De domeinentiteiten, operationele lifecycle, unieke sleutels en concurrencybescherming zijn aanwezig. Maak eerst een criterium-naar-databaseconstraint/test-mapping; implementeer alleen eventuele echte hiaten. |
 | [#78 PWA-capabilityvalidatie](https://github.com/VanHinthem/Parkeren/issues/78) | Actief. Android is gevalideerd; de iOS-matrix, offline herstel, meerdere devices/sessie-intrekking, subscription-refresh en productie-hostcheck staan nog open. Zie de [capabilitymatrix](fase-7-pwa-capability-matrix.md). |
 | [#73 Visit-capaciteit](https://github.com/VanHinthem/Parkeren/issues/73) | Gedeeltelijk gerealiseerd. De lokale globale en per-user capaciteit wordt atomair geclaimd en getest. Providerlimiet, providerfout en resterende admin-/rapportagecriteria moeten met #71 worden afgerond. |
@@ -32,11 +32,11 @@ De tracks hieronder kunnen naast elkaar lopen zodra hun expliciete afhankelijkhe
 
 ### Gate 0 — Afsluiten wat al gebouwd is
 
-Voer voor #82 en #84 een criterium-naar-code/databaseconstraint/test-mapping uit. Betrek bestaande PostgreSQL-tests voor capacity claims, stop/replay, Stop-versus-continuation, end-time-mutaties, recovery en pushdelivery. Herhaal geen al bewezen provider- of mockimplementatie.
+Voer voor #82 een criterium-naar-code/databaseconstraint/test-mapping uit. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Betrek voor de resterende audit bestaande PostgreSQL-tests voor capacity claims, Stop/replay, Stop-versus-continuation, end-time-mutaties en recovery. Herhaal geen al bewezen provider- of mockimplementatie.
 
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 
-**Exit:** ieder criterium van #82 en #84 is aantoonbaar afgedekt of heeft een concrete resterende taak; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.
+**Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.
 
 ### Provider- en recoverytrack
 
@@ -69,5 +69,5 @@ Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve ac
 
 - Werk na iedere slice de betreffende GitHub-checklist en functionele/technische documentatie bij.
 - Voer gerichte tests uit tijdens de slice en de relevante volledige suites vóór merge; providerproeven blijven beperkt tot het expliciete testaccount.
-- Behandel #82/#84 als afrondwerk zolang de audit geen ontbrekend gedrag aantoont; sluit ze pas met checklist- en testbewijs.
+- Behandel #82 als afrondwerk zolang de audit geen ontbrekend gedrag aantoont. #84 is gesloten met checklist- en testbewijs (19/19 gerichte tests).
 - Sluit epics pas nadat hun children zijn afgerond. Sluit #92 als alle niet-epic implementatie-issues zijn afgehandeld en de resterende deployment/releasebesluiten expliciet zijn overgedragen.

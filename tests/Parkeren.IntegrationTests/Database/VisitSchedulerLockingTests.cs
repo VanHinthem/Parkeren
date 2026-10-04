@@ -304,6 +304,95 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Stop_and_end_time_change_are_serialized_without_deadlock()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+        var (visit, _) = await SeedActiveVisitWithWorkAsync(
+            now,
+            VisitSchedulerWorkType.LongVisitWarning,
+            now.AddHours(4),
+            ct);
+        var requestedEndAt = visit.DesiredEndAt!.Value.AddMinutes(-15);
+        var operationId = Guid.NewGuid();
+        var rules = new ParkingRuleSet(
+            Guid.NewGuid(),
+            now.AddDays(-1),
+            requestedEndAt.AddDays(1),
+            TimeSpan.FromHours(4),
+            Array.Empty<PaidWindow>());
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.ParkingRuleSets.Add(rules);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        var services = CreateServices();
+        await using var provider = services.BuildServiceProvider();
+
+        async Task<StopVisitClaim> ClaimStopAsync()
+        {
+            await using var scope = provider.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IStopVisitClaimer>()
+                .ClaimAsync(new StopVisitCommand(Guid.NewGuid(), visit.Id, visit.UserId), ct);
+        }
+
+        async Task<bool> ChangeEndTimeAsync()
+        {
+            await using var scope = provider.CreateAsyncScope();
+            try
+            {
+                await scope.ServiceProvider.GetRequiredService<IVisitEndTimeChanger>().ApplyAsync(
+                    new ChangeVisitEndTimeCommand(operationId, visit.Id, visit.UserId, requestedEndAt),
+                    ct);
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        var stopTask = ClaimStopAsync();
+        var changeTask = ChangeEndTimeAsync();
+        await Task.WhenAll(stopTask, changeTask).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        var stopClaim = await stopTask;
+        Assert.NotNull(stopClaim.Operation);
+
+        await using var verify = fixture.CreateDbContext();
+        var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+        var stopOperation = await verify.ProviderOperations.SingleAsync(
+            x => x.VisitId == visit.Id && x.Type == ProviderOperationType.Stop,
+            ct);
+        var change = await verify.VisitEndTimeChanges.SingleAsync(x => x.OperationId == operationId, ct);
+
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(ProviderOperationStatus.Pending, stopOperation.Status);
+        if (await changeTask)
+        {
+            Assert.Equal(VisitEndTimeChangeResult.Applied, change.Result);
+            Assert.InRange(
+                (persistedVisit.DesiredEndAt!.Value - requestedEndAt).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+        }
+        else
+        {
+            Assert.Equal(VisitEndTimeChangeResult.Rejected, change.Result);
+            Assert.InRange(
+                (persistedVisit.DesiredEndAt!.Value - visit.DesiredEndAt!.Value).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+        }
+
+        await verify.ParkingRuleSets
+            .Where(x => x.Id == rules.Id)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    [Fact]
     public Task Extend_is_blocked_when_stop_starts_after_scheduler_load() =>
         AssertExtendBlockedAfterExternalChangeAsync(beginStop: true);
 
