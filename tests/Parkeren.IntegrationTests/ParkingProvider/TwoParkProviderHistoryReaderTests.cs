@@ -50,6 +50,8 @@ public sealed class TwoParkProviderHistoryReaderTests
             provider.GetActionHistoryPageAsync("product-1", 0, 10, TestContext.Current.CancellationToken));
 
         Assert.Contains("PROVIDER_FAILURE", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("PROVIDER_FAILURE", exception.ProviderCode);
+        Assert.Equal("History unavailable", exception.ProviderMessage);
     }
 
     private static TwoParkProvider CreateProvider(HttpClient http)

@@ -146,6 +146,14 @@ public sealed class StartVisitProviderExecutor(IParkingProvider provider, IProvi
             await resultStore.RecordUnknownAsync(preparation, "invalid-response", CancellationToken.None);
             return new(preparation, null, true);
         }
+        catch (ProviderResponseException exception)
+        {
+            var errorCode = string.IsNullOrWhiteSpace(exception.ProviderCode)
+                ? "provider-error"
+                : exception.ProviderCode;
+            await resultStore.RecordUnknownAsync(preparation, errorCode, CancellationToken.None);
+            return new(preparation, null, true);
+        }
         catch (ArgumentException)
         {
             await resultStore.RecordDefinitiveFailureAsync(preparation, "provider-rejected", cancellationToken);

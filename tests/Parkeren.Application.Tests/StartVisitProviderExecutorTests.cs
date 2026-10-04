@@ -81,6 +81,34 @@ public sealed class StartVisitProviderExecutorTests
     }
 
     [Fact]
+    public async Task Provider_response_error_is_recorded_as_unknown_with_provider_code()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddHours(1);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), start, end,
+            EffectiveParkingPolicySnapshot.Capture(new EffectiveParkingPolicy(TimeSpan.FromHours(4), null, true)));
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        action.MarkStarting();
+        var operation = new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action.Id, ProviderOperationType.Start);
+        operation.BeginAttempt();
+        var resultStore = new TrackingResultStore();
+        var provider = new CountingProvider(new ProviderResponseException("PROVIDER_FAILURE", "Start unavailable", "provider error"));
+
+        var result = await new StartVisitProviderExecutor(provider, resultStore).ExecuteAsync(
+            new ProviderStartPreparation(operation, action, false, AttemptStartedNow: true),
+            new("TK01HF", "test", end),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.False(result.DefinitiveFailure);
+        Assert.Equal(1, provider.StartCalls);
+        Assert.Equal(1, resultStore.UnknownCalls);
+        Assert.Equal("PROVIDER_FAILURE", resultStore.LastErrorCode);
+        Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
+        Assert.Equal(ProviderActionHealth.Unknown, action.Health);
+    }
+
+    [Fact]
     public async Task Unknown_replay_reconciles_existing_provider_action_without_second_start()
     {
         var start = DateTimeOffset.UtcNow;
@@ -343,10 +371,10 @@ public sealed class StartVisitProviderExecutorTests
         public Task RecordUnknownAsync(ProviderStartPreparation preparation, string? errorCode = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class CountingProvider : IParkingProvider
+    private sealed class CountingProvider(Exception? startException = null) : IParkingProvider
     {
         public int StartCalls { get; private set; }
-        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) { StartCalls++; throw new NotSupportedException(); }
+        public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) { StartCalls++; throw startException ?? new NotSupportedException(); }
         public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -446,7 +446,10 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             ? messageElement.GetString()
             : null;
         document.Dispose();
-        throw new TwoParkProviderException($"2Park request failed: {minor ?? "UNKNOWN"} {message}".Trim());
+        throw new TwoParkProviderException(
+            minor,
+            message,
+            $"2Park request failed: {minor ?? "UNKNOWN"} {message}".Trim());
     }
 
     private static bool IsBlocked(JsonElement product)
