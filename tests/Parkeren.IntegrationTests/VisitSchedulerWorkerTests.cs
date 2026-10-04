@@ -9,6 +9,48 @@ namespace Parkeren.IntegrationTests;
 public sealed class VisitSchedulerWorkerTests
 {
     [Fact]
+    public async Task Startup_recovery_failure_does_not_log_exception_details_or_claim_work()
+    {
+        const string exceptionCanary = "startup-recovery-sensitive-canary";
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var claimer = new FailReleaseTwiceClaimer();
+        var processor = new ThrowingWorkProcessor();
+        var releaseQueue = new FailedSchedulerWorkReleaseQueue();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IVisitRecoveryService>(new ThrowingVisitRecoveryService(exceptionCanary));
+        services.AddSingleton<IVisitTerminalRecoveryService, NoOpVisitTerminalRecoveryService>();
+        services.AddSingleton<IVisitSchedulerWorkClaimer>(claimer);
+        services.AddSingleton<IVisitSchedulerWorkProcessor>(processor);
+
+        await using var provider = services.BuildServiceProvider();
+        var logger = new CapturingLogger<VisitSchedulerWorker>();
+        var worker = new VisitSchedulerWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            releaseQueue,
+            TimeProvider.System,
+            logger);
+
+        try
+        {
+            await worker.StartAsync(cancellationToken);
+            await logger.FirstEntry.Task.WaitAsync(cancellationToken);
+
+            var error = Assert.Single(logger.Entries, entry =>
+                entry.Message == "Visit startup recovery failed; retrying before scheduler claims work.");
+            Assert.Null(error.Exception);
+            Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains(exceptionCanary, StringComparison.Ordinal));
+            Assert.Equal(0, claimer.ClaimCalls);
+            Assert.Equal(0, processor.Calls);
+        }
+        finally
+        {
+            await worker.StopAsync(cancellationToken);
+            await provider.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Worker_retries_failed_release_before_claiming_more_work_without_restart()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -135,6 +177,19 @@ public sealed class VisitSchedulerWorkerTests
         public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
+    private sealed class ThrowingVisitRecoveryService(string exceptionMessage) : IVisitRecoveryService
+    {
+        public Task<IReadOnlyList<VisitRecoveryItem>> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<VisitRecoveryItem>>([]);
+
+        public Task RecoverAsync(CancellationToken cancellationToken = default) =>
+            Task.FromException(new InvalidOperationException(exceptionMessage));
+
+        public Task RecoverExpiredInProgressOperationsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task ReconcileActiveProviderActionsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task ReconcileUnknownOperationsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     private sealed class NoOpVisitTerminalRecoveryService : IVisitTerminalRecoveryService
     {
         public Task RecoverAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -143,6 +198,7 @@ public sealed class VisitSchedulerWorkerTests
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<(string Message, Exception? Exception)> Entries { get; } = [];
+        public TaskCompletionSource FirstEntry { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -153,7 +209,10 @@ public sealed class VisitSchedulerWorkerTests
             EventId eventId,
             TState state,
             Exception? exception,
-            Func<TState, Exception?, string> formatter) =>
+            Func<TState, Exception?, string> formatter)
+        {
             Entries.Add((formatter(state, exception), exception));
+            FirstEntry.TrySetResult();
+        }
     }
 }

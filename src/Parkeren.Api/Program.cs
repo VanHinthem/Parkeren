@@ -119,20 +119,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         app.Logger.LogInformation("Initial administrator account created.");
     }
 
-    try
-    {
-        var productCatalog = scope.ServiceProvider.GetRequiredService<IProviderProductCatalogService>();
-        var sync = await productCatalog.SynchronizeAsync();
-        app.Logger.LogInformation(
-            "Initial provider product synchronization completed with {ProductCount} product(s); default auto-selected: {DefaultAutoSelected}.",
-            sync.Products.Count,
-            sync.DefaultAutoSelected);
-    }
-    catch (Exception)
-    {
-        app.Logger.LogWarning(
-            "Initial provider product synchronization failed. Products can be synchronized manually from administration.");
-    }
+    await ProgramStartupTasks.SynchronizeProviderProductsAsync(scope.ServiceProvider, app.Logger);
 }
 
 if (app.Environment.IsDevelopment())
