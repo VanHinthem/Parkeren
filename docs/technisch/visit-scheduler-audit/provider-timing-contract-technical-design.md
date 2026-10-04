@@ -109,7 +109,7 @@ Scheduled ----------------------+
    v                             |
 Active                           |
    |                             |
-   | natuurlijke providergrens   |
+   | geplande dekking verstreken |
    v                             |
 Completed                        |
                                  |
@@ -121,6 +121,8 @@ Stopped
 ```
 
 Een onzekere mutation is geen aparte `ProviderParkingAction` businessstate maar wordt gedragen door de bestaande `ProviderOperation`-status (`Unknown`/reconciliation).
+
+`Completed` is hier een lokale schedulerstatus voor verstreken geplande dekking; hij claimt niet dat 2Park post-End `completed` heeft teruggegeven. `Stopped` vereist `stopped`-readback of bevestigde providerafwezigheid. De mapping van action-readback herkent de waargenomen `active` en `scheduled`; `COMPLETED` is bevestigd in actiehistorie, niet als algemene post-End action-readback. Onbekende statussen veroorzaken geen terminale transitie. De vraag of providerdata `Stopped` en natuurlijke `Completed` betrouwbaar onderscheidt blijft open in #82.
 
 ## Aansluitende betaalde continuation — nominale flow
 
