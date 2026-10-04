@@ -52,6 +52,38 @@ public sealed class AuthenticationLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Incorrect_pin_cannot_log_in_or_create_a_session()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var username = $"lifecycle-invalid-pin-{suffix}";
+        var user = CreateUser(username, "123456", UserRole.Visitor);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            await using var provider = CreateServices();
+            var authentication = provider.GetRequiredService<IAuthenticationService>();
+
+            Assert.Null(await authentication.LoginAsync(username, "654321", ct));
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.False(await verify.UserSessions.AnyAsync(x => x.UserId == user.Id, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Existing_session_cannot_authenticate_after_user_is_deactivated()
     {
         var ct = TestContext.Current.CancellationToken;
