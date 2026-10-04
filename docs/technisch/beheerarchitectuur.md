@@ -102,13 +102,13 @@ De eerste inventarisatie voor #95 is afgerond. De backend bevat al een groot dee
 | Recovery/reconciliation | `VisitRecoveryService` | automatisch | beheerinzage |
 | Systeemstatus | `/health`, `/api/status` | beperkt | operationeel statusmodel |
 
-### Nieuwe en resterende domeinconcepten
+### Nieuwe domeinconcepten — gerealiseerd
 
 8.10 introduceert **ParkingProviderProduct** als lokaal catalogusrecord van een product dat door 2Park wordt geleverd. De provider-location is onderdeel van het product en geen zelfstandig door gebruiker of beheerder te kiezen parkeerzone.
 
-Het resterende nieuwe domeinconcept binnen Fase 8 is:
+De nieuwe domeinconcepten binnen Fase 8 zijn gerealiseerd:
 
-1. **Persistente discrepancies** — reconciliation bestaat technisch, maar er is nog geen duurzaam discrepancy-record waarmee gedetecteerde en opgeloste afwijkingen voor #63 traceerbaar blijven.
+- **Persistente discrepancies** — gedetecteerde en opgeloste lokale/providerafwijkingen blijven duurzaam traceerbaar voor #63.
 
 ### Configuratie versus secrets
 
@@ -263,9 +263,9 @@ Voorbeelden:
 - parkeerregels en tarieven worden tijdsgebonden/versioned beheerd;
 - provider/reconciliationdata wordt niet rechtstreeks gemuteerd.
 
-## Realisatiestatus beheerportaal — 1 oktober 2026
+## Realisatiestatus beheerportaal — afgerond 2 oktober 2026
 
-De beheerimplementatie is functioneel afgerond tot en met **slice 8.10**. De volgende slice is **8.11 Discrepancies & reconciliation**:
+De beheerimplementatie is functioneel afgerond tot en met **slice 8.12**:
 
 - **8.1 Beheerfundament** — desktop admin-shell op `/beheer`, admin-only routing en mobiel Snelbeheer op `/snelbeheer`;
 - **8.2 Operationeel dashboard** — actieve Visits, capaciteit, aandachtstatus en starten/stoppen via bestaande Visit-flows;
@@ -275,8 +275,10 @@ De beheerimplementatie is functioneel afgerond tot en met **slice 8.10**. De vol
 - **8.6 Algemene policies/settings** — default user policy, globale capaciteit, Long Visit- en budgetwaarschuwingen op `/beheer/systeem`;
 - **8.7 Parkeerregels** — append-only versioned rulesets met betaalvensters, kalenderuitzonderingen, feestdagenbeleid, provider-actieduur en continuation;
 - **8.8 Budgetten & tarieven** — append-only budget-/tariefconfiguratie plus lokale budget- en historische kostenrapportage;
-- **8.9 Analyse** — periodeaggregatie per bezoeker/kenteken met historische kosten en Visit-drill-down.
-- **8.10 Providerproducten** — gesynchroniseerde 2Park-productcatalogus, expliciet defaultproduct, Visit/action-productsnapshot en product-scoped rules, tarieven en budgetten.
+- **8.9 Analyse** — periodeaggregatie per bezoeker/kenteken met historische kosten en Visit-drill-down;
+- **8.10 Providerproducten** — gesynchroniseerde 2Park-productcatalogus, expliciet defaultproduct, Visit/action-productsnapshot en product-scoped rules, tarieven en budgetten;
+- **8.11 Discrepancies & reconciliation** — persistente discrepancies met detectie-, historie- en herstelcontext;
+- **8.12 Systeem & diagnostiek** — scheduler-, pushdelivery-, health- en persistente beheer-auditinzage.
 
 Voor user policy overrides geldt in 8.5:
 
@@ -300,7 +302,7 @@ Voor 8.6 geldt daarnaast:
 - Long Visit-warningtijd, adminnotificatie, reminderinterval en budgetwaarschuwingsdrempels zijn beheerbaar;
 - bestaande reeds geplande Long Visit scheduler-work behoudt zijn bestaande `DueAt`; nieuwe Visits en toekomstige reminderplanning gebruiken de actuele instellingen.
 
-Persistente generieke audit van beheerwijzigingen wordt in 8.12 ontsloten. De huidige policy/settings-records bewaren hun `UpdatedAt`, maar #74 blijft tot die auditlaag formeel open.
+Persistente generieke audit van beheerwijzigingen is in 8.12 ontsloten. Policy- en settingsmutaties worden transactioneel vastgelegd met actor, actie, target, tijdstip en veilige context; #74 is gesloten.
 
 Voor 8.7 geldt:
 
@@ -377,13 +379,13 @@ Functionele V1-validatie van 8.10 is afgerond:
 
 Voor V1 blijft de functionele scope bewust bij één gebruikt/default providerproduct. Een gewone gebruiker kiest geen product. De catalogus handelt meerdere producten alleen defensief af; uitgebreid multi-productgebruik blijft post-V1.
 
-## Vervolg
+## Afronding
 
-De beheerimplementatie is functioneel afgerond tot en met 8.10. De volgende verticale slice is **8.11 Discrepancies & reconciliation** (#63), met als kern een persistent discrepancy-model, detectie van lokale/providerafwijkingen, historie en veilige herstelcontext.
+De beheerimplementatie is afgerond tot en met 8.12. Stories #57–#63, #74 en het beheerportaal-epic #95 zijn gesloten. Vervolgwerk buiten Fase 8 staat onder meer in #71, #78, #92, #93 en #94.
 
 ## Verticale implementatieslices
 
-De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
+De tabel hieronder legt de gerealiseerde volgorde en scope van de verticale slices vast.
 
 | Slice | Scope | Relatie |
 |---|---|---|

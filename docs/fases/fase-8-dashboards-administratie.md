@@ -1,7 +1,10 @@
 # Fase 8 — Dashboards, historie en administratie
 
-**Status: gestart 🚧**  
+**Status: afgerond ✅**
 **Start: 30 september 2026**
+**Afgerond: 2 oktober 2026**
+
+Dit document bevat ook de oorspronkelijke sliceplanning. Voor de actuele eindstatus is [Fase 8 — Afronding](fase-8-afronding.md) leidend; alle slices 8.1 t/m 8.12 zijn afgerond.
 
 ## Doel
 
@@ -94,7 +97,7 @@ De mobiele historie is aangescherpt met:
   - Meldingen -> detail -> Meldingen;
   - directe/push-link -> veilige fallback naar Acties.
 
-Dit is de gebruikershistorie. De bredere beheerdershistorie uit #61 — filters, provideractions, toegepaste regels/tarieven, externe acties en auditdiagnose — blijft open voor het volledige beheerportaal.
+Dit is de gebruikershistorie. De bredere beheerdershistorie uit #61 — filters, provideractions, toegepaste regels/tarieven, externe acties en auditdiagnose — is gerealiseerd in het volledige beheerportaal, inclusief de persistente Visit-timeline uit SCHED-018.
 
 ### 8.3 Auto's — afgerond ✅
 
@@ -145,9 +148,9 @@ UX-aanpassingen:
 - standaardselectie van een Visitor, met eerste gebruiker als fallback;
 - acties die context vereisen zijn disabled zolang geen geldige selectie bestaat.
 
-## Open beheer-/administratiescope
+## Afgeronde beheer-/administratiescope
 
-De volgende stories blijven open en worden in beginsel onderdeel van het volledige beheerportaal #95:
+De stories #57 t/m #63 zijn gerealiseerd in het volledige beheerportaal #95 en staan op GitHub gesloten:
 
 - #57 Actieve bezoeken bekijken / operationeel beheer-dashboard;
 - #58 Officieel 2Park-saldo bekijken;
@@ -158,6 +161,7 @@ De volgende stories blijven open en worden in beginsel onderdeel van het volledi
 - #63 Afwijkingen met 2Park signaleren.
 
 Waar deze stories een eenvoudige PWA-weergave overlappen, geldt de mobiele implementatie als dagelijkse gebruikersflow; uitgebreide analyse, filtering, providercontext, configuratie en herstel horen bij `/beheer`.
+
 
 ## Beheerbare configuratie
 
@@ -227,12 +231,12 @@ De uitvoering van het volledige beheerportaal wordt in deze volgorde opgeknipt.
 - Iedere slice is zo veel mogelijk verticaal: benodigde backend read/write use-cases, API, frontend en tests worden samen afgerond.
 - Bestaande businessflows worden hergebruikt; een beheerpagina krijgt geen alternatieve implementatie van bestaande Visit/providerlogica.
 - Nieuwe configuratiemutaties krijgen eerst een expliciete application/domain-use-case voordat ze vanuit de frontend worden aangeboden.
-- Geen migrations tijdens de V1-ontwikkeling; schemawijzigingen worden volgens de bestaande V1-afspraak later gereconcilieerd.
+- EF Core-migrations maken deel uit van de repository; de volledige keten wordt in de integratietestfixture op een disposable PostgreSQL-database gevalideerd. Definitieve V1-consolidatie en release/deployment vallen buiten Fase 8.
 - CI wordt niet automatisch gecontroleerd; fouten worden onderzocht wanneer een Actions-run wordt aangeleverd.
 
-## Voortgang beheerportaal — 1 oktober 2026
+## Voortgang beheerportaal — afgerond 2 oktober 2026
 
-De beheerimplementatie is functioneel afgerond tot en met **slice 8.10**. De volgende slice is **8.11 Discrepancies & reconciliation**:
+De beheerimplementatie is functioneel afgerond tot en met **slice 8.12**:
 
 - 8.1 beheerfundament ✅
 - 8.2 operationeel dashboard ✅
@@ -244,7 +248,8 @@ De beheerimplementatie is functioneel afgerond tot en met **slice 8.10**. De vol
 - 8.8 budgetten & tarieven ✅
 - 8.9 analyse ✅
 - 8.10 providerproducten ✅
-- 8.11 discrepancies & reconciliation 🚧 volgende slice
+- 8.11 discrepancies & reconciliation ✅
+- 8.12 systeem, diagnostiek en generieke beheer-audit ✅
 
 ### 8.5 Gebruikers & voertuigen
 
@@ -295,7 +300,7 @@ De globale capaciteit behoudt de strengere bestaande lock: wijzigen kan niet zol
 
 Long Visit scheduler-semantiek: bestaande reeds geplande warning-work behoudt zijn huidige `DueAt`. Nieuwe Visits gebruiken de nieuwe warning threshold; wanneer een warning wordt verwerkt gebruikt de worker de actuele admin-notificatie- en reminderinstellingen.
 
-Generieke persistente beheer-audit volgt in 8.12; daarom blijft #74 nog open ondanks dat de functionele default/user policy-beheercriteria zijn gerealiseerd.
+Generieke persistente beheer-audit is gerealiseerd in 8.12. Default- en user-policywijzigingen zijn daarmee traceerbaar; #74 is gesloten.
 
 ### 8.7 Parkeerregels
 
@@ -409,7 +414,7 @@ Product-scoped configuratie:
 - het budget op dashboard/verbruik hoort bij het huidige defaultproduct en wordt alleen met providerdata van datzelfde defaultproduct vergeleken;
 - bij de eerste defaulttoewijzing wordt eventuele nog ongebonden V1-configuratie aan dat product gekoppeld.
 
-De schemawijzigingen worden conform de bestaande V1-afspraak nog niet als nieuwe migration geconsolideerd. Een bestaande developmentdatabase moet na deze slice worden gereset voordat functioneel wordt getest.
+De schemawijzigingen zijn vastgelegd in EF Core-migrations en de volledige migratieketen is op een disposable PostgreSQL-testdatabase toegepast. Geen persistente omgeving is hiermee gemigreerd; definitieve V1-consolidatie en release/deployment blijven vervolgwerk buiten Fase 8.
 
 Functionele V1-validatie van 8.10 is afgerond:
 
@@ -426,7 +431,7 @@ Functionele V1-validatie van 8.10 is afgerond:
 
 Voor V1 blijft de functionele scope bewust bij één gebruikt/default providerproduct. Een gewone gebruiker kiest geen product. De catalogus handelt meerdere producten alleen defensief af; uitgebreid multi-productgebruik blijft post-V1.
 
-**8.10 Providerproducten is afgerond ✅.** De volgende slice is **8.11 Discrepancies & reconciliation**.
+Fase 8 is afgerond. Resterende vervolgpunten, zoals iOS-validatie (#78), aanvullende PWA-hardening (#94), 2Park-historie-import (#93) en echte-provider-validatie (#71), vallen buiten deze fase; zie [de afrondingsnotitie](fase-8-afronding.md).
 
 ## Exit
 
@@ -437,4 +442,4 @@ Fase 8 is gereed wanneer:
 3. de relevante beheerbare backendinstellingen via die beheerervaring kunnen worden onderhouden;
 4. historie, analyse en provider/reconciliation-context voldoende zijn voor dagelijks beheer en diagnose.
 
-De dagelijkse PWA-UX is op 30-09-2026 grotendeels afgerond. De resterende hoofdscope van Fase 8 is het volledige beheerportaal en de open dashboard/administratiestories.
+Fase 8 is afgerond. Resterende vervolgpunten, zoals iOS-validatie (#78), aanvullende PWA-hardening (#94), 2Park-historie-import (#93) en echte-provider-validatie (#71), vallen buiten deze fase; zie [de afrondingsnotitie](fase-8-afronding.md).
