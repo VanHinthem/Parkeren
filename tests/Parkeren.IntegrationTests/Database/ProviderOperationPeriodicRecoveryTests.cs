@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Rules;
@@ -349,6 +350,56 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
     }
 
     [Fact]
+    public async Task Start_retry_state_change_log_does_not_include_exception_object()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+        var (user, vehicle, visit, action, operation, _, _) = await SeedStartAttemptAsync(cancellationToken);
+
+        try
+        {
+            await using (var markUnknown = fixture.CreateDbContext())
+            {
+                var persistedOperation = await markUnknown.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken);
+                var persistedAction = await markUnknown.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
+                persistedOperation.MarkUnknown("provider-absent");
+                persistedAction.MarkUnknown();
+                await markUnknown.SaveChangesAsync(cancellationToken);
+            }
+
+            var loggerProvider = new CapturingLoggerProvider();
+            await using var services = BuildServices(
+                new EmptyActionsProvider(),
+                providerStartStore: new ThrowingProviderStartStore(),
+                loggerProvider: loggerProvider);
+            await using (var recoveryScope = services.CreateAsyncScope())
+            {
+                await recoveryScope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                    .RecoverAsync(cancellationToken);
+            }
+
+            var entry = Assert.Single(loggerProvider.Entries, x =>
+                x.Level == LogLevel.Information &&
+                x.Message == $"Provider Start retry for Visit {visit.Id} was not claimed because its persisted state changed.");
+            Assert.Null(entry.Exception);
+            Assert.All(loggerProvider.Entries, x => Assert.Null(x.Exception));
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(ProviderOperationStatus.Pending,
+                (await verify.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken)).Status);
+            Assert.Equal(ProviderActionState.Planned,
+                (await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken)).State);
+        }
+        finally
+        {
+            await ClearVisitStateAsync(cancellationToken);
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Startup_before_lease_then_periodic_recovery_retries_only_after_provider_absence_readback()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -570,7 +621,9 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
     private ServiceProvider BuildServices(
         IParkingProvider? parkingProvider = null,
         TimeProvider? timeProvider = null,
-        SaveChangesInterceptor? saveChangesInterceptor = null)
+        SaveChangesInterceptor? saveChangesInterceptor = null,
+        IProviderStartStore? providerStartStore = null,
+        ILoggerProvider? loggerProvider = null)
     {
         var configuration = new ConfigurationManager();
         configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -588,7 +641,75 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
             services.AddSingleton(parkingProvider);
         if (timeProvider is not null)
             services.AddSingleton(timeProvider);
+        if (providerStartStore is not null)
+            services.AddSingleton(providerStartStore);
+        if (loggerProvider is not null)
+            services.AddLogging(logging => logging.AddProvider(loggerProvider));
         return services.BuildServiceProvider();
+    }
+
+    private sealed class ThrowingProviderStartStore : IProviderStartStore
+    {
+        public Task<ProviderStartPreparation> PrepareAttemptAsync(
+            StartVisitClaimResult claim,
+            DateTimeOffset providerEndAt,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("start-retry-sensitive-canary");
+    }
+
+    private sealed class EmptyActionsProvider : IParkingProvider
+    {
+        public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ApplicationProviderParkingAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ApplicationProviderParkingAction>>([]);
+
+        public Task<ApplicationProviderParkingAction> StartActionAsync(
+            ProviderParkingActionRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ApplicationProviderParkingAction> ExtendActionAsync(
+            string providerActionId,
+            DateTimeOffset newEnd,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed record CapturedLog(LogLevel Level, string Message, Exception? Exception);
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public List<CapturedLog> Entries { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(Entries);
+
+        public void Dispose() { }
+
+        private sealed class CapturingLogger(List<CapturedLog> entries) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter) =>
+                entries.Add(new CapturedLog(logLevel, formatter(state, exception), exception));
+        }
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider

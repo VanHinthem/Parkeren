@@ -32,6 +32,8 @@ De tracks hieronder kunnen naast elkaar lopen zodra hun expliciete afhankelijkhe
 
 ### Gate 0 — Afsluiten wat al gebouwd is
 
+**Update 4 oktober 2026:** #82 heeft nu ook PostgreSQL-overlapconstraints voor ParkingRuleSet, tariff en budgetperioden, directe tests voor SQLSTATE/constraintnaam, productscheiding en ongeldige intervallen, plus loggercapture voor de VisitRecovery Start-retryafwijzing. De Release-integratiesuite slaagt met 262/262. `btree_gist` vereist extensie-installatierechten voor de migratierol. De singleton-garantie voor DefaultParkingPolicy vraagt nog een expliciet besluit; providergedrag blijft afhankelijk van #71.
+
 De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). De processor-, sender-, hosted-worker- en schedulerlogtests bevestigen dat exceptions niet aan de logger worden doorgegeven en dat veilige IDs, retrystatus en foutafhandeling behouden blijven. De vijf aanvullende startup-, diagnostische cleanup- en Start-retrypaden zijn op code beoordeeld; ze loggen vaste meldingen met relevante correlatie-ID's. De volledige solution-suite is na deze batch 478/478 geslaagd (4 oktober 2026). Vul de overige gemarkeerde testgaten aan en wacht voor providergebonden criteria op #71; sluit #82 pas wanneer elk criterium bewezen is of expliciet is overgedragen. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Herhaal geen al bewezen provider- of mockimplementatie.
 
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.

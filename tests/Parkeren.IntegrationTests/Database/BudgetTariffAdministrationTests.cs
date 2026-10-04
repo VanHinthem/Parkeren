@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Parkeren.Application.Administration;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
@@ -13,6 +15,142 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
 {
+    [Fact]
+    public async Task Database_rejects_overlapping_budget_periods_but_allows_adjacent_periods()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var start = new DateTimeOffset(2120, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = new ParkingProviderProduct(Guid.NewGuid(), $"BUDGET-A-{suffix}", "Budget product A", "TEST", "Test", $"BUDGET-A-{suffix}", start);
+        var otherProduct = new ParkingProviderProduct(Guid.NewGuid(), $"BUDGET-B-{suffix}", "Budget product B", "TEST", "Test", $"BUDGET-B-{suffix}", start);
+        var first = new ParkingBudgetPeriod(Guid.NewGuid(), start, start.AddMonths(1), TimeSpan.FromHours(2));
+        var adjacent = new ParkingBudgetPeriod(Guid.NewGuid(), start.AddMonths(1), start.AddMonths(2), TimeSpan.FromHours(2));
+        var overlapping = new ParkingBudgetPeriod(Guid.NewGuid(), start.AddDays(1), start.AddMonths(1).AddDays(1), TimeSpan.FromHours(2));
+        var otherProductOverlap = new ParkingBudgetPeriod(Guid.NewGuid(), start.AddDays(1), start.AddMonths(1).AddDays(1), TimeSpan.FromHours(2));
+        first.AssignProviderProduct(product.Id);
+        adjacent.AssignProviderProduct(product.Id);
+        overlapping.AssignProviderProduct(product.Id);
+        otherProductOverlap.AssignProviderProduct(otherProduct.Id);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.AddRange(product, otherProduct);
+                seed.ParkingBudgetPeriods.AddRange(first, adjacent);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var otherScope = fixture.CreateDbContext())
+            {
+                otherScope.ParkingBudgetPeriods.Add(otherProductOverlap);
+                await otherScope.SaveChangesAsync(ct);
+            }
+
+            await using var conflict = fixture.CreateDbContext();
+            conflict.ParkingBudgetPeriods.Add(overlapping);
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => conflict.SaveChangesAsync(ct));
+            var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+            Assert.Equal(PostgresErrorCodes.ExclusionViolation, postgresException.SqlState);
+            Assert.Equal("ex_parking_budget_periods_productperiod", postgresException.ConstraintName);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ParkingBudgetPeriods
+                .Where(x => x.Id == first.Id || x.Id == adjacent.Id || x.Id == overlapping.Id || x.Id == otherProductOverlap.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts
+                .Where(x => x.Id == product.Id || x.Id == otherProduct.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Database_rejects_overlapping_tariffs_but_allows_adjacent_tariffs()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var start = new DateTimeOffset(2120, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = new ParkingProviderProduct(Guid.NewGuid(), $"TARIFF-A-{suffix}", "Tariff product A", "TEST", "Test", $"TARIFF-A-{suffix}", start);
+        var otherProduct = new ParkingProviderProduct(Guid.NewGuid(), $"TARIFF-B-{suffix}", "Tariff product B", "TEST", "Test", $"TARIFF-B-{suffix}", start);
+        var first = new ParkingTariff(Guid.NewGuid(), start, start.AddMonths(1), 1m);
+        var adjacent = new ParkingTariff(Guid.NewGuid(), start.AddMonths(1), start.AddMonths(2), 1m);
+        var overlapping = new ParkingTariff(Guid.NewGuid(), start.AddDays(1), null, 1m);
+        var otherProductOverlap = new ParkingTariff(Guid.NewGuid(), start.AddDays(1), null, 1m);
+        first.AssignProviderProduct(product.Id);
+        adjacent.AssignProviderProduct(product.Id);
+        overlapping.AssignProviderProduct(product.Id);
+        otherProductOverlap.AssignProviderProduct(otherProduct.Id);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.AddRange(product, otherProduct);
+                seed.ParkingTariffs.AddRange(first, adjacent);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var otherScope = fixture.CreateDbContext())
+            {
+                otherScope.ParkingTariffs.Add(otherProductOverlap);
+                await otherScope.SaveChangesAsync(ct);
+            }
+
+            await using var conflict = fixture.CreateDbContext();
+            conflict.ParkingTariffs.Add(overlapping);
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => conflict.SaveChangesAsync(ct));
+            var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+            Assert.Equal(PostgresErrorCodes.ExclusionViolation, postgresException.SqlState);
+            Assert.Equal("ex_parking_tariffs_productperiod", postgresException.ConstraintName);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ParkingTariffs
+                .Where(x => x.Id == first.Id || x.Id == adjacent.Id || x.Id == overlapping.Id || x.Id == otherProductOverlap.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts
+                .Where(x => x.Id == product.Id || x.Id == otherProduct.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Database_rejects_invalid_validity_intervals_for_all_period_tables()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var instant = new DateTimeOffset(2120, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        await using (var budget = fixture.CreateDbContext())
+        {
+            var exception = await Assert.ThrowsAsync<PostgresException>(() => budget.Database.ExecuteSqlInterpolatedAsync(
+                $"INSERT INTO parking_budget_periods (\"Id\", \"ValidFrom\", \"ValidUntil\", \"MaximumPaidDuration\") VALUES ({Guid.NewGuid()}, {instant}, {instant}, {TimeSpan.FromHours(1)})",
+                ct));
+            Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
+            Assert.Equal("ck_parking_budget_periods_validinterval", exception.ConstraintName);
+        }
+
+        await using (var tariff = fixture.CreateDbContext())
+        {
+            var exception = await Assert.ThrowsAsync<PostgresException>(() => tariff.Database.ExecuteSqlInterpolatedAsync(
+                $"INSERT INTO parking_tariffs (\"Id\", \"ValidFrom\", \"ValidUntil\", \"Rate\", \"Unit\") VALUES ({Guid.NewGuid()}, {instant}, {instant}, {1m}, {(int)ParkingTariffUnit.Hour})",
+                ct));
+            Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
+            Assert.Equal("ck_parking_tariffs_validinterval", exception.ConstraintName);
+        }
+
+        await using (var ruleSet = fixture.CreateDbContext())
+        {
+            var exception = await Assert.ThrowsAsync<PostgresException>(() => ruleSet.Database.ExecuteSqlInterpolatedAsync(
+                $"INSERT INTO parking_rule_sets (\"Id\", \"ValidFrom\", \"ValidUntil\", \"MaxProviderActionDuration\", \"Continuation\", \"PublicHolidaysAreFree\") VALUES ({Guid.NewGuid()}, {instant}, {instant}, {TimeSpan.FromHours(1)}, {ProviderCoverageContinuation.StartNewAction.ToString()}, {false})",
+                ct));
+            Assert.Equal(PostgresErrorCodes.CheckViolation, exception.SqlState);
+            Assert.Equal("ck_parking_rule_sets_validinterval", exception.ConstraintName);
+        }
+    }
+
     [Fact]
     public async Task Overlapping_budget_period_is_rejected()
     {

@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Parkeren.Application.Administration;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
 using Parkeren.Infrastructure;
@@ -11,6 +13,59 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ParkingRuleSetAdministrationTests(PostgreSqlFixture fixture)
 {
+    [Fact]
+    public async Task Database_rejects_overlapping_rule_sets_but_allows_adjacent_versions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var start = new DateTimeOffset(2120, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(), $"RULES-{suffix}", "Rule test product", "TEST", "Test", $"LOC-{suffix}", start);
+        var otherProduct = new ParkingProviderProduct(
+            Guid.NewGuid(), $"RULES-OTHER-{suffix}", "Other rule test product", "TEST", "Test", $"OTHER-{suffix}", start);
+        var first = new ParkingRuleSet(Guid.NewGuid(), start, start.AddMonths(1), TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        var adjacent = new ParkingRuleSet(Guid.NewGuid(), start.AddMonths(1), start.AddMonths(2), TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        var overlapping = new ParkingRuleSet(Guid.NewGuid(), start.AddDays(1), null, TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        var otherProductOverlap = new ParkingRuleSet(Guid.NewGuid(), start.AddDays(1), null, TimeSpan.FromHours(4), Array.Empty<PaidWindow>());
+        first.AssignProviderProduct(product.Id);
+        adjacent.AssignProviderProduct(product.Id);
+        overlapping.AssignProviderProduct(product.Id);
+        otherProductOverlap.AssignProviderProduct(otherProduct.Id);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.AddRange(product, otherProduct);
+                seed.ParkingRuleSets.AddRange(first, adjacent);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var otherScope = fixture.CreateDbContext())
+            {
+                otherScope.ParkingRuleSets.Add(otherProductOverlap);
+                await otherScope.SaveChangesAsync(ct);
+            }
+
+            await using var conflict = fixture.CreateDbContext();
+            conflict.ParkingRuleSets.Add(overlapping);
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(() => conflict.SaveChangesAsync(ct));
+            var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+            Assert.Equal(PostgresErrorCodes.ExclusionViolation, postgresException.SqlState);
+            Assert.Equal("ex_parking_rule_sets_productperiod", postgresException.ConstraintName);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ParkingRuleSets
+                .Where(x => x.Id == first.Id || x.Id == adjacent.Id || x.Id == overlapping.Id || x.Id == otherProductOverlap.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts
+                .Where(x => x.Id == product.Id || x.Id == otherProduct.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
     [Fact]
     public async Task Creating_future_version_closes_previous_version_and_persists_children()
     {
