@@ -1,8 +1,10 @@
 # Provider timing contract — technisch ontwerp
 
 **Scope:** SCHED-001, SCHED-002 en SCHED-017  
-**Status:** ontwerp voor implementatie  
+**Status:** ontwerp geïmplementeerd; zie de as-built status in [SCHED-001](SCHED-001.md), [SCHED-002](SCHED-002.md), [SCHED-016](SCHED-016.md), [SCHED-017](SCHED-017.md) en [PROGRESS](PROGRESS.md).
 **Ontwerpdatum:** 2 oktober 2026
+
+> **Auditstatus 4 oktober 2026:** de T-5-planning, één successor, `End + 1 seconde`, scheduled-read-back, restart/reconciliation en centrale matching zijn lokaal geïmplementeerd en regressiegetest. Dit bewijst niet dat T-5 een live provider-SLA is. Live onzeker blijven responseverlies/duplicate-herkenning, provider-capaciteit, natuurlijke post-End-status en aanvullende foutcategorieën. Gebruik de secties hieronder als ontwerpgeschiedenis; de genoemde open punten zijn bijgewerkt naar uitsluitend live-provideronzekerheden.
 
 ## Doel
 
@@ -88,13 +90,9 @@ Zodra een provider action-id bekend is, is die de primaire sleutel voor read-bac
 
 Kenteken, product en timestamps zijn secundaire verificatievelden; ze vervangen de action-id niet.
 
-### 6. Geen exacte timestampgelijkheid
+### 6. Centrale timestamptolerantie
 
-Exacte gelijkheid of 1 ms-tolerantie is niet toegestaan als algemeen providercontract.
-
-Er komt één centrale provider timestamp-tolerantie voor identity/reconciliation. De definitieve waarde moet vóór implementatie nog één keer expliciet worden gekozen en gedocumenteerd; live tests bewijzen alleen dat afwijkingen van enkele seconden voorkomen.
-
-Tot die waarde besloten is, mag geen nieuwe lokale vergelijking hardcoded worden.
+Exacte gelijkheid of 1 ms-tolerantie is geen algemeen providercontract. [SCHED-017](SCHED-017.md) legt de centrale 5-secondenmarge vast als engineeringkeuze voor identity/reconciliation. Live is alleen bevestigd dat timestamps enkele seconden kunnen afwijken; de marge is geen provider-SLA.
 
 ## State machine ProviderParkingAction
 
@@ -335,21 +333,17 @@ Er moet één pad verantwoordelijk zijn voor:
 
 Dit gedrag mag niet verspreid blijven over generic continuationbranches.
 
-## Nog expliciet open vóór implementatie
+## Resterende live-provideronzekerheden na implementatie
 
-### 1. Timestamp tolerance
+### 1. Timestamp-SLA
 
-Live bewijs zegt 'enkele seconden', maar niet de veilige bovengrens.
+De code gebruikt de centrale 5-seconden engineering margin. Een door 2Park gegarandeerde bovengrens is niet gemeten en wordt niet geclaimd.
 
-Voor codewijziging bepalen we één concrete tolerantie en gebruiken die overal via `ProviderActionMatchPolicy`.
+### 2. Activation grace rond `PlannedStartAt`
 
-### 2. Activation grace
+De mock bewijst de lokale `scheduled -> active`-grens deterministisch; er is geen live meting van providerlatency rond die grens. Behandel een exacte graceperiode daarom niet als providerfeit.
 
-Hoe lang na `PlannedStartAt` mag 2Park nog `scheduled` teruggeven voordat dit als afwijking geldt?
-
-Dit moet passen bij providerlatency en worker-cadans.
-
-### 3. Post-end providerstatus
+### 3. Post-End providerstatus
 
 Nog live vast te stellen:
 
@@ -359,13 +353,15 @@ Nog live vast te stellen:
 
 Dit is vooral relevant voor SCHED-002/SCHED-011 en de TwoParkMock.
 
-### 4. Provider-capaciteit scheduled actions
+### 4. Provider-capaciteit van `scheduled` actions
 
 Issue #71 heeft nog niet bevestigd of scheduled actions meetellen voor providercapaciteit. De scheduler mag voor V1 maximaal één successor per Visit maken, maar capacity-handling moet na die providerbevinding nog worden gevalideerd.
 
 Deze open punten mogen niet met aannames in de mock worden ingevuld.
 
-## Teststrategie na implementatie
+## Regressiedekking in de huidige implementatie
+
+De volgende scenarios zijn met lokale integratie-/mocktests gedekt; dit is geen vervanging voor de genoemde live contractproeven:
 
 Minimaal geautomatiseerd bewijzen:
 
@@ -387,7 +383,9 @@ Minimaal geautomatiseerd bewijzen:
 
 TwoParkMock-tests voor natuurlijke providerexpiry worden pas toegevoegd nadat het echte post-end providercontract bekend is.
 
-## Voorgestelde implementatievolgorde
+## Implementatievolgorde uit het oorspronkelijke ontwerp
+
+Deze volgorde is uitgevoerd; zie de SCHED-as-built documenten en [PROGRESS](PROGRESS.md) voor de actuele regressiestatus.
 
 Na akkoord op dit ontwerp:
 

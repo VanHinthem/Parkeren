@@ -62,12 +62,18 @@
 
 ## Nog geblokkeerd door #71
 
-De huidige #71-bevindingen bevestigen onder meer start/read-back/stop, 240 minuten, toekomstige `scheduled` actions en opvolging na de providergrens. De issue blijft open voor providercapaciteit/statussen, retries en onzekere responses, foutcategorieën en resterende JIT-hardening. Daarom kunnen de volgende #82-criteria niet definitief worden afgevinkt:
+De live bevindingen van 29 september bevestigen directe action-ID/read-back, 240 minuten geaccepteerd en 241 minuten geweigerd met `PRK-00067`, een toekomstige action met status `scheduled` en annulering vóór Start, exacte aansluiting geweigerd met `PRK-00005`, en `End + 1 seconde` geaccepteerd terwijl de predecessor `active` en de opvolger `scheduled` is. Ook zijn locatiecode versus read-backlabel en enkele seconden timestampdrift waargenomen.
+
+Repo-code en regressietests bewijzen daarnaast vier #82-criteria: `Planned` is de lokale beginstatus (`Paid_start_uses_same_operation_id_for_provider_mutation` in [StartVisitProviderTests.cs](../../tests/Parkeren.Application.Tests/StartVisitProviderTests.cs)); `Active` volgt passende providerbevestiging/read-back (`Direct_readback_accepts_normalized_plate_and_timestamp_drift_within_tolerance` in [StartVisitProviderMatchingPolicyTests.cs](../../tests/Parkeren.Application.Tests/StartVisitProviderMatchingPolicyTests.cs)); een bevestigd Stop rondt de Visit af, terwijl een Unknown Stop de Visit in `Stopping` en capacity-bezet houdt (`Confirmed_provider_stop_completes_visit_and_releases_capacity_atomically` en `Unknown_provider_stop_keeps_visit_stopping_and_capacity_occupied` in [ParkerenDbContextTests.cs](../../tests/Parkeren.IntegrationTests/Database/ParkerenDbContextTests.cs)); en live 2Park onderscheidt `scheduled` van `active` (bevindingen in #71). De lokale V1-keuze is één JIT-successor op T-5, start op `End + 1 seconde`, `scheduled` als bevestigde read-back, en eerst Unknown/reconciliation vóór retry. Dit is bewijs voor applicatie-implementatie/mockharness, niet voor de live T-5-grens, retry-na-responseverlies of providercapaciteit.
+
+De volgende #82-criteria blijven werkelijk afhankelijk van aanvullend live providerbewijs:
 
 - provider/action-ID-uniciteit binnen de juiste provider/accountcontext;
-- definitieve ProviderParkingAction-statusmapping en capaciteit-relevante statussen;
-- veilig herkennen van een action na een verloren startresponse;
-- exacte retry-/reconciliationregels voor onzekere provider-mutaties.
+- natuurlijke post-End-status/-zichtbaarheid en het onderscheid tussen `Stopped` en natuurlijk `Completed`;
+- betrouwbaarheid van een continuation-`StartNewAction` op T-5; de providerproef met `extend_action` op T-60 retourneerde succes maar wijzigde de eindtijd niet persistent;
+- duplicate- en herkenningsgedrag na een verloren mutationresponse; lokale Unknown/reconciliationtests zijn geen bewijs van 2Park-idempotentie;
+- de account/product-capaciteitslimiet, of `scheduled` meetelt en de overschrijdingsresponse;
+- overige foutcategorieën en machineleesbare responses buiten de bevestigde overlap- en duurfouten; forceer geen onvoldoende-saldotest.
 
 ## Closeout-gates
 
@@ -94,8 +100,8 @@ Commit [934fbc6](https://github.com/VanHinthem/Parkeren/commit/934fbc6) routeert
 - Historische versies, toegepaste tariffsegmentkosten, scheduler-auditbehoud tijdens notification cleanup en opgeloste discrepancy-historie zijn met gerichte domein-/PostgreSQL-tests aangetoond; er staat hiervoor geen concrete open testgap meer geregistreerd.
 - Beslis of voor `DefaultParkingPolicy` een database-side singleton-garantie nodig is; de huidige defaultkeuze wordt applicatie-side beheerd. Overlapbeveiliging voor ParkingRuleSet, tariff en budget is inmiddels database-side geïmplementeerd en getest.
 - Sluit #71-afhankelijke punten pas na providerbewijs.
-- GitHub-checklist gesynchroniseerd op 4 oktober 2026: 47/60 criteria afgevinkt; 13 blijven open voor #71, bredere UTC-persistentiedekking en het DefaultParkingPolicy-singletonbesluit. Sluit #82 pas wanneer ieder open criterium bewezen is of expliciet naar een resterend issue is overgedragen.
+- GitHub-checklist gesynchroniseerd na de #71-audit op 4 oktober 2026: 51/60 criteria afgevinkt; 9 blijven open (7 providerafhankelijke criteria, algemene UTC-persistentiedekking en het DefaultParkingPolicy-singletonbesluit). Sluit #82 pas wanneer ieder open criterium bewezen is of expliciet naar een resterend issue is overgedragen.
 
 ### Aanvullend testbewijs
 
-De gerichte Release-set met `Default_change_is_allowed_when_active_user_overrides_changed_field`, `Paid_start_with_offset_timestamps_persists_utc_provider_end` en `Login_persists_pin_and_session_token_only_as_hashes` slaagde met 3/3. De eerste test bewijst applicatie-side update-in-place, niet een database-singletonconstraint. De tweede controleert de UTC-offset van geselecteerde Visit-, provider-action- en scheduler-workvelden na een `+02:00` Start. De derde controleert dat opgeslagen PIN- en sessietokenhashes niet de ruwe waarden zijn. Dit bewijs verandert de 47/60-checkliststand niet: de algemene UTC-dekking en het singletonbesluit blijven open; secretredactieclaims blijven beperkt tot de genoemde velden en routes.
+De gerichte Release-set met `Default_change_is_allowed_when_active_user_overrides_changed_field`, `Paid_start_with_offset_timestamps_persists_utc_provider_end` en `Login_persists_pin_and_session_token_only_as_hashes` slaagde met 3/3. De eerste test bewijst applicatie-side update-in-place, niet een database-singletonconstraint. De tweede controleert de UTC-offset van geselecteerde Visit-, provider-action- en scheduler-workvelden na een `+02:00` Start. De derde controleert dat opgeslagen PIN- en sessietokenhashes niet de ruwe waarden zijn. De #71-audit sluit daarnaast vier bestaande state/read-backcriteria; de checkliststand is 51/60. Algemene UTC-dekking en het singletonbesluit blijven open; secretredactieclaims blijven beperkt tot de genoemde velden en routes.

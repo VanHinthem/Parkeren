@@ -91,7 +91,7 @@ Belangrijkste commits: `79ce2d04`, `d8f48c26`, `2de98742`, `0b17d16a`.
 - providercapaciteit uit derived state;
 - scheduled actions tellen alleen mee wanneer de test dat expliciet configureert.
 
-G8 is groen op `110ebce5`. Daarmee is fase G als **harness/capabilityfase afgerond**. Exact live 2Park post-End gedrag en scheduled-capacity blijven externe observatiepunten, niet mock-defaults.
+G8 is groen op `110ebce5`. Daarmee is fase G als **harness/capabilityfase afgerond**. Dit bewijst de testharness, niet het live providercontract. #71 houdt nog open: natuurlijke post-End-status, live betrouwbaarheid van T-5 continuation, duplicate-/read-back-semantiek na responseverlies, provider/account-capaciteit inclusief scheduled-status, provider/action-ID-scope, aanvullende foutcategorieën en een formele timestamp-SLA. Deze onzekerheden blijven configureerbaar en zijn geen mock-defaults.
 
 ## Fase H — regressieverificatie SCHED-001 t/m SCHED-017 ✅
 

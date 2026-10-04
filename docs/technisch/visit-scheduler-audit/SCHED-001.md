@@ -45,6 +45,8 @@ Unknown/restart recovery reconciliëert eerst providerstate en creëert geen dup
 
 Future Start gebruikt dezelfde centrale `ProviderActionMatchPolicy` als andere startflows. De 5-seconden timestamp tolerance is een engineering margin, geen gemeten 2Park-SLA.
 
+Live 2Park heeft de `End + 1 seconde`-regel en `scheduled` read-back bevestigd. T-5 is de gekozen en regressiegeteste applicatieplanning, maar is geen live gemeten betrouwbaarheidsgrens; die providerproef blijft bij #71.
+
 ## Regressiebewijs
 
 Belangrijk bewijs uit de hardening:

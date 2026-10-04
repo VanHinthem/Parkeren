@@ -77,11 +77,15 @@ TwoParkMock ondersteunt een bestuurbare klok, dynamic `scheduled -> active`, vis
 
 ## Externe providerpunten die nog niet als contract gelden
 
-Deze punten zijn nog niet hard live gemeten maar blokkeren SCHED-001 t/m 017 niet:
+De lokale implementatie/regressies voor SCHED-001 t/m 017 zijn afgerond; onderstaande punten zijn nog niet hard live gemeten en vormen geen open scheduler-codegat:
 
 - exacte 2Park status/zichtbaarheid na natuurlijke `End`;
-- of een toekomstige `scheduled` action meetelt voor providercapaciteit;
-- een gemeten 2Park timestamp-SLA.
+- betrouwbaarheid van een continuation-`StartNewAction` op de gekozen T-5-grens;
+- duplicate- en read-back-identificatie na een verloren mutationresponse;
+- provider/account-capaciteitslimiet, of `scheduled` meetelt en de overflowresponse;
+- provider/action-ID-uniciteitsscope voor een databaseconstraint;
+- aanvullende providerfoutcategorieën buiten de bevestigde `PRK-00005` en `PRK-00067`;
+- een gemeten timestamp-SLA; de code gebruikt 5 seconden alleen als engineering margin.
 
 De applicatie gebruikt conservatieve identity/reconciliation zodat correctness niet van deze aannames afhangt.
 

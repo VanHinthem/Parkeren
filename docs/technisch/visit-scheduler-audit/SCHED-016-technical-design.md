@@ -5,6 +5,8 @@
 **Ontwerpdatum:** 2 oktober 2026  
 **Raakt:** SCHED-001, SCHED-002, SCHED-009, SCHED-011, SCHED-013, recovery en integrale schedulerproof.
 
+> **Historische ontwerpnotitie:** de statische-statusbeschrijving onder “As-built probleem” is achterhaald. De mock heeft inmiddels een centrale bestuurbare klok en dynamische `scheduled -> active`-read-back; zie [SCHED-016](SCHED-016.md) en [PROGRESS](PROGRESS.md) voor de actuele implementatie. Live 2Park-post-End-status en scheduled-capacity blijven wel onbevestigd.
+
 ## Doel
 
 TwoParkMock moet schedulergrenzen deterministisch kunnen bewijzen zonder providergedrag te verzinnen dat nog niet live is bevestigd.
