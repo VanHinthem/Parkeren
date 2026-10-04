@@ -88,6 +88,65 @@ public sealed class NormalizedIdentityConstraintTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Database_restricts_deleting_user_or_vehicle_with_assignment()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var user = new User(Guid.NewGuid(), $"linked-user-{suffix}", $"LINKED-USER-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"LK{suffix[..6].ToUpperInvariant()}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.UserVehicles.Add(new UserVehicle(user.Id, vehicle.Id));
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using (var deleteUser = fixture.CreateDbContext())
+            {
+                var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                    deleteUser.Users
+                        .Where(x => x.Id == user.Id)
+                        .ExecuteDeleteAsync(cancellationToken));
+
+                Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
+                Assert.Equal("FK_user_vehicles_users_UserId", exception.ConstraintName);
+            }
+
+            await using (var deleteVehicle = fixture.CreateDbContext())
+            {
+                var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                    deleteVehicle.Vehicles
+                        .Where(x => x.Id == vehicle.Id)
+                        .ExecuteDeleteAsync(cancellationToken));
+
+                Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
+                Assert.Equal("FK_user_vehicles_vehicles_VehicleId", exception.ConstraintName);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.True(await verify.Users.AnyAsync(x => x.Id == user.Id, cancellationToken));
+            Assert.True(await verify.Vehicles.AnyAsync(x => x.Id == vehicle.Id, cancellationToken));
+            Assert.True(await verify.UserVehicles.AnyAsync(
+                x => x.UserId == user.Id && x.VehicleId == vehicle.Id,
+                cancellationToken));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserVehicles
+                .Where(x => x.UserId == user.Id && x.VehicleId == vehicle.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Database_rejects_duplicate_provider_operation_ids()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
