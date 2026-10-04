@@ -39,6 +39,9 @@ public sealed class ParkingProviderProduct
     public bool IsDefault { get; private set; }
     public DateTimeOffset FirstSeenAt { get; private set; }
     public DateTimeOffset LastSeenAt { get; private set; }
+    public decimal? LastSuccessfulBalance { get; private set; }
+    public string? LastSuccessfulBalanceUnit { get; private set; }
+    public DateTimeOffset? LastSuccessfulBalanceAt { get; private set; }
 
     public void Refresh(
         string name,

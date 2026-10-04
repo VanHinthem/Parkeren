@@ -576,6 +576,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.CategoryId).HasMaxLength(100);
             entity.Property(x => x.CategoryName).HasMaxLength(200);
             entity.Property(x => x.Location).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.LastSuccessfulBalance).HasPrecision(18, 4);
+            entity.Property(x => x.LastSuccessfulBalanceUnit).HasMaxLength(20);
             entity.HasIndex(x => x.ProviderProductId).IsUnique();
             entity.HasIndex(x => x.IsDefault).IsUnique().HasFilter("\"IsDefault\" = TRUE");
         });

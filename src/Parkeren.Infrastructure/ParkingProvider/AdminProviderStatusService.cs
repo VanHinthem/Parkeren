@@ -1,33 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
+using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
 
-internal sealed class AdminProviderStatusCache
-{
-    private readonly object gate = new();
-    private ProviderProduct? product;
-    private ProviderBalance? balance;
-
-    public void StoreBalance(ProviderProduct currentProduct, ProviderBalance currentBalance)
-    {
-        lock (gate)
-        {
-            product = currentProduct;
-            balance = currentBalance;
-        }
-    }
-
-    public (ProviderProduct? Product, ProviderBalance? Balance) ReadBalance()
-    {
-        lock (gate)
-            return (product, balance);
-    }
-}
-
 internal sealed class AdminProviderStatusService(
+    ParkerenDbContext dbContext,
     IParkingProvider provider,
-    IProviderProductCatalogService productCatalog,
-    AdminProviderStatusCache cache) : IAdminProviderStatusService
+    IProviderProductCatalogService productCatalog) : IAdminProviderStatusService
 {
     public async Task<AdminProviderStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -56,18 +36,30 @@ internal sealed class AdminProviderStatusService(
                 balance = await provider.GetBalanceForProductAsync(
                     defaultProduct.ProviderProductId,
                     cancellationToken);
-                cache.StoreBalance(product, balance);
+                await dbContext.ParkingProviderProducts
+                    .Where(x => x.Id == defaultProduct.Id &&
+                        (!x.LastSuccessfulBalanceAt.HasValue || x.LastSuccessfulBalanceAt.Value < balance.RetrievedAt))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.LastSuccessfulBalance, (decimal?)balance.RemainingBalance)
+                        .SetProperty(x => x.LastSuccessfulBalanceUnit, (string?)balance.Unit.ToString())
+                        .SetProperty(x => x.LastSuccessfulBalanceAt, (DateTimeOffset?)balance.RetrievedAt),
+                        cancellationToken);
                 lastSuccessfulBalanceAt = balance.RetrievedAt;
             }
             catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException)
             {
                 balanceError = exception.Message;
-                var cached = cache.ReadBalance();
-                if (cached.Product?.Id == product.Id)
+                var persistedProduct = await dbContext.ParkingProviderProducts
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.Id == defaultProduct.Id, cancellationToken);
+                if (persistedProduct?.LastSuccessfulBalance is decimal lastBalance &&
+                    persistedProduct.LastSuccessfulBalanceUnit is string unitName &&
+                    persistedProduct.LastSuccessfulBalanceAt is DateTimeOffset retrievedAt &&
+                    Enum.TryParse<ProviderBalanceUnit>(unitName, out var unit))
                 {
-                    balance = cached.Balance;
-                    balanceIsStale = balance is not null;
-                    lastSuccessfulBalanceAt = balance?.RetrievedAt;
+                    balance = new ProviderBalance(lastBalance, unit, retrievedAt);
+                    balanceIsStale = true;
+                    lastSuccessfulBalanceAt = retrievedAt;
                 }
             }
         }

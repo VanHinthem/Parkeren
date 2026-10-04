@@ -32,7 +32,6 @@ public static class DependencyInjection
         services.AddScoped<IAdminSystemDiagnosticsService, AdminSystemDiagnosticsService>();
         services.AddScoped<IAdminAuditWriter, AdminAuditWriter>();
         services.AddScoped<IAdminAuditQueryService, AdminAuditQueryService>();
-        services.AddSingleton<AdminProviderStatusCache>();
         services.AddScoped<IAdminProviderStatusService, AdminProviderStatusService>();
         services.AddScoped<IProviderProductCatalogService, ProviderProductCatalogService>();
         services.AddScoped<IProviderDiscrepancyService, ProviderDiscrepancyService>();
