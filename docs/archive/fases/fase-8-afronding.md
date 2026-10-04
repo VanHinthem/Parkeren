@@ -89,6 +89,6 @@ De Fase-8 exitcriteria zijn behaald:
 
 Zie voor detailhistorie en ontwerpbesluiten:
 
-- `docs/fases/fase-8-dashboards-administratie.md`;
+- [Fase 8 — dashboards en administratie](fase-8-dashboards-administratie.md);
 - `docs/technisch/beheerarchitectuur.md`;
 - issue #95.

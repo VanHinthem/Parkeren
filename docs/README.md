@@ -1,13 +1,15 @@
 # Parkeren documentatie
 
-Documentatie wordt continu bijgewerkt en is onderdeel van de Definition of Done.
+De actuele documentatieset bestaat uit functionele en technische documentatie. Actieve werkdocumenten en gearchiveerde stukken staan apart.
 
-## Onderdelen
+## Actuele documentatie
 
-- [Gebruiker](gebruiker/README.md) — handleiding voor bezoekers/eindgebruikers.
-- [Beheerder](beheerder/README.md) — beheer en operationeel gebruik.
 - [Functioneel](functioneel/README.md) — systeemgedrag, regels en functionele concepten.
 - [Technisch](technisch/README.md) — architectuur, ontwikkeling, integraties, deployment en operations.
-- [ADR](adr/README.md) — index van architectuurbeslissingen.
 
-Zie GitHub ADR #90 voor de documentatie-afspraken.
+## Werk en archief
+
+- [Actief werk](work/README.md) — documentatie bij open issues waarvoor een actuele werkmatrix of planning bestaat.
+- [Archief](archive/README.md) — afgeronde faseverslagen en doelgroepspecifieke handleidingen die niet tot de functionele/technische documentatieset behoren.
+
+Architectuurbeslissingen staan in de [ADR-index](technisch/adr/README.md). Zie GitHub ADR #90 voor de documentatie-afspraken.

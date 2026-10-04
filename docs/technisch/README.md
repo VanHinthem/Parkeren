@@ -2,6 +2,8 @@
 
 Architectuur-, ontwikkel-, integratie-, test-, deployment- en operationele documentatie.
 
+- [ADR-index](adr/README.md) — architectuurbeslissingen.
+
 Voor de actuele Visit/scheduler-implementatie:
 
 - [Visit lifecycle](visit-lifecycle.md)
