@@ -20,6 +20,47 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task External_provider_action_can_be_persisted_without_visit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var actionId = Guid.NewGuid();
+        var providerActionId = $"external-{Guid.NewGuid():N}";
+        var startAt = DateTimeOffset.UtcNow;
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            actionId,
+            null,
+            startAt,
+            startAt.AddHours(1),
+            "product-external",
+            "Oss");
+        action.MarkStarting();
+        action.MarkActive(providerActionId, startAt, "active");
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var persistedAction = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == actionId, cancellationToken);
+            Assert.Null(persistedAction.VisitId);
+            Assert.Equal(providerActionId, persistedAction.ProviderActionId);
+            Assert.Equal(ProviderActionState.Active, persistedAction.State);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions
+                .Where(x => x.Id == actionId)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task External_stop_is_recorded_as_resolved_discrepancy()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
