@@ -32,9 +32,9 @@ internal sealed class VisitSchedulerWorker(
             {
                 return;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                logger.LogError(exception, "Visit startup recovery failed; retrying before scheduler claims work.");
+                logger.LogError("Visit startup recovery failed; retrying before scheduler claims work.");
                 await Task.Delay(IdleDelay, timeProvider, stoppingToken);
             }
         }
@@ -56,10 +56,9 @@ internal sealed class VisitSchedulerWorker(
                             timeProvider.GetUtcNow().AddMinutes(1),
                             stoppingToken);
                     }
-                    catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                    catch (Exception) when (!stoppingToken.IsCancellationRequested)
                     {
                         logger.LogError(
-                            exception,
                             "Failed to retry pending scheduler work releases; new claims are paused.");
                         await Task.Delay(IdleDelay, timeProvider, stoppingToken);
                         continue;
@@ -78,9 +77,9 @@ internal sealed class VisitSchedulerWorker(
                         await terminalRecovery.RecoverAsync(stoppingToken);
                         await recovery.ReconcileActiveProviderActionsAsync(stoppingToken);
                     }
-                    catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                    catch (Exception) when (!stoppingToken.IsCancellationRequested)
                     {
-                        logger.LogError(exception, "Periodic provider action check failed; scheduler work continues.");
+                        logger.LogError("Periodic provider action check failed; scheduler work continues.");
                     }
                 }
                 var processor = scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>();
@@ -99,9 +98,9 @@ internal sealed class VisitSchedulerWorker(
             {
                 break;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                logger.LogError(exception, "Visit scheduler worker iteration failed.");
+                logger.LogError("Visit scheduler worker iteration failed.");
                 if (claimedWorkId is Guid workId)
                 {
                     try
@@ -111,10 +110,10 @@ internal sealed class VisitSchedulerWorker(
                         await claimer.ReleaseFailedAsync(
                             workId, workerId, timeProvider.GetUtcNow().AddMinutes(1), stoppingToken);
                     }
-                    catch (Exception releaseException) when (!stoppingToken.IsCancellationRequested)
+                    catch (Exception) when (!stoppingToken.IsCancellationRequested)
                     {
                         failedReleaseQueue.Enqueue(workId, workerId);
-                        logger.LogError(releaseException, "Failed to release scheduler work {WorkId} after processing error.", workId);
+                        logger.LogError("Failed to release scheduler work {WorkId} after processing error.", workId);
                     }
                 }
                 await Task.Delay(IdleDelay, timeProvider, stoppingToken);

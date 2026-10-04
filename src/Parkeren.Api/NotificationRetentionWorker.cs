@@ -35,9 +35,9 @@ internal sealed class NotificationRetentionWorker(
             {
                 return;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                logger.LogError(exception, "Notification retention cleanup failed.");
+                logger.LogError("Notification retention cleanup failed.");
             }
 
             await Task.Delay(Interval, timeProvider, stoppingToken);

@@ -128,10 +128,9 @@ await using (var scope = app.Services.CreateAsyncScope())
             sync.Products.Count,
             sync.DefaultAutoSelected);
     }
-    catch (Exception exception)
+    catch (Exception)
     {
         app.Logger.LogWarning(
-            exception,
             "Initial provider product synchronization failed. Products can be synchronized manually from administration.");
     }
 }
@@ -348,10 +347,9 @@ if (app.Environment.IsDevelopment())
                 {
                     await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
                 }
-                catch (Exception cleanupException)
+                catch (Exception)
                 {
                     app.Logger.LogWarning(
-                        cleanupException,
                         "Failed to clean up active-extension diagnostic action {ProviderActionId}.",
                         created.ProviderActionId);
                 }
@@ -446,10 +444,9 @@ if (app.Environment.IsDevelopment())
                 {
                     await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
                 }
-                catch (Exception cleanupException)
+                catch (Exception)
                 {
                     app.Logger.LogWarning(
-                        cleanupException,
                         "Failed to clean up JIT-extension diagnostic action {ProviderActionId}.",
                         created.ProviderActionId);
                 }
@@ -519,10 +516,9 @@ if (app.Environment.IsDevelopment())
                 {
                     await provider.StopActionAsync(created.ProviderActionId, CancellationToken.None);
                 }
-                catch (Exception cleanupException)
+                catch (Exception)
                 {
                     app.Logger.LogWarning(
-                        cleanupException,
                         "Failed to clean up active-shortening diagnostic action {ProviderActionId}.",
                         created.ProviderActionId);
                 }

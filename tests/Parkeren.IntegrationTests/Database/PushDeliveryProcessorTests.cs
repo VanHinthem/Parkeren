@@ -11,6 +11,7 @@ using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Notifications;
+using WebPush;
 
 namespace Parkeren.IntegrationTests.Database;
 
@@ -108,10 +109,64 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         Assert.True(await processor.ProcessNextAsync(cancellationToken));
 
         Assert.Contains($"Push delivery {deliveryId} failed.", logger.Entries);
+        Assert.All(logger.Exceptions, exception => Assert.Null(exception));
         Assert.DoesNotContain(sensitiveDetails, string.Join(Environment.NewLine, logger.Entries), StringComparison.Ordinal);
         var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Pending, delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
+    }
+
+    [Fact]
+    public async Task Sender_exception_details_are_not_written_to_sender_logs()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"sender-{suffix}", $"SENDER-{suffix}", "hash", UserRole.Visitor);
+        var subscriptionId = Guid.NewGuid();
+        const string sensitiveDetails = "canary-sensitive-webpush-details";
+        var keys = VapidHelper.GenerateVapidKeys();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.PushSubscriptions.Add(new Parkeren.Domain.Notifications.PushSubscription(
+                subscriptionId,
+                user.Id,
+                $"https://127.0.0.1:1/{sensitiveDetails}",
+                "invalid-p256dh",
+                "invalid-auth",
+                DateTimeOffset.UtcNow));
+            await seed.SaveChangesAsync(cancellationToken);
+        }
+
+        try
+        {
+            var configuration = new ConfigurationManager();
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["WebPush:Subject"] = "mailto:parkeren@example.test",
+                ["WebPush:PublicKey"] = keys.PublicKey,
+                ["WebPush:PrivateKey"] = keys.PrivateKey
+            });
+            await using var context = fixture.CreateDbContext();
+            var logger = new CapturingLogger<WebPushSender>();
+            var sender = new WebPushSender(context, configuration, logger);
+
+            var result = await sender.SendAsync(user.Id, "payload", cancellationToken);
+
+            Assert.Equal(WebPushSendResult.RetryRequired, result);
+            Assert.Contains(
+                $"Web Push delivery failed for subscription {subscriptionId} and user {user.Id}.",
+                logger.Entries);
+            Assert.All(logger.Exceptions, exception => Assert.Null(exception));
+            Assert.DoesNotContain(sensitiveDetails, string.Join(Environment.NewLine, logger.Entries), StringComparison.Ordinal);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.PushSubscriptions.Where(x => x.Id == subscriptionId).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        }
     }
 
     [Fact]
@@ -272,6 +327,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<string> Entries { get; } = [];
+        public List<Exception?> Exceptions { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -285,6 +341,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
             Func<TState, Exception?, string> formatter)
         {
             Entries.Add(formatter(state, exception));
+            Exceptions.Add(exception);
             if (exception is not null)
                 Entries.Add(exception.ToString());
         }

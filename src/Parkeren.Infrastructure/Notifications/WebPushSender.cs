@@ -71,10 +71,10 @@ public sealed class WebPushSender(
             {
                 throw;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
                 retryRequired = true;
-                logger.LogWarning(exception, "Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}.", stored.Id, recipientUserId);
+                logger.LogWarning("Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}.", stored.Id, recipientUserId);
             }
         }
 

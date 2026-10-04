@@ -27,9 +27,9 @@ internal sealed class PushDeliveryWorker(
             {
                 return;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                logger.LogError(exception, "Push delivery worker failed.");
+                logger.LogError("Push delivery worker failed.");
                 await Task.Delay(ErrorDelay, timeProvider, stoppingToken);
             }
         }

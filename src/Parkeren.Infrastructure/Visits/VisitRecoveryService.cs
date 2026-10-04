@@ -688,10 +688,9 @@ internal sealed class VisitRecoveryService(
                 plannedAction.PlannedEndAt,
                 cancellationToken);
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException)
         {
             logger.LogInformation(
-                exception,
                 "Provider Start retry for Visit {VisitId} was not claimed because its persisted state changed.",
                 visit.Id);
             return false;

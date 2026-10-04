@@ -23,11 +23,12 @@ public sealed class VisitSchedulerWorkerTests
         services.AddSingleton<IVisitSchedulerWorkProcessor>(processor);
 
         await using var provider = services.BuildServiceProvider();
+        var logger = new CapturingLogger<VisitSchedulerWorker>();
         var worker = new VisitSchedulerWorker(
             provider.GetRequiredService<IServiceScopeFactory>(),
             releaseQueue,
             TimeProvider.System,
-            provider.GetRequiredService<ILogger<VisitSchedulerWorker>>());
+            logger);
 
         try
         {
@@ -45,6 +46,7 @@ public sealed class VisitSchedulerWorkerTests
             Assert.Equal(0, releaseQueue.Count);
             Assert.Equal(1, processor.Calls);
             Assert.All(claimer.ReleaseOwners, owner => Assert.Equal(claimer.ReleaseOwners[0], owner));
+            Assert.All(logger.Entries, entry => Assert.Null(entry.Exception));
         }
         finally
         {
@@ -136,5 +138,22 @@ public sealed class VisitSchedulerWorkerTests
     private sealed class NoOpVisitTerminalRecoveryService : IVisitTerminalRecoveryService
     {
         public Task RecoverAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<(string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((formatter(state, exception), exception));
     }
 }
