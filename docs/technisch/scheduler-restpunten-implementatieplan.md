@@ -1,6 +1,6 @@
 # Implementatieplan scheduler-restpunten
 
-**Status:** SR-003, SR-004, SR-001, SR-005 en SR-002 PR1/PR2 gemerged naar `main`; productieprovideradapter wacht op bevestiging van providercontractdetails\
+**Status:** SR-003, SR-004, SR-001, SR-005 en SR-002 PR1/PR2 gemerged naar `main`; request-/pagineringsemantiek is voor het testproduct bevestigd en wordt als stabiel per product aangenomen; Nederlandse producttijden zijn `Europe/Amsterdam`; kostenberekening volgens de lokale formule is een werkhypothese, niet door providerdata bevestigd\
 **Bron:** [Scheduler restpunten](scheduler-restpunten.md)\
 **Scope:** SR-001 t/m SR-005. SCHED-018 (scheduler-observability) valt buiten scope.
 
@@ -29,7 +29,7 @@ Dit plan maakt de afgesproken werking uit de restpunten uitvoerbaar in kleine, v
 1. Maak voor SR-001 t/m SR-005 afzonderlijke werkitems onder de bestaande schedulerplanning. Koppel elk werkitem aan dit plan en aan de verificatie in `scheduler-restpunten.md`.
 2. Leg de huidige relevante tests en testcommando's vast. Voer de bestaande scheduler-, recovery-, provider- en visit-lifecycletests uit als baseline.
 3. Breng per stap de benodigde persistencewijzigingen in kaart; bestaande administratie migreren is geen onderdeel van dit traject.
-4. De keuzes voor provideractie-intervallen, kosten, ontbrekende historie en idempotente reconciliatie zijn in SR-002 PR1/PR2 geïmplementeerd. Bevestig vóór implementatie van de productieprovideradapter de exacte historie-requestparameters, pagineringsemantiek en tijdzonebetekenis van provider-timestamps.
+4. De keuzes voor provideractie-intervallen, ontbrekende historie en idempotente reconciliatie zijn in SR-002 PR1/PR2 geïmplementeerd. De historie-request en 1-gebaseerde inclusieve paginering zijn voor het testproduct live vastgesteld; we nemen aan dat dit gedrag stabiel is per product. Voor het Nederlandse product zijn tijdvelden lokale `Europe/Amsterdam`-tijd, inclusief CET/CEST. Leg vóór afronding van de productieprovideradapter het nog openstaande providerkostencontract vast.
 5. Bewaar geanonimiseerde live-providerwaarnemingen uitsluitend voor de expliciet aangemaakte testactie/testaccount. Gebruik TwoParkMock voor herhaalbare regressietests.
 
 **Gate 0:** baseline slaagt, de SR-002 openstaande keuzes zijn vastgelegd, en elk werkitem heeft concrete tests en een eigenaar. Bij een falende baseline eerst vaststellen of die al bestond; neem geen ongerelateerde reparaties in dit traject op.
@@ -98,14 +98,14 @@ Dit is een contractwijziging en wordt opgesplitst. Begin deze fase pas na Gate 2
 - Neem de echte historieparser/provideradapter, TwoParkMock-contract, duurzame reconciliatiewerkitems, retries en verwerking na terminale Visit-status op.
 - Neem historiecorrecties van intervallen en kosten, fallback/incompleetheid en waarschuwing-idempotentie op.
 - **PR2-voortgang:** de mockhistorie-interface, parserfixtures, duurzame actiegebonden reconciliatie, paginering, retries, verwerking na `Completed`, recoveryherstel, historiecorrecties, waarschuwingen en rapportage-incompleetheid zijn gemerged en getest. PR2 staat op `main` in commit `6b28c64`; de volledige solution-suite slaagde met `422/422` tests.
-- De productieprovideradapter is bewust nog niet aangesloten. Bevestig eerst met een expliciete testactie de requestparameters, pagineringsemantiek en tijdzonebetekenis; hardcode die contracten niet op basis van de mock of parserfixtures.
+- De productiehistorie-reader is lokaal geïmplementeerd in `TwoParkProvider` en geregistreerd voor provider type `TwoPark`; de gerichte adaptertest en 15 bestaande mock-/reconciliatietests slagen. De reader is nog niet live tegen 2Park aangeroepen. Voor het testproduct retourneren requests `1..10`, `11..20` en `21..21` respectievelijk tien, tien en één record, zonder gaten of overlap; responsemetadata volgt deze ranges en `maxindex=21` is de laatste geldige 1-gebaseerde index. We nemen aan dat deze pagineringsregels stabiel zijn per product. De herhaling bij request `10..19` is verklaard door inclusieve grensoverlap met `1..10`. Request `0..10` gaf dezelfde actielijst als `1..10`, maar metadata `0..9`; een eerdere response op `1..10` meldde ook `0..9`. Gebruik positieve, opeenvolgende ranges vanaf 1; houd de afwijkende start-0-waarneming genoteerd. Nederlandse producttijden worden als `Europe/Amsterdam` geïnterpreteerd. Een geldige historie-`COST` wordt als gerapporteerd eurobedrag overgenomen zonder herberekening of extra afronding. Werkhypothese: de provider berekent dat bedrag volgens dezelfde formule als de lokale initiële berekening (betaalde duur × tarief / 60, per actie eenmaal naar boven afgerond op centen); we verwachten geen tariefwissel binnen het dagelijkse betaalblok 09:00–20:00. Deze kostformule is niet door providerdata bevestigd en blijft een aanname, niet een vaststaand contract.
 
 ### 5a. Contract en datamodel
 
 - Werk functionele en technische documentatie bij: Visit-finalisatie, beleidsgrens, `DueAt` en provideractie-intervallen zijn afzonderlijke begrippen.
 - Leg vast welke bron de initiële start- en eindtijd levert voor directe/geplande Start, succesvolle app-Stop, recovery na onzekere Stop en provider-geplande Stop.
 - Ontwerp opslag voor initiële tijden, historiecorrecties, providerkosten en onvolledige administratie. Een aparte voorlopigheidsmarkering op tijden is niet gewenst.
-- Bevestig de historie-requestparameters en paginering aan de hand van live waarneming voordat de adapter die contracten hardcodeert.
+- Gebruik voor het testproduct de live bevestigde historie-requestvelden en 1-gebaseerde inclusieve paginering; neem aan dat deze regels stabiel zijn per product. Gebruik ranges vanaf 1 (niet 0). Interpreteer tijdvelden van het Nederlandse product als `Europe/Amsterdam`, inclusief CET/CEST.
 
 **Gate 5a:** domeincontract, benodigde schemawijzigingen en fallback zijn gereviewd; tests beschrijven hoe ontbrekende en vertraagde historie wordt verwerkt.
 
@@ -116,7 +116,7 @@ Implementeer dit vóór de reconciliatie, zodat de historieflow deterministisch 
 - Breid `Parkeren.TwoParkMock` en de mock-adapter uit met een historie-interface die provideracties, kosten en paginering kan teruggeven. Ondersteun configureerbare vertraagde zichtbaarheid en ontbrekende records.
 - Houd het mock-contract gericht op de applicatie-interface. Laat de mock niet het echte 2Park-responseformaat nabootsen als vervanging voor parservalidatie.
 - Voeg mocktests toe voor vertraagde zichtbaarheid en retry, paginering waarbij het gezochte record op een latere pagina staat, en een record dat na alle beschikbare pagina's ontbreekt.
-- Test de echte 2Park-historieparser afzonderlijk met geanonimiseerde responsefixtures uit `get_action_historie.json`, inclusief `data.actions`, afgeronde status, `TIMESTART`, `TIMEEND`, `COST`, `CURRENCY_DESC` en paginering. Voeg ook fixtures toe voor een ontbrekend record en relevante lege/ontbrekende responsevelden.
+- Test de echte 2Park-historieparser afzonderlijk met geanonimiseerde responsefixtures uit `get_action_history.json`, inclusief `data.actions`, afgeronde status, `TIMESTART`, `TIMEEND`, `COST`, `CURRENCY_DESC` en paginering. Voeg ook fixtures toe voor een ontbrekend record en relevante lege/ontbrekende responsevelden.
 - Parserfixtures bewijzen alleen de provider-JSON-interpretatie; mocktests bewijzen de applicatie-interface en het scheduler-/reconciliatiegedrag. Gebruik geen mock-response als bewijs voor de echte parser.
 
 **Gate 5b:** de mock-interface levert historiegegevens met kosten en paginering en ondersteunt vertraagde zichtbaarheid en ontbrekende records; geanonimiseerde echte 2Park-responses en relevante lege/ontbrekende velden worden door de productieparser correct gelezen.

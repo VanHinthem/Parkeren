@@ -1,17 +1,20 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Parkeren.Application.ParkingProvider;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
 
-public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration configuration) : IParkingProvider
+public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration configuration) : IParkingProvider, IProviderActionHistoryReader
 {
     private const string Locale = "nl_NL";
     private const string TimeFormat = "dd-MM-yyyy HH:mm:ss";
+    private const int MaxActionHistoryPageSize = 10;
     private static readonly TimeZoneInfo AmsterdamTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
         OperatingSystem.IsWindows() ? "W. Europe Standard Time" : "Europe/Amsterdam");
+    private readonly ConcurrentDictionary<string, int> historyMaxIndexByProduct = new(StringComparer.Ordinal);
 
     private readonly string email = configuration["ParkingProvider:Email"]
         ?? throw new InvalidOperationException("ParkingProvider:Email is not configured.");
@@ -192,6 +195,56 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         }
 
         return result;
+    }
+
+    public async Task<ProviderActionHistoryPage> GetActionHistoryPageAsync(
+        string providerProductId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerProductId))
+            throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
+        if (pageNumber < 0)
+            throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (pageSize is < 1 or > MaxActionHistoryPageSize)
+            throw new ArgumentOutOfRangeException(nameof(pageSize), $"2Park supports history pages of up to {MaxActionHistoryPageSize} records.");
+
+        var startIndex = checked(pageNumber * pageSize + 1);
+        var stopIndex = checked(startIndex + pageSize - 1);
+        if (historyMaxIndexByProduct.TryGetValue(providerProductId, out var maxIndex))
+        {
+            if (startIndex > maxIndex)
+                return new ProviderActionHistoryPage([], pageNumber, pageSize, maxIndex);
+            stopIndex = Math.Min(stopIndex, maxIndex);
+        }
+
+        await EnsureAuthenticatedAsync(cancellationToken);
+        using var data = await PostAsync("get_action_history.json", new Dictionary<string, string>
+        {
+            ["product_id"] = providerProductId,
+            ["locale"] = Locale,
+            ["startindex"] = startIndex.ToString(CultureInfo.InvariantCulture),
+            ["stopindex"] = stopIndex.ToString(CultureInfo.InvariantCulture)
+        }, cancellationToken);
+
+        var historyPage = TwoParkActionHistoryParser.Parse(data.RootElement);
+        if (historyPage.MaxIndex is not int pageMaxIndex || pageMaxIndex < 0)
+            throw new JsonException("2Park action history response has no valid maxindex.");
+
+        historyMaxIndexByProduct[providerProductId] = pageMaxIndex;
+        var records = historyPage.Actions
+            .Where(x => x.StartLocal.HasValue && x.EndLocal.HasValue)
+            .Select(x => new ProviderActionHistoryRecord(
+                x.ProviderActionId,
+                x.Status ?? string.Empty,
+                ParseProviderTime(x.StartLocal!.Value),
+                ParseProviderTime(x.EndLocal!.Value),
+                x.CostAmount,
+                x.Currency))
+            .ToArray();
+
+        return new ProviderActionHistoryPage(records, pageNumber, pageSize, pageMaxIndex);
     }
 
     public async Task<ProviderParkingAction> StartActionAsync(
@@ -393,7 +446,7 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             ? messageElement.GetString()
             : null;
         document.Dispose();
-        throw new InvalidOperationException($"2Park request failed: {minor ?? "UNKNOWN"} {message}".Trim());
+        throw new TwoParkProviderException($"2Park request failed: {minor ?? "UNKNOWN"} {message}".Trim());
     }
 
     private static bool IsBlocked(JsonElement product)
@@ -512,6 +565,12 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
     private static DateTimeOffset ParseProviderTime(string value)
     {
         var local = DateTime.ParseExact(value, TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        return ParseProviderTime(local);
+    }
+
+    private static DateTimeOffset ParseProviderTime(DateTime local)
+    {
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
         var offset = AmsterdamTimeZone.GetUtcOffset(local);
         return new DateTimeOffset(local, offset).ToUniversalTime();
     }

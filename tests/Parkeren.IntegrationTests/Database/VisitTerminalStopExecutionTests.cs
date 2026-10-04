@@ -9,6 +9,7 @@ using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure;
+using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -421,9 +422,10 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Provider_history_read_failure_retries_and_marks_action_incomplete_after_deadline(bool malformedJson)
+    [InlineData("unavailable")]
+    [InlineData("malformed-json")]
+    [InlineData("provider-error")]
+    public async Task Provider_history_read_failure_retries_and_marks_action_incomplete_after_deadline(string failureType)
     {
         var ct = TestContext.Current.CancellationToken;
         await ClearVisitStateAsync(ct);
@@ -464,9 +466,12 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             await seed.SaveChangesAsync(ct);
         }
 
-        IProviderActionHistoryReader historyReader = malformedJson
-            ? new MalformedHistoryReader()
-            : new UnavailableHistoryReader();
+        IProviderActionHistoryReader historyReader = failureType switch
+        {
+            "malformed-json" => new MalformedHistoryReader(),
+            "provider-error" => new ProviderErrorHistoryReader(),
+            _ => new UnavailableHistoryReader()
+        };
         await using (var scope = BuildServices(historyReader).CreateAsyncScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
@@ -667,5 +672,16 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             int pageSize,
             CancellationToken cancellationToken = default) =>
             Task.FromException<ProviderActionHistoryPage>(new JsonException("Provider returned malformed history JSON."));
+    }
+
+    private sealed class ProviderErrorHistoryReader : IProviderActionHistoryReader
+    {
+        public Task<ProviderActionHistoryPage> GetActionHistoryPageAsync(
+            string providerProductId,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ProviderActionHistoryPage>(new TwoParkProviderException(
+                "2Park request failed: PROVIDER_FAILURE History unavailable."));
     }
 }

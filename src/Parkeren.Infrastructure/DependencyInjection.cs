@@ -108,6 +108,17 @@ public static class DependencyInjection
                 CookieContainer = new CookieContainer(),
                 UseCookies = true
             });
+            services.AddHttpClient<IProviderActionHistoryReader, TwoParkProvider>(client =>
+            {
+                client.BaseAddress = new Uri(baseUrl);
+                client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Parkeren/1.0");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                CookieContainer = new CookieContainer(),
+                UseCookies = true
+            });
         }
         else if (!string.IsNullOrWhiteSpace(providerType))
         {

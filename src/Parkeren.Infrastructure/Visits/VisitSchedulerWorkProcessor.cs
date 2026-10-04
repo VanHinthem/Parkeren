@@ -8,6 +8,7 @@ using Parkeren.Infrastructure.Notifications;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.ParkingProvider;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Parkeren.Infrastructure.Visits;
@@ -606,7 +607,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             record = await ReadProviderHistoryRecordAsync(action, cancellationToken);
         }
         catch (Exception exception) when (
-            exception is HttpRequestException or TimeoutException or JsonException ||
+            exception is HttpRequestException or TimeoutException or JsonException or TwoParkProviderException ||
             exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
             record = null;
@@ -659,7 +660,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             string.IsNullOrWhiteSpace(action.ProviderActionId))
             return null;
 
-        const int pageSize = 100;
+        const int pageSize = 10;
         for (var pageNumber = 0; ; pageNumber++)
         {
             var page = await reader.GetActionHistoryPageAsync(
