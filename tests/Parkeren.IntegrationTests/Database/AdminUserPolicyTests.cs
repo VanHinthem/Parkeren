@@ -12,6 +12,47 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class AdminUserPolicyTests(PostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task Admin_capability_comes_from_role_not_parking_policy()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"role-admin-{suffix}", $"ROLE-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var visitor = new User(Guid.NewGuid(), $"role-visitor-{suffix}", $"ROLE-VISITOR-{suffix}", "hash", UserRole.Visitor);
+        var visitorPolicy = new UserPolicyOverride(visitor.Id);
+        visitorPolicy.SetMaxConcurrentVisits(2);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.AddRange(admin, visitor);
+            seed.UserPolicyOverrides.Add(visitorPolicy);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            await using var provider = CreateServices().BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var administration = scope.ServiceProvider.GetRequiredService<IAdministrationService>();
+
+            await using (var verify = fixture.CreateDbContext())
+            {
+                Assert.False(await verify.UserPolicyOverrides.AnyAsync(x => x.UserId == admin.Id, ct));
+                Assert.True(await verify.UserPolicyOverrides.AnyAsync(x => x.UserId == visitor.Id, ct));
+            }
+
+            Assert.NotNull(await administration.GetVehiclesAsync(admin.Id, ct));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => administration.GetVehiclesAsync(visitor.Id, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserPolicyOverrides.Where(x => x.UserId == visitor.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == admin.Id || x.Id == visitor.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Unlimited_duration_override_roundtrips_through_persistence_and_admin_read_model()
     {
         var ct = TestContext.Current.CancellationToken;
