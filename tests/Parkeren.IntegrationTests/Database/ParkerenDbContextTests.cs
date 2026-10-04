@@ -22,6 +22,46 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 {
+    private static async Task AssertCanaryAbsentFromPublicTablesAsync(
+        DbContext dbContext,
+        string canary,
+        CancellationToken cancellationToken)
+    {
+        var connection = dbContext.Database.GetDbConnection();
+        var closeConnection = connection.State != System.Data.ConnectionState.Open;
+        if (closeConnection)
+            await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            var tables = new List<(string Schema, string Name)>();
+            await using (var tableCommand = connection.CreateCommand())
+            {
+                tableCommand.CommandText = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'";
+                await using var reader = await tableCommand.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    tables.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            Assert.NotEmpty(tables);
+            var identifierBuilder = new NpgsqlCommandBuilder();
+            foreach (var (schema, table) in tables)
+            {
+                await using var scanCommand = connection.CreateCommand();
+                var tableIdentifier = $"{identifierBuilder.QuoteIdentifier(schema)}.{identifierBuilder.QuoteIdentifier(table)}";
+                scanCommand.CommandText = $"SELECT EXISTS (SELECT 1 FROM {tableIdentifier} AS row_data WHERE to_jsonb(row_data)::text LIKE @pattern)";
+                scanCommand.Parameters.Add(new NpgsqlParameter("pattern", $"%{canary}%"));
+                var canaryFound = (bool)(await scanCommand.ExecuteScalarAsync(cancellationToken))!;
+                Assert.False(canaryFound, $"Sensitive canary was persisted in PostgreSQL table {schema}.{table}.");
+            }
+        }
+        finally
+        {
+            if (closeConnection)
+                await connection.CloseAsync();
+        }
+    }
+
     private sealed class ErrorParkingProvider(
         ProviderResponseException exception,
         IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>? actions = null) : IParkingProvider
@@ -1173,8 +1213,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal("PROVIDER_FAILURE", operation.LastErrorCode);
         Assert.Equal(ProviderActionHealth.Unknown, action.Health);
         Assert.Equal(VisitHealth.Reconciling, visit.Health);
-        var persistedText = JsonSerializer.Serialize(new { operation, action, visit, auditEvents });
-        Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
+        await AssertCanaryAbsentFromPublicTablesAsync(verifyContext, sensitiveDetails, cancellationToken);
     }
 
     [Fact]
@@ -1251,11 +1290,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
         Assert.Equal("PROVIDER_FAILURE", operation.LastErrorCode);
         Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
-        var persistedText = JsonSerializer.Serialize(new
-        {
-            operation, persistedAction, persistedVisit, auditEvents, notificationEvents, notifications
-        });
-        Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
+        await AssertCanaryAbsentFromPublicTablesAsync(verifyContext, sensitiveDetails, cancellationToken);
     }
 
     [Fact]
@@ -1326,8 +1361,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderActionHealth.Unknown, persistedAction.Health);
         Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
         Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
-        var persistedText = JsonSerializer.Serialize(new { operation, persistedAction, persistedVisit, auditEvents });
-        Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
+        await AssertCanaryAbsentFromPublicTablesAsync(verifyContext, sensitiveDetails, cancellationToken);
     }
 
     [Fact]
