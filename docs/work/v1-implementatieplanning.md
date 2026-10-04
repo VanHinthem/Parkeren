@@ -42,6 +42,8 @@ De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). De 
 
 **Vervolg logger- en retentietests 4 oktober 2026:** de drie dev-diagnostic cleanup-routes gebruiken nu `DiagnosticActionCleanup`; captures testen elk waarschuwingtemplate en het succespad zonder exception-details (`ProgramStartupLoggingTests`, 5/5 inclusief startup-productsync). `Retention_cleanup_rejects_nonpositive_retention_days` controleert nul en negatieve waarden; de retentieset slaagde met 3/3. De volledige suite is na deze wijzigingen niet opnieuw gedraaid.
 
+**#82-checklist gesynchroniseerd 4 oktober 2026:** 47/60 criteria zijn afgevinkt op basis van repo-bewijs. De 13 open punten zijn 11 afhankelijkheden van #71, bredere UTC-dekking voor alle persistente tijdvelden en het besluit over een database-singleton voor `DefaultParkingPolicy`. #82 blijft open.
+
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 
 **Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; de issue wordt niet gesloten zolang bewijsleemtes of #71-afhankelijkheden onopgelost zijn. #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.
