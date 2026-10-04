@@ -81,6 +81,8 @@ De logredactieslice verwijdert exception-objecten uit de `WebPushSender`, push-d
 
 Correctie op de loggerstatus hierboven: de product-sync-foutafhandeling in [ProgramStartupTasks.cs](../../src/Parkeren.Api/ProgramStartupTasks.cs) heeft nu capturetest `Initial_product_sync_failure_does_not_log_exception_object_or_details` in [ProgramStartupLoggingTests.cs](../../tests/Parkeren.IntegrationTests/Database/ProgramStartupLoggingTests.cs). De scheduler-startup-recovery heeft capturetest `Startup_recovery_failure_does_not_log_exception_details_or_claim_work` in [VisitSchedulerWorkerTests.cs](../../tests/Parkeren.IntegrationTests/VisitSchedulerWorkerTests.cs). Beide tests slagen gericht in Release; de scheduler test bevestigt ook dat geen werk wordt geclaimd vóór succesvolle recovery.
 
+Suitehistorie: de volledige Release-integratiesuite slaagde met 262/262 vóór deze twee captures. De gerichte Release-regressieset na commit [e23712e](https://github.com/VanHinthem/Parkeren/commit/e23712e) slaagde met 5/5; de volledige suite is na deze toevoegingen niet opnieuw gedraaid.
+
 - Voeg gerichte tests toe voor de ontbrekende historische/retentiegevallen hierboven. Genormaliseerde username-/kentekenuniciteit en sessie-revocatie/inactieve gebruiker zijn met PostgreSQL-integratietests aangetoond.
 - Beslis of de default-policy-versie en overlappende tariff-/budget-/ruleset-perioden database-side beschermd moeten worden; huidige overlapvalidatie is grotendeels applicatie-/domeinlogica.
 - Correctie op het beslispunt hierboven: overlapbeveiliging voor ParkingRuleSet, tariff en budget is inmiddels database-side geïmplementeerd en getest. Alleen de singleton-garantie voor `DefaultParkingPolicy` vraagt nog een expliciet besluit.
