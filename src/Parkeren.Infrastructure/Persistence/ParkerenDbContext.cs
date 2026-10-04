@@ -454,7 +454,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.NormalizedUsername).HasMaxLength(100).IsRequired();
             entity.Property(x => x.PinHash).HasMaxLength(512).IsRequired();
             entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(20).IsRequired();
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired().IsConcurrencyToken();
             entity.HasIndex(x => x.NormalizedUsername).IsUnique();
         });
 
@@ -476,7 +476,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.LicensePlate).HasMaxLength(20).IsRequired();
             entity.Property(x => x.NormalizedLicensePlate).HasMaxLength(16).IsRequired();
             entity.Property(x => x.DisplayName).HasMaxLength(100);
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired().IsConcurrencyToken();
             entity.HasIndex(x => x.NormalizedLicensePlate).IsUnique();
         });
 

@@ -134,8 +134,11 @@ export async function changeVisitEndTime(
   return {visit:result.visit,reconciliationRequired:response.status===202};
 }
 
-export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";isActive:boolean;maxConcurrentVisits:number|null};
-export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;isActive:boolean};
+export type UserStatus="Active"|"Inactive"|"Archived";
+export type VehicleStatus="Active"|"Inactive"|"Archived";
+export type UserSummary={id:string;username:string;role:"Visitor"|"Admin";status:UserStatus;isActive:boolean;canDelete:boolean;maxConcurrentVisits:number|null};
+export type CreateUserResult={id:string;username:string;role:"Visitor"|"Admin";status:UserStatus;isActive:boolean};
+export type VehicleSummary={id:string;licensePlate:string;displayName:string|null;status:VehicleStatus;isActive:boolean;canDelete:boolean};
 export type AdminActiveVisitSummary={
   id:string;
   userId:string;
@@ -681,11 +684,15 @@ export async function getAdminVisit(visitId:string){
 }
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(`De bewerking is mislukt (HTTP ${response.status}).`);return readJson<T>(response);}
 export async function getUsers(){return json<UserSummary[]>(await apiFetch("/api/admin/users"));}
-export async function createUser(username:string,pin:string){return json<UserSummary>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
+export async function createUser(username:string,pin:string){return json<CreateUserResult>(await apiFetch("/api/admin/users",{method:"POST",body:JSON.stringify({username,pin,role:"Visitor"})}));}
 export async function setUserActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/users/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw await visitError(r,"Gebruiker kon niet worden gewijzigd");}
+export async function archiveUser(id:string){const r=await apiFetch(`/api/admin/users/${id}/archive`,{method:"PUT"});if(!r.ok)throw await visitError(r,"Gebruiker kon niet worden gearchiveerd");}
+export async function deleteUser(id:string){const r=await apiFetch(`/api/admin/users/${id}`,{method:"DELETE"});if(!r.ok)throw await visitError(r,"Gebruiker kon niet worden verwijderd");}
 export async function getVehicles(){return json<VehicleSummary[]>(await apiFetch("/api/admin/vehicles"));}
 export async function createVehicle(licensePlate:string,displayName?:string){return json<VehicleSummary>(await apiFetch("/api/admin/vehicles",{method:"POST",body:JSON.stringify({licensePlate,displayName:displayName||null})}));}
 export async function setVehicleActive(id:string,isActive:boolean){const r=await apiFetch(`/api/admin/vehicles/${id}/active`,{method:"PUT",body:JSON.stringify({isActive})});if(!r.ok)throw await visitError(r,"Voertuig kon niet worden gewijzigd");}
+export async function archiveVehicle(id:string){const r=await apiFetch(`/api/admin/vehicles/${id}/archive`,{method:"PUT"});if(!r.ok)throw await visitError(r,"Voertuig kon niet worden gearchiveerd");}
+export async function deleteVehicle(id:string){const r=await apiFetch(`/api/admin/vehicles/${id}`,{method:"DELETE"});if(!r.ok)throw await visitError(r,"Voertuig kon niet worden verwijderd");}
 export async function assignVehicle(userId:string,vehicleId:string){const r=await apiFetch(`/api/admin/users/${userId}/vehicles/${vehicleId}`,{method:"PUT"});if(!r.ok)throw new Error("Voertuig kon niet worden toegewezen.");}
 
 export async function getAssignedVehicles(userId:string){return json<VehicleSummary[]>(await apiFetch(`/api/admin/users/${userId}/vehicles`));}

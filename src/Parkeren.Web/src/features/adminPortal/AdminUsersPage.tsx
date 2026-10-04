@@ -1,8 +1,12 @@
 import { useEffect,useMemo,useState,type FormEvent } from "react";
 import {
   assignVehicle,
+  archiveUser,
+  archiveVehicle,
   createUser,
   createVehicle,
+  deleteUser,
+  deleteVehicle,
   getAdminUserDetail,
   getUsers,
   getVehicles,
@@ -130,6 +134,58 @@ export function AdminUsersPage({mode}:{mode:"users"|"vehicles"}){
     }
   }
 
+  async function archiveUserRecord(user:UserSummary){
+    if(!window.confirm(`Gebruiker ${user.username} archiveren? Historie blijft behouden.`))return;
+    setError(undefined);
+    setMessage(undefined);
+    try{
+      await archiveUser(user.id);
+      setMessage("Gebruiker is gearchiveerd.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Gebruiker kon niet worden gearchiveerd.");
+    }
+  }
+
+  async function deleteUserRecord(user:UserSummary){
+    if(!window.confirm(`Gebruiker ${user.username} permanent verwijderen? Dit kan niet ongedaan worden gemaakt.`))return;
+    setError(undefined);
+    setMessage(undefined);
+    try{
+      await deleteUser(user.id);
+      setMessage("Gebruiker is verwijderd.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Gebruiker kon niet worden verwijderd.");
+    }
+  }
+
+  async function archiveVehicleRecord(vehicle:VehicleSummary){
+    if(!window.confirm(`Kenteken ${vehicle.licensePlate} archiveren? Historie blijft behouden.`))return;
+    setError(undefined);
+    setMessage(undefined);
+    try{
+      await archiveVehicle(vehicle.id);
+      setMessage("Voertuig is gearchiveerd.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Voertuig kon niet worden gearchiveerd.");
+    }
+  }
+
+  async function deleteVehicleRecord(vehicle:VehicleSummary){
+    if(!window.confirm(`Kenteken ${vehicle.licensePlate} permanent verwijderen? Dit kan niet ongedaan worden gemaakt.`))return;
+    setError(undefined);
+    setMessage(undefined);
+    try{
+      await deleteVehicle(vehicle.id);
+      setMessage("Voertuig is verwijderd.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Voertuig kon niet worden verwijderd.");
+    }
+  }
+
   return <div className="admin-users">
     <nav className="admin-users__tabs" aria-label="Gebruikers en voertuigen">
       <a className={"admin-users__tab "+(mode==="users"?"active":"")} href="/beheer/gebruikers">Gebruikers</a>
@@ -163,12 +219,14 @@ export function AdminUsersPage({mode}:{mode:"users"|"vehicles"}){
                     {users.map(user=><tr key={user.id}>
                       <td><strong>{user.username}</strong></td>
                       <td>{user.role==="Admin"?"Beheerder":"Bezoeker"}</td>
-                      <td><span className={"admin-users__status "+(user.isActive?"admin-users__status--active":"")}>{user.isActive?"Actief":"Inactief"}</span></td>
+                      <td><span className={"admin-users__status "+(user.isActive?"admin-users__status--active":"")}>{user.status==="Archived"?"Gearchiveerd":user.isActive?"Actief":"Inactief"}</span></td>
                       <td>{user.maxConcurrentVisits??"Standaard"}</td>
                       <td>
                         <div className="admin-users__actions">
                           <a className="admin-users__link" href={`/beheer/gebruikers/${user.id}`}>Openen</a>
-                          <Button variant="secondary" onClick={()=>void toggleUser(user)}>{user.isActive?"Deactiveren":"Activeren"}</Button>
+                          {user.status!=="Archived"&&<Button variant="secondary" onClick={()=>void toggleUser(user)}>{user.isActive?"Deactiveren":"Activeren"}</Button>}
+                          {user.status!=="Archived"&&<Button variant="secondary" onClick={()=>void archiveUserRecord(user)}>Archiveren</Button>}
+                          {user.canDelete&&<Button variant="secondary" onClick={()=>void deleteUserRecord(user)}>Verwijderen</Button>}
                         </div>
                       </td>
                     </tr>)}
@@ -199,8 +257,12 @@ export function AdminUsersPage({mode}:{mode:"users"|"vehicles"}){
                     {vehicles.map(vehicle=><tr key={vehicle.id}>
                       <td><LicensePlate value={vehicle.licensePlate}/></td>
                       <td>{vehicle.displayName??"—"}</td>
-                      <td><span className={"admin-users__status "+(vehicle.isActive?"admin-users__status--active":"")}>{vehicle.isActive?"Actief":"Inactief"}</span></td>
-                      <td><div className="admin-users__actions"><Button variant="secondary" onClick={()=>void toggleVehicle(vehicle)}>{vehicle.isActive?"Deactiveren":"Activeren"}</Button></div></td>
+                      <td><span className={"admin-users__status "+(vehicle.isActive?"admin-users__status--active":"")}>{vehicle.status==="Archived"?"Gearchiveerd":vehicle.isActive?"Actief":"Inactief"}</span></td>
+                      <td><div className="admin-users__actions">
+                        {vehicle.status!=="Archived"&&<Button variant="secondary" onClick={()=>void toggleVehicle(vehicle)}>{vehicle.isActive?"Deactiveren":"Activeren"}</Button>}
+                        {vehicle.status!=="Archived"&&<Button variant="secondary" onClick={()=>void archiveVehicleRecord(vehicle)}>Archiveren</Button>}
+                        {vehicle.canDelete&&<Button variant="secondary" onClick={()=>void deleteVehicleRecord(vehicle)}>Verwijderen</Button>}
+                      </div></td>
                     </tr>)}
                   </tbody>
                 </table>
@@ -335,7 +397,7 @@ export function AdminUserDetailPage({userId}:{userId:string}){
   }
 
   async function toggleActive(){
-    if(!detail)return;
+    if(!detail||detail.user.status==="Archived")return;
     setError(undefined);
     setMessage(undefined);
     try{
@@ -352,7 +414,7 @@ export function AdminUserDetailPage({userId}:{userId:string}){
   return <div className="admin-user-detail">
     <div className="admin-user-detail__toolbar">
       <a className="admin-users__link" href="/beheer/gebruikers">← Terug naar gebruikers</a>
-      {detail&&<Button variant="secondary" onClick={()=>void toggleActive()}>{detail.user.isActive?"Deactiveren":"Activeren"}</Button>}
+      {detail&&detail.user.status!=="Archived"&&<Button variant="secondary" onClick={()=>void toggleActive()}>{detail.user.isActive?"Deactiveren":"Activeren"}</Button>}
     </div>
 
     {error&&<Alert tone="danger">{error}</Alert>}
@@ -365,7 +427,7 @@ export function AdminUserDetailPage({userId}:{userId:string}){
             <div className="admin-user-detail__summary">
               <div className="admin-user-detail__summary-item"><span>Gebruiker</span><strong>{detail.user.username}</strong></div>
               <div className="admin-user-detail__summary-item"><span>Rol</span><strong>{detail.user.role==="Admin"?"Beheerder":"Bezoeker"}</strong></div>
-              <div className="admin-user-detail__summary-item"><span>Status</span><strong>{detail.user.isActive?"Actief":"Inactief"}</strong></div>
+              <div className="admin-user-detail__summary-item"><span>Status</span><strong>{detail.user.status==="Archived"?"Gearchiveerd":detail.user.isActive?"Actief":"Inactief"}</strong></div>
               <div className="admin-user-detail__summary-item"><span>Actieve Visits</span><strong>{detail.activeVisitCount}</strong></div>
             </div>
           </section>

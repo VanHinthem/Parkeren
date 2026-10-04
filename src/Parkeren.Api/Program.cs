@@ -1776,6 +1776,42 @@ app.MapPut("/api/admin/users/{userId:guid}/active", async (
     }
 });
 
+app.MapPut("/api/admin/users/{userId:guid}/archive", async (
+    Guid userId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    try
+    {
+        return await administration.ArchiveUserAsync(authenticated.User.Id, userId, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+});
+
+app.MapDelete("/api/admin/users/{userId:guid}", async (
+    Guid userId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    try
+    {
+        return await administration.DeleteUserAsync(authenticated.User.Id, userId, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+});
+
 app.MapPut("/api/admin/users/{userId:guid}/policy/max-concurrent-visits", async (
     Guid userId, SetMaxConcurrentVisitsRequest request, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
 {
@@ -1836,6 +1872,42 @@ app.MapPut("/api/admin/vehicles/{vehicleId:guid}/active", async (
     try
     {
         return await administration.SetVehicleActiveAsync(authenticated.User.Id, vehicleId, request.IsActive, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+});
+
+app.MapPut("/api/admin/vehicles/{vehicleId:guid}/archive", async (
+    Guid vehicleId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    try
+    {
+        return await administration.ArchiveVehicleAsync(authenticated.User.Id, vehicleId, cancellationToken)
+            ? Results.NoContent()
+            : Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+});
+
+app.MapDelete("/api/admin/vehicles/{vehicleId:guid}", async (
+    Guid vehicleId, IAdministrationService administration, IAuthenticationService authentication, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null) return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin) return Results.Forbid();
+    try
+    {
+        return await administration.DeleteVehicleAsync(authenticated.User.Id, vehicleId, cancellationToken)
             ? Results.NoContent()
             : Results.NotFound();
     }

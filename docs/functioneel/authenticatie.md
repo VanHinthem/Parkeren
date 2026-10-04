@@ -1,6 +1,6 @@
 # Inloggen en sessies
 
-Een gebruiker logt in met een unieke gebruikersnaam en een PIN van zes cijfers. Een succesvolle login kan op een vertrouwd apparaat persistent blijven; V1 gebruikt hiervoor een sessie van maximaal 30 dagen.
+Een gebruiker logt in met een unieke gebruikersnaam en een PIN van zes cijfers. Alleen actieve accounts kunnen inloggen of bestaande sessies gebruiken; deactiveren en archiveren blokkeren beide. Een succesvolle login kan op een vertrouwd apparaat persistent blijven; V1 gebruikt hiervoor een sessie van maximaal 30 dagen.
 
 De PIN is niet uitleesbaar door de applicatie of beheerder. Een gedeactiveerde gebruiker kan niet inloggen en verliest ook toegang via bestaande sessies.
 

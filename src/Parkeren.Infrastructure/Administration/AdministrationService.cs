@@ -31,7 +31,12 @@ internal sealed class AdministrationService(
                 user.Id,
                 user.Username,
                 user.Role,
+                user.Status,
                 user.Status == UserStatus.Active,
+                user.Id != actorUserId &&
+                    !dbContext.Visits.Any(visit => visit.UserId == user.Id || visit.StartedByUserId == user.Id) &&
+                    !dbContext.AdminAuditEvents.Any(audit => audit.ActorUserId == user.Id) &&
+                    !dbContext.VisitEndTimeChanges.Any(change => change.ActorUserId == user.Id),
                 policyOverride == null ? null : policyOverride.MaxConcurrentVisits))
             .ToListAsync(cancellationToken);
     }
@@ -70,15 +75,23 @@ internal sealed class AdministrationService(
             new { user.Username, Role = user.Role.ToString(), user.IsActive },
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new CreateUserResult(user.Id, user.Username, user.Role, user.IsActive);
+        return new CreateUserResult(user.Id, user.Username, user.Role, user.Status, user.IsActive);
     }
 
     public async Task<bool> SetUserActiveAsync(Guid actorUserId, Guid userId, bool isActive, CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
         await EnsureAdminAsync(actorUserId, cancellationToken);
         var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
         if (user is null)
             return false;
+
+        if (user.Status == UserStatus.Archived)
+            throw new InvalidOperationException("Een gearchiveerde gebruiker kan niet meer worden gewijzigd.");
+
+        if (!isActive)
+            await EnsureActiveAdministratorRemainsAsync(user, cancellationToken);
 
         if (!isActive && await dbContext.Visits.AnyAsync(
                 x => x.UserId == userId &&
@@ -95,6 +108,84 @@ internal sealed class AdministrationService(
             user.Id.ToString(),
             new { user.Username },
             cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> ArchiveUserAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return false;
+
+        if (await dbContext.Visits.AnyAsync(
+                x => (x.UserId == userId || x.StartedByUserId == userId) &&
+                     x.Status != VisitStatus.Completed &&
+                     x.Status != VisitStatus.Cancelled,
+                cancellationToken))
+            throw new InvalidOperationException("Een gebruiker met een actieve Visit kan niet worden gearchiveerd.");
+
+        if (user.Status == UserStatus.Archived)
+            return true;
+
+        await EnsureActiveAdministratorRemainsAsync(user, cancellationToken);
+
+        var previousStatus = user.Status;
+        user.Archive();
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserArchived",
+            "User",
+            user.Id.ToString(),
+            new { user.Username, PreviousStatus = previousStatus.ToString() },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> DeleteUserAsync(Guid actorUserId, Guid userId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        if (actorUserId == userId)
+            throw new InvalidOperationException("De aangemelde beheerder kan zichzelf niet verwijderen.");
+
+        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return false;
+
+        if (await dbContext.Visits.AnyAsync(
+                x => x.UserId == userId || x.StartedByUserId == userId,
+                cancellationToken))
+            throw new InvalidOperationException("Een gebruiker met parkeerhistorie kan niet worden verwijderd; archiveer de gebruiker.");
+
+        if (await dbContext.AdminAuditEvents.AnyAsync(x => x.ActorUserId == userId, cancellationToken) ||
+            await dbContext.VisitEndTimeChanges.AnyAsync(x => x.ActorUserId == userId, cancellationToken))
+            throw new InvalidOperationException("Een gebruiker met auditgeschiedenis kan niet worden verwijderd.");
+
+        await EnsureActiveAdministratorRemainsAsync(user, cancellationToken);
+
+        var sessions = await dbContext.UserSessions.Where(x => x.UserId == userId).ToListAsync(cancellationToken);
+        var assignments = await dbContext.UserVehicles.Where(x => x.UserId == userId).ToListAsync(cancellationToken);
+        var policyOverride = await dbContext.UserPolicyOverrides.SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        dbContext.UserSessions.RemoveRange(sessions);
+        dbContext.UserVehicles.RemoveRange(assignments);
+        if (policyOverride is not null)
+            dbContext.UserPolicyOverrides.Remove(policyOverride);
+        dbContext.Users.Remove(user);
+
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "UserDeleted",
+            "User",
+            user.Id.ToString(),
+            new { user.Username, Role = user.Role.ToString() },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -183,12 +274,30 @@ internal sealed class AdministrationService(
     private Task LockCapacitySettingsAsync(CancellationToken cancellationToken) =>
         dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({0x5041524B})", cancellationToken);
 
+    private async Task EnsureActiveAdministratorRemainsAsync(User user, CancellationToken cancellationToken)
+    {
+        if (user.Role != UserRole.Admin || user.Status != UserStatus.Active)
+            return;
+
+        var activeAdministrators = await dbContext.Users.CountAsync(
+            x => x.Role == UserRole.Admin && x.Status == UserStatus.Active,
+            cancellationToken);
+        if (activeAdministrators <= 1)
+            throw new InvalidOperationException("De laatste actieve beheerder kan niet worden gedeactiveerd, gearchiveerd of verwijderd.");
+    }
+
     public async Task<IReadOnlyList<VehicleSummary>> GetVehiclesAsync(Guid actorUserId, CancellationToken cancellationToken)
     {
         await EnsureAdminAsync(actorUserId, cancellationToken);
         return await dbContext.Vehicles.AsNoTracking()
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
+            .Select(x => new VehicleSummary(
+                x.Id,
+                x.LicensePlate,
+                x.DisplayName,
+                x.Status,
+                x.Status == VehicleStatus.Active,
+                !dbContext.Visits.Any(visit => visit.VehicleId == x.Id)))
             .ToListAsync(cancellationToken);
     }
 
@@ -213,15 +322,20 @@ internal sealed class AdministrationService(
             vehicle.Id.ToString(),
             new { vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive },
             cancellationToken);
-        return new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.IsActive);
+        return new VehicleSummary(vehicle.Id, vehicle.LicensePlate, vehicle.DisplayName, vehicle.Status, vehicle.IsActive, true);
     }
 
     public async Task<bool> SetVehicleActiveAsync(Guid actorUserId, Guid vehicleId, bool isActive, CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
         await EnsureAdminAsync(actorUserId, cancellationToken);
         var vehicle = await dbContext.Vehicles.SingleOrDefaultAsync(x => x.Id == vehicleId, cancellationToken);
         if (vehicle is null)
             return false;
+
+        if (vehicle.Status == VehicleStatus.Archived)
+            throw new InvalidOperationException("Een gearchiveerd voertuig kan niet meer worden gewijzigd.");
 
         if (!isActive && await dbContext.Visits.AnyAsync(
                 x => x.VehicleId == vehicleId &&
@@ -238,6 +352,65 @@ internal sealed class AdministrationService(
             vehicle.Id.ToString(),
             new { vehicle.LicensePlate },
             cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> ArchiveVehicleAsync(Guid actorUserId, Guid vehicleId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        var vehicle = await dbContext.Vehicles.SingleOrDefaultAsync(x => x.Id == vehicleId, cancellationToken);
+        if (vehicle is null)
+            return false;
+
+        if (await dbContext.Visits.AnyAsync(
+                x => x.VehicleId == vehicleId &&
+                     x.Status != VisitStatus.Completed &&
+                     x.Status != VisitStatus.Cancelled,
+                cancellationToken))
+            throw new InvalidOperationException("Een voertuig met een actieve Visit kan niet worden gearchiveerd.");
+
+        if (vehicle.Status == VehicleStatus.Archived)
+            return true;
+
+        var previousStatus = vehicle.Status;
+        vehicle.Archive();
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "VehicleArchived",
+            "Vehicle",
+            vehicle.Id.ToString(),
+            new { vehicle.LicensePlate, PreviousStatus = previousStatus.ToString() },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> DeleteVehicleAsync(Guid actorUserId, Guid vehicleId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await LockCapacitySettingsAsync(cancellationToken);
+        await EnsureAdminAsync(actorUserId, cancellationToken);
+        var vehicle = await dbContext.Vehicles.SingleOrDefaultAsync(x => x.Id == vehicleId, cancellationToken);
+        if (vehicle is null)
+            return false;
+
+        if (await dbContext.Visits.AnyAsync(x => x.VehicleId == vehicleId, cancellationToken))
+            throw new InvalidOperationException("Een voertuig met parkeerhistorie kan niet worden verwijderd; archiveer het voertuig.");
+
+        var assignments = await dbContext.UserVehicles.Where(x => x.VehicleId == vehicleId).ToListAsync(cancellationToken);
+        dbContext.UserVehicles.RemoveRange(assignments);
+        dbContext.Vehicles.Remove(vehicle);
+        await auditWriter.WriteAsync(
+            actorUserId,
+            "VehicleDeleted",
+            "Vehicle",
+            vehicle.Id.ToString(),
+            new { vehicle.LicensePlate },
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -304,7 +477,13 @@ internal sealed class AdministrationService(
         return await dbContext.Vehicles.AsNoTracking()
             .Where(x => x.Status == VehicleStatus.Active && vehicleIds.Contains(x.Id))
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
+            .Select(x => new VehicleSummary(
+                x.Id,
+                x.LicensePlate,
+                x.DisplayName,
+                x.Status,
+                x.Status == VehicleStatus.Active,
+                !dbContext.Visits.Any(visit => visit.VehicleId == x.Id)))
             .ToListAsync(cancellationToken);
     }
 
@@ -322,7 +501,13 @@ internal sealed class AdministrationService(
         return await dbContext.Vehicles.AsNoTracking()
             .Where(x => vehicleIds.Contains(x.Id))
             .OrderBy(x => x.LicensePlate)
-            .Select(x => new VehicleSummary(x.Id, x.LicensePlate, x.DisplayName, x.Status == VehicleStatus.Active))
+            .Select(x => new VehicleSummary(
+                x.Id,
+                x.LicensePlate,
+                x.DisplayName,
+                x.Status,
+                x.Status == VehicleStatus.Active,
+                !dbContext.Visits.Any(visit => visit.VehicleId == x.Id)))
             .ToListAsync(cancellationToken);
     }
 
@@ -458,7 +643,17 @@ internal sealed class AdministrationService(
                 cancellationToken);
 
         return new AdminUserDetail(
-            new UserSummary(user.Id, user.Username, user.Role, user.IsActive, policyOverride?.MaxConcurrentVisits),
+            new UserSummary(
+                user.Id,
+                user.Username,
+                user.Role,
+                user.Status,
+                user.IsActive,
+                user.Id != actorUserId &&
+                    !dbContext.Visits.Any(visit => visit.UserId == user.Id || visit.StartedByUserId == user.Id) &&
+                    !dbContext.AdminAuditEvents.Any(audit => audit.ActorUserId == user.Id) &&
+                    !dbContext.VisitEndTimeChanges.Any(change => change.ActorUserId == user.Id),
+                policyOverride?.MaxConcurrentVisits),
             assignedVehicles,
             CreatePolicyDetail(defaults, policyOverride, globalLimit),
             activeVisitCount);
@@ -1624,18 +1819,18 @@ internal sealed class AdministrationService(
         var report = await GetCostReportAsync(actorUserId, from, to, cancellationToken);
         var userIds = report.Visits.Select(x => x.UserId).Distinct().ToArray();
 
-        var activeUsers = await dbContext.Users.AsNoTracking()
+        var archivedUsers = await dbContext.Users.AsNoTracking()
             .Where(x => userIds.Contains(x.Id))
-            .ToDictionaryAsync(x => x.Id, x => x.Status == UserStatus.Active, cancellationToken);
+            .ToDictionaryAsync(x => x.Id, x => x.Status == UserStatus.Archived, cancellationToken);
 
         var plates = report.Visits.Select(x => x.LicensePlate).Distinct().ToArray();
         var plateStates = await dbContext.Vehicles.AsNoTracking()
             .Where(x => plates.Contains(x.LicensePlate))
-            .Select(x => new { x.LicensePlate, IsActive = x.Status == VehicleStatus.Active })
+            .Select(x => new { x.LicensePlate, IsArchived = x.Status == VehicleStatus.Archived })
             .ToListAsync(cancellationToken);
-        var activePlates = plateStates
+        var archivedPlates = plateStates
             .GroupBy(x => x.LicensePlate)
-            .ToDictionary(x => x.Key, x => x.Any(vehicle => vehicle.IsActive));
+            .ToDictionary(x => x.Key, x => x.Any(vehicle => vehicle.IsArchived));
 
         var references = report.Visits
             .Select(x => new AdminAnalysisVisitReference(
@@ -1656,7 +1851,7 @@ internal sealed class AdministrationService(
                 group.Key.UserId.ToString(),
                 group.Key.UserId,
                 group.Key.Username,
-                !activeUsers.GetValueOrDefault(group.Key.UserId),
+                archivedUsers.GetValueOrDefault(group.Key.UserId),
                 group))
             .OrderByDescending(x => x.PaidDurationMinutes ?? -1)
             .ThenBy(x => x.Label)
@@ -1668,7 +1863,7 @@ internal sealed class AdministrationService(
                 group.Key,
                 null,
                 group.Key,
-                !activePlates.GetValueOrDefault(group.Key),
+                archivedPlates.GetValueOrDefault(group.Key),
                 group))
             .OrderByDescending(x => x.PaidDurationMinutes ?? -1)
             .ThenBy(x => x.Label)

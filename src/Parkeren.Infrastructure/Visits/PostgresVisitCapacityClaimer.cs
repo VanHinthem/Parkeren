@@ -25,6 +25,18 @@ internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) 
             return new VisitCapacityClaim(true, existing, true);
         }
 
+        var activeOwner = await dbContext.Users.AnyAsync(
+            x => x.Id == visit.UserId && x.Status == Domain.Users.UserStatus.Active,
+            cancellationToken);
+        var activeActor = await dbContext.Users.AnyAsync(
+            x => x.Id == visit.StartedByUserId && x.Status == Domain.Users.UserStatus.Active,
+            cancellationToken);
+        var activeVehicle = await dbContext.Vehicles.AnyAsync(
+            x => x.Id == visit.VehicleId && x.Status == Domain.Vehicles.VehicleStatus.Active,
+            cancellationToken);
+        if (!activeOwner || !activeActor || !activeVehicle)
+            throw new InvalidOperationException("Gebruiker of voertuig is niet langer actief; de Visit is niet gestart.");
+
         // Administration uses the same lock. Recheck persisted limits after taking it,
         // since the operational context may have been resolved before an admin update.
         var globalLimit = await dbContext.ParkingSystemSettings.AsNoTracking()

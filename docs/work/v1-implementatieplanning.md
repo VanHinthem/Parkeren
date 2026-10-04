@@ -21,7 +21,7 @@ Geen van de 15 issues die bij de eerste review openstonden was duidelijk achterh
 | [#71 2Park-gedrag](https://github.com/VanHinthem/Parkeren/issues/71) | Gedeeltelijk gevalideerd. Echte tests bevestigden action-ID/read-back, 240 minuten maximum, toekomstige `scheduled` acties en de vereiste seconde tussen opvolgers. De issue noemt capaciteit, retries/onzekere responses en foutgevallen nog als gerichte vervolgvalidatie. Voer geen onnodige ketens van muterende acties uit. |
 | [#68 2Park-storingen](https://github.com/VanHinthem/Parkeren/issues/68) | Gedeeltelijk gerealiseerd. Duurzame operations, unknown-outcome reconciliation en notificatie-infrastructuur bestaan. De bredere foutclassificatie/backoff en functionele meldingen wanneer providerdekking tijdens gratis tijd nog niet bevestigd is, vragen nog verificatie en mogelijk implementatie. |
 | [#64 Account/product-sync](https://github.com/VanHinthem/Parkeren/issues/64) | Gedeeltelijk gerealiseerd. Productcatalogus-sync en admin-providerstatus bestaan. Verifieer credentialvalidatie, blijvende freshness/`LastSuccessfulSyncAt`, periodieke refresh en coördinatie met mutaties; de huidige balancesnapshot-cache is proceslokaal. |
-| [#11 Deactiveren/archiveren](https://github.com/VanHinthem/Parkeren/issues/11) | Actief. Activeren/deactiveren bestaat; een expliciete archiverings- en veilige permanente-verwijderflow voor records zonder historie ontbreekt in de API/UI. Historische relaties moeten behouden blijven. |
+| [#11 Deactiveren/archiveren](https://github.com/VanHinthem/Parkeren/issues/11) | Implementatie lokaal gereed voor review. API/UI ondersteunen archiveren en verwijderen zonder parkeerhistorie; PostgreSQL-tests bewijzen actieve-Visit-blokkade en behoud van rapportagehistorie. |
 | [#8 2Park-integratie-epic](https://github.com/VanHinthem/Parkeren/issues/8) | Relevant als parent van de nog open provider-sync-, storings- en capaciteitswerkzaamheden (#64, #68, #73) en de bijbehorende validatie. Geen apart implementatieproject naast de children. |
 | [#6 Monitoring/notificaties-epic](https://github.com/VanHinthem/Parkeren/issues/6) | Relevant als parent; de issue meldt dat #78 de resterende child is. Sluit na afronding van die capability-spike. |
 | [#1 Bezoekers/toegang-epic](https://github.com/VanHinthem/Parkeren/issues/1) | Relevant als parent van het resterende archiverings-/deactiveringswerk (#11). Sluit na de child en controle van overige children. |
@@ -59,7 +59,7 @@ Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve ac
 
 ### Data- en toegangsbeheertrack
 
-- **#11:** implementeer archiveren als standaard voor records met historie; sta permanent verwijderen alleen toe zonder historische/actieve relaties. Blokkeer archiveren tijdens een actieve Visit en test behoud van rapportagehistorie.
+- **#11:** implementatie lokaal gereed voor review. Archiveer records met historie, blokkeer dit tijdens actieve Visits en sta permanent verwijderen alleen toe zonder parkeerhistorie; sluit de issue pas na review en GitHub-bijwerking.
 - **#93:** bouw pas na bevestiging van providerdata en budgetsemantiek een idempotente import met expliciete herkomst en provider-ID. Importeer gerealiseerd providerverbruik zonder actuele parkeerregels over oude transacties heen te rekenen; test herhaalde sync, correcties en samenvoeging met nieuwe Visits.
 - Sluit parent **#1** nadat #11 en de overige children van de epic zijn gecontroleerd.
 

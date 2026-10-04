@@ -1,10 +1,14 @@
 import { useEffect,useState,type FormEvent } from "react";
 import {
+  archiveUser,
+  archiveVehicle,
   assignVehicle,
   getAssignedVehicles,
   unassignVehicle,
   createUser,
   createVehicle,
+  deleteUser,
+  deleteVehicle,
   getUsers,
   getVehicles,
   setUserActive,
@@ -99,6 +103,54 @@ export function AdminPage(){
     }
   }
 
+  async function archiveUserRecord(user:UserSummary){
+    if(!window.confirm(`Gebruiker ${user.username} archiveren? Historie blijft behouden.`))return;
+    setError(undefined);
+    try{
+      await archiveUser(user.id);
+      setMessage("Gebruiker is gearchiveerd.");
+      await refresh();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Archiveren mislukt.");
+    }
+  }
+
+  async function deleteUserRecord(user:UserSummary){
+    if(!window.confirm(`Gebruiker ${user.username} permanent verwijderen? Dit kan niet ongedaan worden gemaakt.`))return;
+    setError(undefined);
+    try{
+      await deleteUser(user.id);
+      setMessage("Gebruiker is verwijderd.");
+      await refresh();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Verwijderen mislukt.");
+    }
+  }
+
+  async function archiveVehicleRecord(vehicle:VehicleSummary){
+    if(!window.confirm(`Kenteken ${vehicle.licensePlate} archiveren? Historie blijft behouden.`))return;
+    setError(undefined);
+    try{
+      await archiveVehicle(vehicle.id);
+      setMessage("Voertuig is gearchiveerd.");
+      await refresh();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Archiveren mislukt.");
+    }
+  }
+
+  async function deleteVehicleRecord(vehicle:VehicleSummary){
+    if(!window.confirm(`Kenteken ${vehicle.licensePlate} permanent verwijderen? Dit kan niet ongedaan worden gemaakt.`))return;
+    setError(undefined);
+    try{
+      await deleteVehicle(vehicle.id);
+      setMessage("Voertuig is verwijderd.");
+      await refresh();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Verwijderen mislukt.");
+    }
+  }
+
   const selectedUsername=users.find(u=>u.id===selectedUser)?.username??"";
 
   return <div className="admin-grid">
@@ -128,13 +180,25 @@ export function AdminPage(){
               <small>
                 {u.role==="Admin"?"Beheerder":"Bezoeker"}
                 <span className={"admin-status "+(u.isActive?"admin-status--active":"admin-status--inactive")}>
-                  {u.isActive?"Actief":"Inactief"}
+                  {u.status==="Archived"?"Gearchiveerd":u.isActive?"Actief":"Inactief"}
                 </span>
               </small>
             </div>
-            <Button variant="secondary" onClick={async e=>{e.stopPropagation();await setUserActive(u.id,!u.isActive);await refresh();}}>
-              {u.isActive?"Deactiveren":"Activeren"}
-            </Button>
+            <div className="admin-row__actions">
+              {u.status!=="Archived"&&<Button variant="secondary" onClick={async e=>{
+                e.stopPropagation();
+                try{
+                  await setUserActive(u.id,!u.isActive);
+                  await refresh();
+                }catch(error){
+                  setError(error instanceof Error?error.message:"Status wijzigen mislukt.");
+                }
+              }}>
+                {u.isActive?"Deactiveren":"Activeren"}
+              </Button>}
+              {u.status!=="Archived"&&<Button variant="secondary" onClick={e=>{e.stopPropagation();void archiveUserRecord(u);}}>Archiveren</Button>}
+              {u.canDelete&&<Button variant="secondary" onClick={e=>{e.stopPropagation();void deleteUserRecord(u);}}>Verwijderen</Button>}
+            </div>
           </div>)}
       </div>
     </Card>
@@ -155,13 +219,17 @@ export function AdminPage(){
               <small>
                 {v.displayName||"Geen omschrijving"}
                 <span className={"admin-status "+(v.isActive?"admin-status--active":"admin-status--inactive")}>
-                  {v.isActive?"Actief":"Inactief"}
+                  {v.status==="Archived"?"Gearchiveerd":v.isActive?"Actief":"Inactief"}
                 </span>
               </small>
             </div>
-            <Button variant="secondary" onClick={async()=>{await setVehicleActive(v.id,!v.isActive);await refresh();}}>
-              {v.isActive?"Deactiveren":"Activeren"}
-            </Button>
+            <div className="admin-row__actions">
+              {v.status!=="Archived"&&<Button variant="secondary" onClick={()=>void setVehicleActive(v.id,!v.isActive).then(refresh).catch(e=>setError(e instanceof Error?e.message:"Status wijzigen mislukt."))}>
+                {v.isActive?"Deactiveren":"Activeren"}
+              </Button>}
+              {v.status!=="Archived"&&<Button variant="secondary" onClick={()=>void archiveVehicleRecord(v)}>Archiveren</Button>}
+              {v.canDelete&&<Button variant="secondary" onClick={()=>void deleteVehicleRecord(v)}>Verwijderen</Button>}
+            </div>
           </div>)}
       </div>
     </Card>
