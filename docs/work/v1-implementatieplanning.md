@@ -32,7 +32,7 @@ De tracks hieronder kunnen naast elkaar lopen zodra hun expliciete afhankelijkhe
 
 ### Gate 0 — Afsluiten wat al gebouwd is
 
-De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). Vul de daar gemarkeerde testgaten aan en wacht voor providergebonden criteria op #71; sluit #82 pas wanneer elk criterium bewezen is of expliciet is overgedragen. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Herhaal geen al bewezen provider- of mockimplementatie.
+De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). De processorlogtest `Sender_exception_details_are_not_written_to_processor_logs` bewijst dat de exception-canary niet in de processorlogs verschijnt terwijl delivery-ID en retry-status behouden blijven; het afzonderlijke exception-logpad in `WebPushSender` blijft open. De volledige solution-suite is na deze slice 475/475 geslaagd (4 oktober 2026). Vul de overige gemarkeerde testgaten aan en wacht voor providergebonden criteria op #71; sluit #82 pas wanneer elk criterium bewezen is of expliciet is overgedragen. #84 is gesloten nadat de aanvullende Stop-versus-eindtijd- en pushfailure-tests groen waren. Herhaal geen al bewezen provider- of mockimplementatie.
 
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Notifications;
@@ -86,6 +87,30 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
         Assert.Equal(PushDeliveryStatus.Failed, delivery.Status);
+        Assert.Equal(1, delivery.AttemptCount);
+    }
+
+    [Fact]
+    public async Task Sender_exception_details_are_not_written_to_processor_logs()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearPushDeliveriesAsync(cancellationToken);
+        var deliveryId = await CreateDeliveryAsync(cancellationToken);
+        const string sensitiveDetails = "canary-sensitive-push-details";
+        await using var context = fixture.CreateDbContext();
+        var logger = new CapturingLogger<PushDeliveryProcessor>();
+        var processor = new PushDeliveryProcessor(
+            context,
+            new ThrowingSender(sensitiveDetails),
+            new ManualTimeProvider(DateTimeOffset.UtcNow),
+            logger);
+
+        Assert.True(await processor.ProcessNextAsync(cancellationToken));
+
+        Assert.Contains($"Push delivery {deliveryId} failed.", logger.Entries);
+        Assert.DoesNotContain(sensitiveDetails, string.Join(Environment.NewLine, logger.Entries), StringComparison.Ordinal);
+        var delivery = await context.PushDeliveries.AsNoTracking().SingleAsync(x => x.Id == deliveryId, cancellationToken);
+        Assert.Equal(PushDeliveryStatus.Pending, delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
     }
 
@@ -233,5 +258,35 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
             string payload,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(result);
+    }
+
+    private sealed class ThrowingSender(string sensitiveDetails) : IWebPushSender
+    {
+        public Task<WebPushSendResult> SendAsync(
+            Guid recipientUserId,
+            string payload,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<WebPushSendResult>(new InvalidOperationException(sensitiveDetails));
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(formatter(state, exception));
+            if (exception is not null)
+                Entries.Add(exception.ToString());
+        }
     }
 }

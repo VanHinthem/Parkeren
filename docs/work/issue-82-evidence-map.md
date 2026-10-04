@@ -71,6 +71,8 @@ De huidige #71-bevindingen bevestigen onder meer start/read-back/stop, 240 minut
 
 ## Closeout-gates
 
+`Sender_exception_details_are_not_written_to_processor_logs` in [PushDeliveryProcessorTests.cs](../../tests/Parkeren.IntegrationTests/Database/PushDeliveryProcessorTests.cs) vangt zowel de geformatteerde logtekst als het exception-object af. De test bewijst dat de canary ontbreekt, de vaste warning met delivery-ID behouden blijft en de delivery Pending blijft met één poging. Dit dekt alleen exceptionlogging in `PushDeliveryProcessor`; het exception-logpad in [WebPushSender.cs](../../src/Parkeren.Infrastructure/Notifications/WebPushSender.cs) blijft een afzonderlijk open punt. Deze test is aanvullend op, en geen vervanging voor, de PostgreSQL-canary-scan; externe logging valt buiten die scan.
+
 - Voeg gerichte tests toe voor de ontbrekende historische/retentiegevallen hierboven. Genormaliseerde username-/kentekenuniciteit en sessie-revocatie/inactieve gebruiker zijn met PostgreSQL-integratietests aangetoond.
 - Beslis of de default-policy-versie en overlappende tariff-/budget-/ruleset-perioden database-side beschermd moeten worden; huidige overlapvalidatie is grotendeels applicatie-/domeinlogica.
 - Sluit #71-afhankelijke punten pas na providerbewijs.

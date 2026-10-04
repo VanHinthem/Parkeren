@@ -59,9 +59,9 @@ public sealed class PushDeliveryProcessor(
             else if (result == WebPushSendResult.NotConfigured || delivery.AttemptCount >= 3)
                 delivery.MarkFailed();
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            logger.LogWarning(exception, "Push delivery {PushDeliveryId} failed.", delivery.Id);
+            logger.LogWarning("Push delivery {PushDeliveryId} failed.", delivery.Id);
             if (delivery.AttemptCount >= 3)
                 delivery.MarkFailed();
         }
