@@ -44,6 +44,8 @@ De #82-matrix staat in [issue-82-evidence-map.md](issue-82-evidence-map.md). De 
 
 **#82-checklist gesynchroniseerd 4 oktober 2026:** 47/60 criteria zijn afgevinkt op basis van repo-bewijs. De 13 open punten zijn 11 afhankelijkheden van #71, bredere UTC-dekking voor alle persistente tijdvelden en het besluit over een database-singleton voor `DefaultParkingPolicy`. #82 blijft open.
 
+**Aanvullend #82-testbewijs:** de Release-integratietests `Default_change_is_allowed_when_active_user_overrides_changed_field`, `Paid_start_with_offset_timestamps_persists_utc_provider_end` en `Login_persists_pin_and_session_token_only_as_hashes` slaagden gericht met 3/3. Ze bewijzen respectievelijk applicatie-side update-in-place zonder rijgroei, UTC-offsets voor geselecteerde Visit-/provider-action-/scheduler-workvelden na een `+02:00` Start, en opslag van PIN-/sessietokenhashes zonder de ruwe waarden. Dit sluit geen checklistcriterium: een database-singletonbesluit is hiermee niet genomen en algemene UTC-dekking voor alle persistente tijdvelden blijft open. De stand blijft 47/60 met 13 open punten; de wijzigingen staan lokaal ter review.
+
 Voor #86 en het lokale deel van #73 geldt dezelfde audit, maar de definitieve acceptatie wacht op #71. Werk issuebeschrijvingen en checklists bij met concrete testnamen en bewijs. Alleen een ontbrekend criterium wordt een nieuwe taak.
 
 **Exit:** ieder criterium van #82 is aantoonbaar afgedekt of heeft een concrete resterende taak; de issue wordt niet gesloten zolang bewijsleemtes of #71-afhankelijkheden onopgelost zijn. #84 is gesloten met testbewijs; de bestaande delen van #86/#73 zijn expliciet gemarkeerd als gerealiseerd.

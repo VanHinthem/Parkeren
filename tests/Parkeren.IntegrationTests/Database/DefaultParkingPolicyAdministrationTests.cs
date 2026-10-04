@@ -90,6 +90,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
 
         await using var seed = fixture.CreateDbContext();
         var defaults = await seed.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct);
+        var defaultPolicyCount = await seed.DefaultParkingPolicies.CountAsync(ct);
         var original = Snapshot(defaults);
         defaults.SetValues(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true, false, 1);
 
@@ -141,7 +142,12 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
             Assert.Empty(result.BlockedFields);
 
             await using var verify = fixture.CreateDbContext();
-            Assert.False((await verify.DefaultParkingPolicies.OrderByDescending(x => x.UpdatedAt).FirstAsync(ct)).AllowVisitExtension);
+            var effectivePolicy = await verify.DefaultParkingPolicies
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstAsync(ct);
+            Assert.False(effectivePolicy.AllowVisitExtension);
+            Assert.Equal(defaults.Id, effectivePolicy.Id);
+            Assert.Equal(defaultPolicyCount, await verify.DefaultParkingPolicies.CountAsync(ct));
         }
         finally
         {
@@ -333,6 +339,7 @@ public sealed class DefaultParkingPolicyAdministrationTests(PostgreSqlFixture fi
         await context.ProviderOperations.ExecuteDeleteAsync(cancellationToken);
         await context.ProviderParkingActions.ExecuteDeleteAsync(cancellationToken);
         await context.DeleteVisitSchedulerAuditEventsAsync(cancellationToken);
+        await context.Notifications.ExecuteDeleteAsync(cancellationToken);
         await context.Visits.ExecuteDeleteAsync(cancellationToken);
     }
 

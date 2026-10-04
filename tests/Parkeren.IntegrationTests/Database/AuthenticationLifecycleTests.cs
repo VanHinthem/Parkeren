@@ -84,6 +84,48 @@ public sealed class AuthenticationLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Login_persists_pin_and_session_token_only_as_hashes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var username = $"lifecycle-secret-storage-{suffix}";
+        const string pin = "864209";
+        var user = CreateUser(username, pin, UserRole.Visitor);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            string sessionToken;
+            await using (var provider = CreateServices())
+            {
+                var authentication = provider.GetRequiredService<IAuthenticationService>();
+                var login = await authentication.LoginAsync(username, pin, ct);
+                Assert.NotNull(login);
+                sessionToken = login.SessionToken;
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var persistedUser = await verify.Users.SingleAsync(x => x.Id == user.Id, ct);
+            var persistedSession = await verify.UserSessions.SingleAsync(x => x.UserId == user.Id, ct);
+
+            Assert.NotEqual(pin, persistedUser.PinHash);
+            Assert.NotEqual(sessionToken, persistedSession.TokenHash);
+            Assert.DoesNotContain(sessionToken, persistedSession.TokenHash, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Existing_session_cannot_authenticate_after_user_is_deactivated()
     {
         var ct = TestContext.Current.CancellationToken;

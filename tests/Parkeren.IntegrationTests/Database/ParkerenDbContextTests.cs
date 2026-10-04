@@ -1097,7 +1097,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var user = new User(Guid.NewGuid(), $"offset-start-{suffix}", $"OFFSET-START-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"OS-{suffix[..2]}-{suffix[2..4]}", $"OS{suffix[..4]}", null);
         var startAt = new DateTimeOffset(2026, 9, 29, 10, 0, 0, TimeSpan.FromHours(2));
-        var desiredEndAt = startAt.AddHours(1);
+        var desiredEndAt = startAt.AddHours(5);
         var rules = new ParkingRuleSet(Guid.NewGuid(), startAt.ToUniversalTime().AddDays(-1), null,
             TimeSpan.FromHours(4), Enumerable.Range(0, 7)
                 .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
@@ -1138,10 +1138,23 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.NotNull(result);
         Assert.Equal(StartVisitFlowOutcome.Active, result.Outcome);
         await using var verifyContext = fixture.CreateDbContext();
+        var visit = await verifyContext.Visits.SingleAsync(x => x.Id == result.Visit.Id, cancellationToken);
         var action = await verifyContext.ProviderParkingActions.SingleAsync(
             x => x.VisitId == result.Visit.Id, cancellationToken);
-        Assert.Equal(startAt.ToUniversalTime().AddHours(1), action.PlannedEndAt);
+        var work = await verifyContext.VisitSchedulerWork
+            .Where(x => x.VisitId == result.Visit.Id)
+            .ToListAsync(cancellationToken);
+        Assert.Equal(startAt.ToUniversalTime(), visit.StartAt);
+        Assert.Equal(TimeSpan.Zero, visit.StartAt.Offset);
+        Assert.Equal(desiredEndAt.ToUniversalTime(), visit.DesiredEndAt);
+        Assert.Equal(TimeSpan.Zero, visit.DesiredEndAt!.Value.Offset);
+        Assert.Equal(startAt.ToUniversalTime(), action.PlannedStartAt);
+        Assert.Equal(startAt.ToUniversalTime().AddHours(4), action.PlannedEndAt);
+        Assert.Equal(TimeSpan.Zero, action.PlannedStartAt.Offset);
         Assert.Equal(TimeSpan.Zero, action.PlannedEndAt.Offset);
+        Assert.NotEmpty(work);
+        Assert.All(work, item => Assert.Equal(startAt.ToUniversalTime().AddHours(4).AddMinutes(-5), item.DueAt));
+        Assert.All(work, item => Assert.Equal(TimeSpan.Zero, item.DueAt.Offset));
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
     }
 
