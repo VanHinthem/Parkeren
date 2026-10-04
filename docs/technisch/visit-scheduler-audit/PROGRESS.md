@@ -91,7 +91,7 @@ Belangrijkste commits: `79ce2d04`, `d8f48c26`, `2de98742`, `0b17d16a`.
 - providercapaciteit uit derived state;
 - scheduled actions tellen alleen mee wanneer de test dat expliciet configureert.
 
-G8 is groen op `110ebce5`. Daarmee is fase G als **harness/capabilityfase afgerond**. Dit bewijst de testharness, niet het live providercontract. #71 houdt nog open: natuurlijke post-End-status, live betrouwbaarheid van T-5 continuation, duplicate-/read-back-semantiek na responseverlies, provider/account-capaciteit inclusief scheduled-status, provider/action-ID-scope, aanvullende foutcategorieën en een formele timestamp-SLA. Deze onzekerheden blijven configureerbaar en zijn geen mock-defaults.
+G8 is groen op `110ebce5`. Daarmee is fase G als **harness/capabilityfase afgerond**. Dit bewijst de testharness, niet het live providercontract. De #71-audit bevestigt maximaal vijf actieve provideractions; de globale app-seed/default is eveneens vijf en de beheerder houdt die configuratie op maximaal vijf (geen harde bovengrens in code). T-5 is de lokale planningspolicy, geen provider-SLA of vereiste liveproef. Unknown/reconciliation en geen blinde retry zijn lokaal getest. Extern onbevestigd maar voor V1 als niet-blokkerend geaccepteerd blijven scheduled-capacity, read-backbeschikbaarheid na responseverlies, natuurlijke post-End-status, provider/action-ID-scope, aanvullende foutcategorieën en een formele timestamp-SLA. De mock gebruikt hiervoor alleen expliciet configureerbare testmodi; die zijn geen provider-defaults.
 
 ## Fase H — regressieverificatie SCHED-001 t/m SCHED-017 ✅
 

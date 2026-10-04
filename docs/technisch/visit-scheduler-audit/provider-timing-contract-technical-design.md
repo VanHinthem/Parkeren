@@ -4,7 +4,7 @@
 **Status:** ontwerp geïmplementeerd; zie de as-built status in [SCHED-001](SCHED-001.md), [SCHED-002](SCHED-002.md), [SCHED-016](SCHED-016.md), [SCHED-017](SCHED-017.md) en [PROGRESS](PROGRESS.md).
 **Ontwerpdatum:** 2 oktober 2026
 
-> **Auditstatus 4 oktober 2026:** de T-5-planning, één successor, `End + 1 seconde`, scheduled-read-back, restart/reconciliation en centrale matching zijn lokaal geïmplementeerd en regressiegetest. Dit bewijst niet dat T-5 een live provider-SLA is. Live onzeker blijven responseverlies/duplicate-herkenning, provider-capaciteit, natuurlijke post-End-status en aanvullende foutcategorieën. Gebruik de secties hieronder als ontwerpgeschiedenis; de genoemde open punten zijn bijgewerkt naar uitsluitend live-provideronzekerheden.
+> **Auditstatus 4 oktober 2026:** de T-5-planning, één successor, `End + 1 seconde`, scheduled-read-back, restart/reconciliation en centrale matching zijn lokaal geïmplementeerd en regressiegetest. T-5 is een lokale policy, geen live provider-SLA of vereiste liveproef. Maximaal vijf actieve provideractions is bevestigd; de app-seed/default is vijf en de beheerder houdt `MaxConcurrentVisits` op maximaal vijf (geen harde codegrens). Scheduled-capacity, provider-idempotentie/read-back na responseverlies, natuurlijke post-End-status, action-ID-scope, timestamp-SLA en aanvullende foutcategorieën blijven live onbevestigd maar zijn niet-blokkerend voor V1 geaccepteerd. Gebruik de secties hieronder als ontwerpgeschiedenis.
 
 ## Doel
 
@@ -355,7 +355,7 @@ Dit is vooral relevant voor SCHED-002/SCHED-011 en de TwoParkMock.
 
 ### 4. Provider-capaciteit van `scheduled` actions
 
-Issue #71 heeft nog niet bevestigd of scheduled actions meetellen voor providercapaciteit. De scheduler mag voor V1 maximaal één successor per Visit maken, maar capacity-handling moet na die providerbevinding nog worden gevalideerd.
+Maximaal vijf actieve provideractions is bevestigd; #71 heeft niet bevestigd of een scheduled action vooraf capaciteit reserveert. De beheerder houdt voor V1 de globale app-configuratie op maximaal vijf Visits. De scheduler maakt maximaal één successor per Visit; dit is de geaccepteerde operationele policy, geen bewijs van providerinterne scheduled-capacity.
 
 Deze open punten mogen niet met aannames in de mock worden ingevuld.
 

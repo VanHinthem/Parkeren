@@ -45,7 +45,7 @@ Unknown/restart recovery reconciliëert eerst providerstate en creëert geen dup
 
 Future Start gebruikt dezelfde centrale `ProviderActionMatchPolicy` als andere startflows. De 5-seconden timestamp tolerance is een engineering margin, geen gemeten 2Park-SLA.
 
-Live 2Park heeft de `End + 1 seconde`-regel en `scheduled` read-back bevestigd. T-5 is de gekozen en regressiegeteste applicatieplanning, maar is geen live gemeten betrouwbaarheidsgrens; die providerproef blijft bij #71.
+Live 2Park heeft de `End + 1 seconde`-regel en `scheduled` read-back bevestigd. T-5 is de gekozen en regressiegeteste lokale planning, geen live gemeten betrouwbaarheidsgrens of provider-SLA; een aparte T-5-proef is niet vereist.
 
 ## Regressiebewijs
 
@@ -60,7 +60,7 @@ Belangrijk bewijs uit de hardening:
 
 ## Extern nog onbewezen
 
-Of een future `scheduled` action meetelt voor de echte 2Park-capaciteitslimiet is nog niet hard gemeten. Dit verandert de exactly-one/idempotency-invariant niet; de mock kan beide testmodi expliciet modelleren.
+De providerlimiet van maximaal vijf actieve actions is bevestigd. Of een future `scheduled` action vooraf capaciteit reserveert is niet hard gemeten; de beheerder houdt de globale app-configuratie op maximaal vijf Visits. Dit is de geaccepteerde operationele policy, geen bewijs van providerinterne scheduled-capacity. De mock kan beide testmodi expliciet modelleren.
 
 ## Conclusie
 
