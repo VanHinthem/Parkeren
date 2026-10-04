@@ -18,7 +18,7 @@ Deze matrix is de uitvoerbasis voor spike #78. Een capability is pas **Validated
 | Herstel actieve Visit na restart | Supported | Android gevalideerd; iOS open | Android app + telefoonrestart ✅ |
 | Offline/netwerkverlies en herstel | Supported with constraints | Te valideren | iOS + Android |
 | Service-worker precache/update/cache | Supported | Android gevalideerd; iOS open | Android: consecutive deployments/auto-refresh ✅ |
-| Push subscription vervallen/vernieuwen | Supported with constraints | Key refresh + expired cleanup geïmplementeerd | iOS + Android |
+| Push subscription vervallen/vernieuwen | Supported with constraints | Server-side key update bij herregistratie getest in [PushSubscriptionServiceTests.cs](../../tests/Parkeren.IntegrationTests/Database/PushSubscriptionServiceTests.cs); 404/410-opruiming is geïmplementeerd maar heeft geen gerichte test gevonden. | iOS + Android: echte expiry/refresh nog valideren |
 | Notification click bij gesloten app | Supported with constraints | Android gevalideerd; iOS open | Android ✅ |
 | Notification click bij open app | Supported | Android gevalideerd; iOS open | Android ✅ |
 | Direct reload /acties/{VisitId} | Supported | Android gevalideerd; productie/iOS open | Android dev-PWA ✅ |

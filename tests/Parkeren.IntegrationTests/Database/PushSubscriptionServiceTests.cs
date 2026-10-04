@@ -26,6 +26,26 @@ public sealed class PushSubscriptionServiceTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Register_refreshes_keys_for_existing_endpoint()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var user = await CreateUserAsync(cancellationToken);
+        var endpoint = $"https://push.example.test/{Guid.NewGuid():N}";
+
+        await using var context = fixture.CreateDbContext();
+        var service = new PushSubscriptionService(context);
+        await service.RegisterAsync(user.Id, endpoint, "old-p256dh", "old-auth", cancellationToken);
+
+        var result = await service.RegisterAsync(user.Id, endpoint, "new-p256dh", "new-auth", cancellationToken);
+
+        Assert.Equal(PushSubscriptionRegistrationResult.AlreadyRegistered, result);
+        await using var verifyContext = fixture.CreateDbContext();
+        var subscription = await verifyContext.PushSubscriptions.SingleAsync(x => x.Endpoint == endpoint, cancellationToken);
+        Assert.Equal("new-p256dh", subscription.P256dh);
+        Assert.Equal("new-auth", subscription.Auth);
+    }
+
+    [Fact]
     public async Task Register_rejects_endpoint_owned_by_another_user()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
