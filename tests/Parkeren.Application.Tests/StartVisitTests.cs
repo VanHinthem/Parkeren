@@ -36,6 +36,29 @@ public sealed class StartVisitTests
     }
 
     [Fact]
+    public void Prepare_normalizes_visit_timestamps_to_utc()
+    {
+        var startAt = new DateTimeOffset(2026, 9, 28, 10, 0, 0, TimeSpan.FromHours(2));
+        var desiredEndAt = startAt.AddHours(1);
+        var ownerId = Guid.NewGuid();
+        var command = new StartVisitCommand(
+            Guid.NewGuid(), ownerId, ownerId, Guid.NewGuid(), startAt, desiredEndAt);
+        var context = new StartVisitContext(
+            new(ownerId, UserRole.Visitor, true),
+            new(ownerId, true),
+            new(command.VehicleId, true, true));
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+
+        var prepared = new StartVisitPreparer().Prepare(
+            command, context, policy, PaidRules(startAt), startAt.AddMinutes(1));
+
+        Assert.Equal(startAt.ToUniversalTime(), prepared.Visit.StartAt);
+        Assert.Equal(TimeSpan.Zero, prepared.Visit.StartAt.Offset);
+        Assert.Equal(desiredEndAt.ToUniversalTime(), prepared.Visit.DesiredEndAt);
+        Assert.Equal(TimeSpan.Zero, prepared.Visit.DesiredEndAt!.Value.Offset);
+    }
+
+    [Fact]
     public void Initial_action_stops_at_paid_window_end_even_when_visit_continues_overnight()
     {
         // 19:00 local on Monday until 10:00 local on Tuesday.

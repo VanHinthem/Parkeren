@@ -30,6 +30,9 @@ internal sealed class StartVisitOperationalContextResolver(
         DateTimeOffset? desiredEndAt,
         CancellationToken cancellationToken)
     {
+        startAt = startAt.ToUniversalTime();
+        desiredEndAt = desiredEndAt?.ToUniversalTime();
+
         var defaults = await dbContext.DefaultParkingPolicies
             .AsNoTracking()
             .OrderByDescending(x => x.UpdatedAt)

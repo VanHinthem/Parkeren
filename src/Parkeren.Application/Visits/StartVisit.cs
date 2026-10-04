@@ -25,6 +25,9 @@ public sealed class StartVisitPreparer
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(ruleSets);
+        var startAt = command.StartAt.ToUniversalTime();
+        var desiredEndAt = command.DesiredEndAt?.ToUniversalTime();
+        var evaluationEndAt = coverageEvaluationEndAt.ToUniversalTime();
         var rules = ruleSets.ToArray();
         if (context.Actor.Id != command.ActorUserId || context.Owner.Id != command.OwnerUserId || context.Vehicle.Id != command.VehicleId)
             throw new InvalidOperationException("Resolved start context does not match the command.");
@@ -32,16 +35,16 @@ public sealed class StartVisitPreparer
         if (command.OperationId == Guid.Empty) throw new ArgumentException("OperationId is required.", nameof(command));
         if (command.OwnerUserId == Guid.Empty || command.ActorUserId == Guid.Empty || command.VehicleId == Guid.Empty) throw new ArgumentException("Owner, actor and vehicle are required.", nameof(command));
 
-        if (command.DesiredEndAt is null && !policy.AllowOpenEndedVisits)
+        if (desiredEndAt is null && !policy.AllowOpenEndedVisits)
             throw new InvalidOperationException("Visit policy does not allow open-ended Visits.");
 
-        if (command.DesiredEndAt is not null)
+        if (desiredEndAt is not null)
         {
-            var durationValidation = VisitDurationPolicyValidator.Validate(policy, command.StartAt, command.DesiredEndAt.Value);
+            var durationValidation = VisitDurationPolicyValidator.Validate(policy, startAt, desiredEndAt.Value);
             if (!durationValidation.IsAllowed)
                 throw new InvalidOperationException("Requested Visit duration exceeds the effective parking policy.");
 
-            var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(command.StartAt, command.DesiredEndAt.Value, rules)
+            var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(startAt, desiredEndAt.Value, rules)
                 .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                 .Where(x => x.IsPaid)
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
@@ -49,7 +52,7 @@ public sealed class StartVisitPreparer
                 throw new InvalidOperationException("Requested Visit paid duration exceeds the effective parking policy.");
         }
         var requiresProviderCoverageNow = StartVisitCoverage.RequiresProviderCoverageNow(
-            command.StartAt, coverageEvaluationEndAt, rules);
+            startAt, evaluationEndAt, rules);
         var snapshot = EffectiveParkingPolicySnapshot.Capture(policy);
         var visit = new Visit(
             Guid.NewGuid(),
@@ -57,8 +60,8 @@ public sealed class StartVisitPreparer
             command.OwnerUserId,
             command.VehicleId,
             command.ActorUserId,
-            command.StartAt,
-            command.DesiredEndAt,
+            startAt,
+            desiredEndAt,
             snapshot,
             providerProductId,
             providerProductExternalId,

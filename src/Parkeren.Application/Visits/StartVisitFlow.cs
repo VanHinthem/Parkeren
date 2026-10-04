@@ -101,7 +101,7 @@ public sealed class StartVisitFlow(
         {
             var paidEndAt = command.DesiredEndAt ?? coverageEvaluationEndAt;
             var providerEndAt = ProviderActionStartPlanner.PlanEnd(
-                command.StartAt, paidEndAt, ruleSets);
+                command.StartAt, paidEndAt, ruleSets).ToUniversalTime();
             var paidDuration = ParkingRuleSetPeriodSegmenter.Segment(command.StartAt, paidEndAt, ruleSets)
                 .SelectMany(x => ParkingTimeSegmenter.Segment(x.Start, x.End, x.RuleSet))
                 .Where(x => x.IsPaid)
