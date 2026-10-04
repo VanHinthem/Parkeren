@@ -46,4 +46,43 @@ public sealed class NormalizedIdentityConstraintTests(PostgreSqlFixture fixture)
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgresException.SqlState);
         Assert.Equal("IX_vehicles_NormalizedLicensePlate", postgresException.ConstraintName);
     }
+
+    [Fact]
+    public async Task Database_rejects_duplicate_user_vehicle_assignments()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var user = new User(Guid.NewGuid(), $"assignment-user-{suffix}", $"ASSIGNMENT-USER-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"ZX{suffix[..6].ToUpperInvariant()}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.UserVehicles.Add(new UserVehicle(user.Id, vehicle.Id));
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using var duplicate = fixture.CreateDbContext();
+            duplicate.UserVehicles.Add(new UserVehicle(user.Id, vehicle.Id));
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(
+                async () => await duplicate.SaveChangesAsync(cancellationToken));
+
+            var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+            Assert.Equal(PostgresErrorCodes.UniqueViolation, postgresException.SqlState);
+            Assert.Equal("PK_user_vehicles", postgresException.ConstraintName);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.UserVehicles
+                .Where(x => x.UserId == user.Id && x.VehicleId == vehicle.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+        }
+    }
 }
