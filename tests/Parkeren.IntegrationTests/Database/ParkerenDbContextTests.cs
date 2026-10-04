@@ -103,6 +103,81 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Admin_started_visit_persists_owner_and_actor_separately()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var admin = new User(Guid.NewGuid(), $"start-admin-{suffix}", $"START-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var owner = new User(Guid.NewGuid(), $"start-owner-{suffix}", $"START-OWNER-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"AT-{suffix[..4]}", $"AT{suffix[..4]}", null);
+        var operationId = Guid.NewGuid();
+        var startAt = new DateTimeOffset(2026, 10, 5, 10, 0, 0, TimeSpan.FromHours(2)).ToUniversalTime();
+        var desiredEndAt = startAt.AddHours(1);
+        Guid? visitId = null;
+        var rules = new ParkingRuleSet(
+            Guid.NewGuid(),
+            startAt.AddDays(-1),
+            null,
+            TimeSpan.FromHours(4),
+            Enumerable.Range(0, 7)
+                .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                .ToArray());
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.AddRange(admin, owner);
+            seedContext.Vehicles.Add(vehicle);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        try
+        {
+            var command = new StartVisitCommand(operationId, owner.Id, admin.Id, vehicle.Id, startAt, desiredEndAt);
+            var context = new StartVisitContext(
+                new(admin.Id, UserRole.Admin, true),
+                new(owner.Id, true),
+                new(vehicle.Id, true, true));
+            var preparation = new StartVisitPreparer().Prepare(
+                command,
+                context,
+                new EffectiveParkingPolicy(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true),
+                [rules],
+                desiredEndAt);
+            visitId = preparation.Visit.Id;
+
+            var configuration = new ConfigurationManager();
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+            });
+            var services = new ServiceCollection();
+            services.AddInfrastructure(configuration);
+            await using var provider = services.BuildServiceProvider();
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var claimer = scope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+                var claim = await claimer.TryClaimAsync(preparation.Visit, 5, 5, cancellationToken);
+                Assert.True(claim.Claimed);
+            }
+
+            await using var verifyContext = fixture.CreateDbContext();
+            var persistedVisit = await verifyContext.Visits.AsNoTracking()
+                .SingleAsync(x => x.StartOperationId == operationId, cancellationToken);
+            Assert.Equal(owner.Id, persistedVisit.UserId);
+            Assert.Equal(admin.Id, persistedVisit.StartedByUserId);
+        }
+        finally
+        {
+            await using var cleanupContext = fixture.CreateDbContext();
+            if (visitId.HasValue)
+                await cleanupContext.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visitId.Value);
+            await cleanupContext.Visits.Where(x => x.StartOperationId == operationId).ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanupContext.Users.Where(x => x.Id == admin.Id || x.Id == owner.Id).ExecuteDeleteAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Visit_capacity_claim_allows_only_one_start_for_last_slot()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
