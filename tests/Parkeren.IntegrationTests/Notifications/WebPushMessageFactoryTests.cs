@@ -44,6 +44,21 @@ public sealed class WebPushMessageFactoryTests
     }
 
     [Fact]
+    public void Visit_stopped_notification_without_visit_links_to_inbox()
+    {
+        var notification = new Notification(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            NotificationType.VisitStopped,
+            DateTimeOffset.UtcNow);
+
+        var message = WebPushMessageFactory.Create(notification);
+
+        Assert.NotNull(message);
+        Assert.Equal("/meldingen", message.Url);
+    }
+
+    [Fact]
     public void Provider_continuation_succeeded_links_to_dashboard()
     {
         var notification = new Notification(
