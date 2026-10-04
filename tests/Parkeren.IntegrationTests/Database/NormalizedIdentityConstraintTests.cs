@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.Visits;
 
 namespace Parkeren.IntegrationTests.Database;
 
@@ -83,6 +84,40 @@ public sealed class NormalizedIdentityConstraintTests(PostgreSqlFixture fixture)
                 .ExecuteDeleteAsync(cancellationToken);
             await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Database_rejects_duplicate_provider_operation_ids()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var operationId = Guid.NewGuid();
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ProviderOperations.Add(new ProviderOperation(
+                    Guid.NewGuid(), operationId, null, null, ProviderOperationType.Start));
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using var duplicate = fixture.CreateDbContext();
+            duplicate.ProviderOperations.Add(new ProviderOperation(
+                Guid.NewGuid(), operationId, null, null, ProviderOperationType.Start));
+            var exception = await Assert.ThrowsAsync<DbUpdateException>(
+                async () => await duplicate.SaveChangesAsync(cancellationToken));
+
+            var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+            Assert.Equal(PostgresErrorCodes.UniqueViolation, postgresException.SqlState);
+            Assert.Equal("IX_provider_operations_OperationId", postgresException.ConstraintName);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderOperations
+                .Where(x => x.OperationId == operationId)
+                .ExecuteDeleteAsync(cancellationToken);
         }
     }
 }
