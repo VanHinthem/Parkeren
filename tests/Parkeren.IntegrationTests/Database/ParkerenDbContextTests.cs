@@ -22,7 +22,9 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 {
-    private sealed class ErrorParkingProvider(ProviderResponseException exception) : IParkingProvider
+    private sealed class ErrorParkingProvider(
+        ProviderResponseException exception,
+        IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>? actions = null) : IParkingProvider
     {
         public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ProviderCategory>>([]);
@@ -35,7 +37,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
         public Task<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>> GetActionsAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>([]);
+            Task.FromResult<IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>>(actions ?? []);
 
         public Task<Parkeren.Application.ParkingProvider.ProviderParkingAction> StartActionAsync(
             ProviderParkingActionRequest request,
@@ -46,10 +48,10 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             string providerActionId,
             DateTimeOffset newEnd,
             CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromException<Parkeren.Application.ParkingProvider.ProviderParkingAction>(exception);
 
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromException(exception);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
@@ -1172,6 +1174,159 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(ProviderActionHealth.Unknown, action.Health);
         Assert.Equal(VisitHealth.Reconciling, visit.Health);
         var persistedText = JsonSerializer.Serialize(new { operation, action, visit, auditEvents });
+        Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Provider_extension_persists_only_provider_code_when_exception_contains_sensitive_details()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"extend-redaction-{suffix}", $"EXTEND-REDACTION-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ER-{suffix[..2]}-{suffix[2..4]}", $"ER{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddMinutes(5));
+        action.MarkStarting();
+        action.MarkActive("provider-extend-redaction", now.AddHours(-1), "active");
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        const string sensitiveDetails = "canary-sensitive-provider-details";
+        var providerAction = new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+            action.ProviderActionId!, vehicle.NormalizedLicensePlate, action.PlannedStartAt,
+            action.PlannedEndAt, "Oss", "active");
+        var parkingProvider = new ErrorParkingProvider(new ProviderResponseException(
+            "PROVIDER_FAILURE", sensitiveDetails, $"provider error: {sensitiveDetails}"), [providerAction]);
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+        ProviderExtendExecution execution;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var preparation = await scope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
+                .PrepareAttemptAsync(visit, action, operationId, now.AddHours(1), cancellationToken);
+            execution = await scope.ServiceProvider.GetRequiredService<ContinueVisitProviderExecutor>()
+                .ExecuteAsync(preparation, cancellationToken);
+        }
+
+        Assert.True(execution.RequiresReconciliation);
+        await using var verifyContext = fixture.CreateDbContext();
+        var operation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var persistedAction = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var auditEvents = await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken);
+        var notificationEvents = await verifyContext.NotificationEvents
+            .Where(x => x.AggregateId == visit.Id)
+            .ToListAsync(cancellationToken);
+        var notifications = await verifyContext.Notifications
+            .Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken);
+
+        Assert.NotEmpty(auditEvents);
+        Assert.NotEmpty(notificationEvents);
+        Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
+        Assert.Equal("PROVIDER_FAILURE", operation.LastErrorCode);
+        Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
+        var persistedText = JsonSerializer.Serialize(new
+        {
+            operation, persistedAction, persistedVisit, auditEvents, notificationEvents, notifications
+        });
+        Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Provider_stop_persists_only_provider_code_when_exception_contains_sensitive_details()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"stop-redaction-{suffix}", $"STOP-REDACTION-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"SR-{suffix[..2]}-{suffix[2..4]}", $"SR{suffix[..4]}", null);
+        var now = DateTimeOffset.UtcNow;
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            now.AddHours(-1), now.AddHours(2),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, now.AddHours(-1), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-redaction", now.AddHours(-1), "active");
+
+        await using (var seedContext = fixture.CreateDbContext())
+        {
+            seedContext.Users.Add(user);
+            seedContext.Vehicles.Add(vehicle);
+            seedContext.Visits.Add(visit);
+            seedContext.ProviderParkingActions.Add(action);
+            await seedContext.SaveChangesAsync(cancellationToken);
+        }
+
+        const string sensitiveDetails = "canary-sensitive-provider-details";
+        var parkingProvider = new ErrorParkingProvider(new ProviderResponseException(
+            "PROVIDER_FAILURE", sensitiveDetails, $"provider error: {sensitiveDetails}"));
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+        });
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IParkingProvider>(parkingProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        var operationId = Guid.NewGuid();
+        ProviderStopExecution execution;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var claim = await scope.ServiceProvider.GetRequiredService<IStopVisitClaimer>()
+                .ClaimAsync(new StopVisitCommand(operationId, visit.Id, user.Id), cancellationToken);
+            var preparation = await scope.ServiceProvider.GetRequiredService<IProviderStopStore>()
+                .PrepareAttemptAsync(claim, cancellationToken);
+            execution = await scope.ServiceProvider.GetRequiredService<StopVisitProviderExecutor>()
+                .ExecuteAsync(preparation, cancellationToken);
+        }
+
+        Assert.True(execution.RequiresReconciliation);
+        await using var verifyContext = fixture.CreateDbContext();
+        var operation = await verifyContext.ProviderOperations.SingleAsync(x => x.OperationId == operationId, cancellationToken);
+        var persistedAction = await verifyContext.ProviderParkingActions.SingleAsync(x => x.VisitId == visit.Id, cancellationToken);
+        var persistedVisit = await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+        var auditEvents = await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id)
+            .ToListAsync(cancellationToken);
+
+        Assert.NotEmpty(auditEvents);
+        Assert.Equal(ProviderOperationStatus.Unknown, operation.Status);
+        Assert.Equal("PROVIDER_FAILURE", operation.LastErrorCode);
+        Assert.Equal(ProviderActionHealth.Unknown, persistedAction.Health);
+        Assert.Equal(VisitStatus.Stopping, persistedVisit.Status);
+        Assert.Equal(VisitHealth.Reconciling, persistedVisit.Health);
+        var persistedText = JsonSerializer.Serialize(new { operation, persistedAction, persistedVisit, auditEvents });
         Assert.DoesNotContain(sensitiveDetails, persistedText, StringComparison.Ordinal);
     }
 
