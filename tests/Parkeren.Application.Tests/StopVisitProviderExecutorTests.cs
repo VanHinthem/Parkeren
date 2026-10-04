@@ -128,6 +128,35 @@ public sealed class StopVisitProviderExecutorTests
     }
 
     [Fact]
+    public async Task Provider_response_error_during_stop_is_recorded_as_unknown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visitId, now.AddMinutes(-30), now.AddHours(1));
+        action.MarkStarting();
+        action.MarkActive("provider-stop-error", now.AddMinutes(-30), "active");
+        action.BeginStopping();
+        var operation = new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visitId, action.Id, ProviderOperationType.Stop);
+        operation.BeginAttempt();
+        var provider = new SuccessfulStopProvider(
+            new Parkeren.Application.ParkingProvider.ProviderParkingAction(
+                "provider-stop-error", "ST01OP", now.AddMinutes(-30), now.AddHours(1), "Oss", "active"),
+            stopException: new ProviderResponseException("PROVIDER_FAILURE", "Stop unavailable", "provider error"));
+        var store = new TrackingStopResultStore();
+
+        var result = await new StopVisitProviderExecutor(provider, store).ExecuteAsync(
+            new ProviderStopPreparation(operation, action, false, true),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.Equal(1, provider.StopCalls);
+        Assert.Equal(0, provider.ReadCalls);
+        Assert.Equal(0, store.ConfirmedCalls);
+        Assert.Equal(1, store.UnknownCalls);
+        Assert.Equal("PROVIDER_FAILURE", store.LastErrorCode);
+    }
+
+    [Fact]
     public async Task Unknown_stop_reconciles_stopped_provider_action_without_second_stop()
     {
         var now = DateTimeOffset.UtcNow;
@@ -166,7 +195,8 @@ public sealed class StopVisitProviderExecutorTests
     private sealed class SuccessfulStopProvider(
         Parkeren.Application.ParkingProvider.ProviderParkingAction action,
         Action? onStop = null,
-        Action? onReadBack = null) : IParkingProvider
+        Action? onReadBack = null,
+        Exception? stopException = null) : IParkingProvider
     {
         public int StopCalls { get; private set; }
         public int ReadCalls { get; private set; }
@@ -176,6 +206,8 @@ public sealed class StopVisitProviderExecutorTests
         {
             StopCalls++;
             StoppedProviderActionId = providerActionId;
+            if (stopException is not null)
+                return Task.FromException(stopException);
             onStop?.Invoke();
             return Task.CompletedTask;
         }

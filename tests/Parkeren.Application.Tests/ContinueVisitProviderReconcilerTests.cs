@@ -108,6 +108,28 @@ public sealed class ContinueVisitProviderReconcilerTests
     }
 
     [Fact]
+    public async Task Provider_response_error_during_extension_is_recorded_as_unknown()
+    {
+        var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
+        var preparation = CreateInProgressPreparation(requestedEnd);
+        var providerAction = new ProviderAction(
+            preparation.Action.ProviderActionId!, "TK01HF", preparation.Action.PlannedStartAt,
+            preparation.Action.PlannedEndAt, "Oss", "active");
+        var store = new TrackingResultStore();
+        var provider = new ActionsProvider(
+            [providerAction],
+            new ProviderResponseException("PROVIDER_FAILURE", "Extension unavailable", "provider error"));
+
+        var result = await new ContinueVisitProviderExecutor(provider, store)
+            .ExecuteAsync(preparation, TestContext.Current.CancellationToken);
+
+        Assert.True(result.RequiresReconciliation);
+        Assert.False(result.DefinitiveFailure);
+        Assert.Equal("PROVIDER_FAILURE", store.UnknownErrorCode);
+        Assert.Equal(0, store.ConfirmedCalls);
+    }
+
+    [Fact]
     public async Task Stopped_provider_action_cannot_confirm_unknown_extension()
     {
         var requestedEnd = DateTimeOffset.UtcNow.AddHours(1);
@@ -219,7 +241,9 @@ public sealed class ContinueVisitProviderReconcilerTests
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private sealed class ActionsProvider(IReadOnlyList<ProviderAction> actions) : IParkingProvider
+    private sealed class ActionsProvider(
+        IReadOnlyList<ProviderAction> actions,
+        Exception? extensionException = null) : IParkingProvider
     {
         public Task<IReadOnlyList<ProviderAction>> GetActionsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(actions);
@@ -228,7 +252,8 @@ public sealed class ContinueVisitProviderReconcilerTests
         public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ProviderAction> StartActionAsync(ProviderParkingActionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<ProviderAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ProviderAction> ExtendActionAsync(string providerActionId, DateTimeOffset newEnd, CancellationToken cancellationToken = default) =>
+            Task.FromException<ProviderAction>(extensionException ?? new NotSupportedException());
         public Task StopActionAsync(string providerActionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }
