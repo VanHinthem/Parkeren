@@ -61,8 +61,9 @@ public sealed class VisitSchedulerWork
     public string? ClaimedBy { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public uint Version { get; private set; }
+    public string? AuditReasonCode { get; private set; }
 
-    public void Claim(string workerId, DateTimeOffset claimedAt)
+    public void Claim(string workerId, DateTimeOffset claimedAt, string? reasonCode = null)
     {
         if (Status != VisitSchedulerWorkStatus.Pending)
             throw new InvalidOperationException("Only pending scheduler work can be claimed.");
@@ -73,9 +74,10 @@ public sealed class VisitSchedulerWork
         ClaimedBy = workerId;
         ClaimedAt = claimedAt;
         AttemptCount++;
+        SetAuditReasonCode(reasonCode, "due_work_claimed");
     }
 
-    public void Defer(DateTimeOffset dueAt)
+    public void Defer(DateTimeOffset dueAt, string? reasonCode = null)
     {
         if (Status != VisitSchedulerWorkStatus.Pending)
             throw new InvalidOperationException("Only pending scheduler work can be deferred.");
@@ -83,9 +85,10 @@ public sealed class VisitSchedulerWork
             throw new ArgumentOutOfRangeException(nameof(dueAt), "Deferred scheduler work must move to a later due time.");
 
         DueAt = dueAt;
+        SetAuditReasonCode(reasonCode, "work_deferred");
     }
 
-    public void Release(DateTimeOffset dueAt)
+    public void Release(DateTimeOffset dueAt, string? reasonCode = null)
     {
         if (Status != VisitSchedulerWorkStatus.Claimed)
             throw new InvalidOperationException("Only claimed scheduler work can be released.");
@@ -96,22 +99,33 @@ public sealed class VisitSchedulerWork
         DueAt = dueAt;
         ClaimedAt = null;
         ClaimedBy = null;
+        SetAuditReasonCode(reasonCode, "work_released");
     }
 
-    public void Complete(DateTimeOffset completedAt)
+    public void Complete(DateTimeOffset completedAt, string? reasonCode = null)
     {
         if (Status != VisitSchedulerWorkStatus.Claimed)
             throw new InvalidOperationException("Only claimed scheduler work can be completed.");
 
         Status = VisitSchedulerWorkStatus.Completed;
         CompletedAt = completedAt;
+        SetAuditReasonCode(reasonCode, "work_completed");
     }
 
-    public void Cancel()
+    public void Cancel(string? reasonCode = null)
     {
         if (Status is VisitSchedulerWorkStatus.Completed or VisitSchedulerWorkStatus.Cancelled)
             throw new InvalidOperationException("Completed or cancelled scheduler work cannot be cancelled again.");
 
         Status = VisitSchedulerWorkStatus.Cancelled;
+        SetAuditReasonCode(reasonCode, "work_cancelled");
+    }
+
+    private void SetAuditReasonCode(string? reasonCode, string fallback)
+    {
+        var normalized = string.IsNullOrWhiteSpace(reasonCode) ? fallback : reasonCode.Trim();
+        if (normalized.Length > 100)
+            throw new ArgumentOutOfRangeException(nameof(reasonCode), "Scheduler audit reason codes cannot exceed 100 characters.");
+        AuditReasonCode = normalized;
     }
 }

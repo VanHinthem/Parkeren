@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.ParkingProvider;
@@ -329,6 +330,21 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         Assert.Equal(ProviderActionHealth.Healthy, persistedAction.Health);
         Assert.NotNull(persistedAction.ProviderActionId);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedOperation.Status);
+        var operationEvents = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.SourceId == operation.Id)
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.EventOrder)
+            .ThenBy(x => x.Id)
+            .Select(x => x.EventType)
+            .ToListAsync(cancellationToken);
+        Assert.True(operationEvents.Contains("provider_operation.outcome_unknown"),
+            $"Provider-operation audit sequence: {string.Join(", ", operationEvents)}");
+        Assert.Equal(1, operationEvents.Count(x => x == "provider_operation.reconciliation_started"));
+        Assert.Equal(1, operationEvents.Count(x => x == "provider_operation.succeeded"));
+        Assert.True(operationEvents.IndexOf("provider_operation.outcome_unknown") <
+                    operationEvents.IndexOf("provider_operation.reconciliation_started"));
+        Assert.True(operationEvents.IndexOf("provider_operation.reconciliation_started") <
+                    operationEvents.IndexOf("provider_operation.succeeded"));
         await ClearVisitStateAsync(cancellationToken);
     }
 
@@ -366,6 +382,7 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
                     setters => setters.SetProperty(x => x.AttemptStartedAt, expiredAt),
                     cancellationToken);
         }
+            clock.Set(DateTimeOffset.UtcNow);
 
         await using (var periodicScope = services.CreateAsyncScope())
         {
@@ -378,9 +395,18 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
 
         await using (var scheduled = fixture.CreateDbContext())
         {
-            var stopWork = await scheduled.VisitSchedulerWork.SingleAsync(
-                x => x.VisitId == visit.Id && x.Type == VisitSchedulerWorkType.StopVisit,
-                cancellationToken);
+            var scheduledVisit = await scheduled.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            var scheduledOperation = await scheduled.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken);
+            var scheduledAction = await scheduled.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
+            var visitWork = await scheduled.VisitSchedulerWork
+                .Where(x => x.VisitId == visit.Id)
+                .ToListAsync(cancellationToken);
+            Assert.True(visitWork.Any(x => x.Type == VisitSchedulerWorkType.StopVisit),
+                $"Expected terminal work for Visit {scheduledVisit.Status}/{scheduledVisit.Health}, " +
+                $"operation {scheduledOperation.Status}/{scheduledOperation.AttemptCount}, " +
+                $"action {scheduledAction.State}/{scheduledAction.Health}, Start calls {parkingProvider.StartCalls}; work: " +
+                string.Join(", ", visitWork.Select(x => $"{x.Type}:{x.Status}")));
+            var stopWork = Assert.Single(visitWork, x => x.Type == VisitSchedulerWorkType.StopVisit);
             Assert.Equal(VisitSchedulerWorkStatus.Pending, stopWork.Status);
             Assert.InRange(
                 (stopWork.DueAt - visit.DesiredEndAt!.Value).Duration(),
@@ -420,10 +446,77 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         Assert.Equal(ProviderActionState.Stopped, persistedAction.State);
         Assert.Equal(ProviderActionHealth.Healthy, persistedAction.Health);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedOperation.Status);
+        var operationEvents = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.SourceId == operation.Id)
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.EventOrder)
+            .ThenBy(x => x.Id)
+            .Select(x => new { x.EventType, x.AttemptNumber })
+            .ToListAsync(cancellationToken);
+        var unknownEvent = Assert.Single(operationEvents, x => x.EventType == "provider_operation.outcome_unknown");
+        var reconciliationEvent = Assert.Single(operationEvents, x => x.EventType == "provider_operation.reconciliation_started");
+        var retryReadyEvent = Assert.Single(operationEvents, x => x.EventType == "provider_operation.retry_ready");
+        var retryAttemptEvent = Assert.Single(operationEvents, x => x.EventType == "provider_operation.attempt_started");
+        var successEvent = Assert.Single(operationEvents, x => x.EventType == "provider_operation.succeeded");
+        Assert.Equal(1, unknownEvent.AttemptNumber);
+        Assert.Equal(1, reconciliationEvent.AttemptNumber);
+        Assert.Equal(1, retryReadyEvent.AttemptNumber);
+        Assert.Equal(2, retryAttemptEvent.AttemptNumber);
+        Assert.Equal(2, successEvent.AttemptNumber);
+        Assert.True(operationEvents.IndexOf(unknownEvent) < operationEvents.IndexOf(retryReadyEvent));
+        Assert.True(operationEvents.IndexOf(unknownEvent) < operationEvents.IndexOf(reconciliationEvent));
+        Assert.True(operationEvents.IndexOf(reconciliationEvent) < operationEvents.IndexOf(retryReadyEvent));
+        Assert.True(operationEvents.IndexOf(retryReadyEvent) < operationEvents.IndexOf(retryAttemptEvent));
+        Assert.True(operationEvents.IndexOf(retryAttemptEvent) < operationEvents.IndexOf(successEvent));
         Assert.Equal(VisitSchedulerWorkStatus.Completed, persistedStopWork.Status);
         Assert.Equal(1, parkingProvider.StartCalls);
         Assert.True(parkingProvider.AbsenceConfirmedBeforeStart);
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
+        await ClearVisitStateAsync(cancellationToken);
+    }
+
+    [Fact]
+    public async Task Retryable_start_can_be_retried_on_same_context_after_save_failure()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+        var (_, _, visit, action, operation, _, _) = await SeedStartAttemptAsync(cancellationToken);
+
+        await using (var markUnknown = fixture.CreateDbContext())
+        {
+            var persistedOperation = await markUnknown.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken);
+            var persistedAction = await markUnknown.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken);
+            persistedOperation.MarkUnknown("readback_absent");
+            persistedAction.MarkUnknown();
+            await markUnknown.SaveChangesAsync(cancellationToken);
+        }
+
+        ProviderStartPreparation preparation;
+        await using (var load = fixture.CreateDbContext())
+        {
+            preparation = new ProviderStartPreparation(
+                await load.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken),
+                await load.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, cancellationToken),
+                IsReplay: true);
+        }
+
+        await using (var services = BuildServices(saveChangesInterceptor: new FailFirstSaveChangesInterceptor()))
+        await using (var scope = services.CreateAsyncScope())
+        {
+            var resultStore = scope.ServiceProvider.GetRequiredService<IProviderStartResultStore>();
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => resultStore.RecordRetryableAsync(preparation, cancellationToken));
+            await resultStore.RecordRetryableAsync(preparation, cancellationToken);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var retriedOperation = await verify.ProviderOperations.SingleAsync(x => x.Id == operation.Id, cancellationToken);
+        Assert.Equal(ProviderOperationStatus.Pending, retriedOperation.Status);
+        var reconciliationEvent = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.SourceId == operation.Id &&
+                        x.EventType == "provider_operation.reconciliation_started")
+            .ToListAsync(cancellationToken);
+        Assert.Single(reconciliationEvent);
         await ClearVisitStateAsync(cancellationToken);
     }
 
@@ -476,7 +569,8 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
 
     private ServiceProvider BuildServices(
         IParkingProvider? parkingProvider = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SaveChangesInterceptor? saveChangesInterceptor = null)
     {
         var configuration = new ConfigurationManager();
         configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -488,6 +582,8 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
 
         var services = new ServiceCollection();
         services.AddInfrastructure(configuration);
+        if (saveChangesInterceptor is not null)
+            services.AddDbContext<ParkerenDbContext>(options => options.AddInterceptors(saveChangesInterceptor));
         if (parkingProvider is not null)
             services.AddSingleton(parkingProvider);
         if (timeProvider is not null)
@@ -502,6 +598,25 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         public override DateTimeOffset GetUtcNow() => current;
 
         public void Set(DateTimeOffset value) => current = value;
+    }
+
+    private sealed class FailFirstSaveChangesInterceptor : SaveChangesInterceptor
+    {
+        private bool failNextSave = true;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (failNextSave)
+            {
+                failNextSave = false;
+                throw new InvalidOperationException("Injected SaveChanges failure.");
+            }
+
+            return ValueTask.FromResult(result);
+        }
     }
 
     private sealed class CountingStartProvider(IParkingProvider inner) : IParkingProvider

@@ -196,6 +196,6 @@ Boundarytests kunnen de mockklok deterministisch besturen. Read-back leidt `sche
 
 Dit maakt boundary- en recoverytests deterministisch zonder onbewezen live 2Park-contracten als default te modelleren.
 
-## 12. Nog open buiten de hardening
+## 12. Observability naast de correctness-hardening
 
-SCHED-018 — persistente Visit scheduler observability/audit trail — is nog niet geïmplementeerd. De bestaande durable records zijn correctness-mechanismen; zij vormen nog geen gebruiksvriendelijke chronologische scheduler-timeline voor beheer.
+SCHED-018 — persistente Visit scheduler observability/audit trail — is afgerond. De gegroepeerde admin-Visit-timeline legt betekenisvolle overgangen vast; bestaande duurzame records blijven de bron voor actuele state en de audit-events vormen de chronologische historie. Zie [de acceptatie en verificatie](visit-scheduler-audit/SCHED-018.md).

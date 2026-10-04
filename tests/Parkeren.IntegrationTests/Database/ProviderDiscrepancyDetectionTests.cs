@@ -241,8 +241,10 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
         }
     }
 
-    [Fact]
-    public async Task Provider_end_drift_outside_central_tolerance_creates_end_discrepancy()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Provider_action_mismatch_uses_specific_scheduler_cancellation_reason(bool providerActionMissing)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var remoteProduct = new ProviderProduct("visitor", "Tolerance product", "OSS_J");
@@ -278,16 +280,19 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
         action.MarkStarting();
         action.MarkActive(providerActionId, start, "active");
 
-        var provider = new StaticParkingProvider(
-            remoteProduct,
-            [new ProviderParkingAction(
+        var providerActions = providerActionMissing
+            ? Array.Empty<ProviderParkingAction>()
+            : [new ProviderParkingAction(
                 providerActionId,
                 vehicle.NormalizedLicensePlate,
                 start,
                 end.AddSeconds(6),
                 "OSS Zone J",
                 "active",
-                remoteProduct.Id)]);
+                remoteProduct.Id)];
+        var provider = new StaticParkingProvider(remoteProduct, providerActions);
+        var work = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, end.AddMinutes(-5));
 
         try
         {
@@ -297,6 +302,7 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
                 seed.Vehicles.Add(vehicle);
                 seed.Visits.Add(visit);
                 seed.ProviderParkingActions.Add(action);
+                seed.VisitSchedulerWork.Add(work);
                 await seed.SaveChangesAsync(cancellationToken);
             }
 
@@ -306,10 +312,26 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
             var discrepancy = Assert.Single(await verify.ProviderDiscrepancies.AsNoTracking()
                 .Where(x => x.ProviderParkingActionId == action.Id)
                 .ToListAsync(cancellationToken));
-            Assert.Equal(ProviderDiscrepancyType.ProviderActionEndMismatch, discrepancy.Type);
+            Assert.Equal(
+                providerActionMissing
+                    ? ProviderDiscrepancyType.MissingProviderAction
+                    : ProviderDiscrepancyType.ProviderActionEndMismatch,
+                discrepancy.Type);
             Assert.Equal(ProviderDiscrepancyStatus.Open, discrepancy.Status);
             var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
             Assert.Equal(VisitHealth.AttentionRequired, persistedVisit.Health);
+            Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
+                (await verify.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+            var cancellationEvent = Assert.Single(await verify.VisitSchedulerAuditEvents
+                .Where(x => x.VisitId == visit.Id &&
+                            x.SourceId == work.Id &&
+                            x.EventType == "scheduler_work.cancelled")
+                .ToListAsync(cancellationToken));
+            Assert.Equal(
+                providerActionMissing
+                    ? "recovery_provider_action_missing"
+                    : "recovery_provider_action_end_mismatch",
+                cancellationEvent.ReasonCode);
         }
         finally
         {

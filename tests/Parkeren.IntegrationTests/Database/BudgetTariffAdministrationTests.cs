@@ -225,6 +225,28 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         {
             visitSeed = await CreateCompletedVisitAsync(start, end, ct, actionStart, actionEnd);
 
+            var schedulerWork = new VisitSchedulerWork(
+                Guid.NewGuid(), visitSeed.VisitId, VisitSchedulerWorkType.StopVisit,
+                end, VisitEndReason.DesiredEndReached);
+            var pendingEndTimeChange = new VisitEndTimeChange(
+                Guid.NewGuid(), Guid.NewGuid(), visitSeed.VisitId, admin.Id,
+                end, end.AddMinutes(15), start.AddMinutes(-3));
+            var rejectedEndTimeChange = new VisitEndTimeChange(
+                Guid.NewGuid(), Guid.NewGuid(), visitSeed.VisitId, admin.Id,
+                end, end.AddMinutes(-15), start.AddMinutes(-2));
+            rejectedEndTimeChange.MarkRejected();
+            var appliedEndTimeChange = new VisitEndTimeChange(
+                Guid.NewGuid(), Guid.NewGuid(), visitSeed.VisitId, admin.Id,
+                end, end.AddMinutes(30), start.AddMinutes(-1));
+            appliedEndTimeChange.MarkApplied();
+            await using (var seedWork = fixture.CreateDbContext())
+            {
+                seedWork.VisitSchedulerWork.Add(schedulerWork);
+                seedWork.VisitEndTimeChanges.AddRange(
+                    pendingEndTimeChange, rejectedEndTimeChange, appliedEndTimeChange);
+                await seedWork.SaveChangesAsync(ct);
+            }
+
             await using var administration = CreateAdministration();
             var tariff = await administration.Service.CreateParkingTariffAsync(
                 admin.Id, start.AddHours(-1), end.AddHours(1), 1m, ParkingTariffUnit.Hour, ct);
@@ -248,6 +270,23 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
                 admin.Id, visitSeed.VisitId, end, ct);
             Assert.NotNull(visitDetail);
             Assert.Equal(30, visitDetail.Visit.PaidDurationMinutes);
+            Assert.Contains(visitDetail.TimelineEvents, x => x.SourceType == "visit");
+            Assert.Contains(visitDetail.TimelineEvents, x => x.SourceType == "provider_action");
+            var projectedWork = Assert.Single(visitDetail.SchedulerWork);
+            Assert.Equal(schedulerWork.Id, projectedWork.Id);
+            Assert.Contains(visitDetail.TimelineEvents, x =>
+                x.SourceType == "scheduler_work" && x.SourceId == projectedWork.Id);
+            var pendingEvent = Assert.Single(visitDetail.TimelineEvents, x =>
+                x.SourceId == pendingEndTimeChange.Id);
+            var rejectedEvent = Assert.Single(visitDetail.TimelineEvents, x =>
+                x.SourceId == rejectedEndTimeChange.Id);
+            var appliedEvent = Assert.Single(visitDetail.TimelineEvents, x =>
+                x.SourceId == appliedEndTimeChange.Id);
+            Assert.Equal("visit.desired_end_change_requested", pendingEvent.EventType);
+            Assert.Equal("visit.desired_end_change_rejected", rejectedEvent.EventType);
+            Assert.Equal("visit.desired_end_change_applied", appliedEvent.EventType);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                administration.Service.GetVisitDetailAsync(visitSeed.UserId, visitSeed.VisitId, end, ct));
         }
         finally
         {

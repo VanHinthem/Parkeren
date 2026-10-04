@@ -56,6 +56,9 @@ internal sealed class ProviderStopResultStore(ParkerenDbContext dbContext) : IPr
         if (visit.Status != VisitStatus.Stopping)
             throw new InvalidOperationException("Visit must be Stopping before provider Stop confirmation.");
 
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            await dbContext.SaveChangesAsync(cancellationToken);
+
         if (string.Equals(providerAction.Status, "missing", StringComparison.OrdinalIgnoreCase))
         {
             if (!preparation.ProviderActionKnownMissing)

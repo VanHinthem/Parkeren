@@ -182,7 +182,7 @@ internal sealed class PostgresVisitEndTimeChanger(
                                 x.DueAt >= newEndAt)
                     .ToListAsync(cancellationToken);
                 foreach (var work in obsoleteWork)
-                    work.Cancel();
+                    work.Cancel("desired_end_time_changed");
 
                 if (previousDesiredEndAt is DateTimeOffset previousEndAt &&
                     newEndAt > previousEndAt &&

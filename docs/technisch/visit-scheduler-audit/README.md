@@ -2,7 +2,8 @@
 
 **Status:** SCHED-001 t/m SCHED-017 geïmplementeerd en opnieuw geverifieerd  
 **Auditdatum:** 2 oktober 2026  
-**Nog niet gestart:** SCHED-018 persistente scheduler-observability
+**SCHED-018 scope:** admin-only, Visit-lifetime retentie en groepering per poging zijn bevestigd
+**SCHED-018:** ✅ acceptatie afgerond; persistente events, admin-timeline, correlatie en migratieketen geverifieerd
 
 ## Statusboard
 
@@ -25,7 +26,8 @@
 | SCHED-015 | Work-type execution policy | ✅ |
 | SCHED-016 | Deterministische TwoParkMock boundary harness | ✅ |
 | SCHED-017 | Centrale provider identity/timestamp matching | ✅ |
-| SCHED-018 | Persistente scheduler observability / audit trail | 📋 nog niet gestart |
+| Scope | Admin-only, Visit-lifetime retentie, poging-groepering | ✅ |
+| SCHED-018 | Persistente scheduler observability / audit trail | ✅ |
 
 ## Belangrijkste gerealiseerde invarianten
 
@@ -88,8 +90,9 @@ De applicatie gebruikt conservatieve identity/reconciliation zodat correctness n
 - `SCHED-001.md` t/m `SCHED-017.md` beschrijven de actuele scenario-/bevindingstatus en het regressiebewijs.
 - `PROGRESS.md` bevat de implementatie- en verificatievoortgang.
 - `*-technical-design.md` en `IMPLEMENTATION-PLAN.md` zijn historische ontwerp-/implementatie-inputs. Zij blijven nuttig voor besluitgeschiedenis, maar zijn **niet** de actuele statusbron wanneer zij oudere formuleringen bevatten.
-- `SCHED-018.md` beschrijft het bewust nog niet uitgevoerde observability-vervolg.
+- SCHED-018-keuzes: admin-only, Visit-lifetime retentie en groepering per poging.
+- `SCHED-018.md` bevat de bevestigde scope, geverifieerde implementatie en acceptatieresultaten.
 
 ## Volgende stap
 
-Geen verdere schedulerwijziging wordt uit deze audit afgeleid zonder een nieuwe expliciete stap. SCHED-018 blijft geparkeerd totdat besloten wordt de persistente Visit scheduler timeline te ontwerpen en implementeren.
+SCHED-001 t/m SCHED-018 zijn voor deze iteratie afgerond. De volledige migratieketen is uitsluitend op de wegwerp-Testcontainers-database toegepast; deployment naar een blijvende omgeving blijft een aparte releasehandeling.

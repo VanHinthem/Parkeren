@@ -223,6 +223,18 @@ public sealed record AdminProviderOperationSummary(
     DateTimeOffset? RequestedEndAt,
     DateTimeOffset? CompletedAt);
 
+public sealed record AdminVisitSchedulerWorkSummary(
+    Guid Id,
+    VisitSchedulerWorkType Type,
+    VisitSchedulerWorkStatus Status,
+    DateTimeOffset DueAt,
+    VisitEndReason? EndReason,
+    Guid? ProviderParkingActionId,
+    int AttemptCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ClaimedAt,
+    DateTimeOffset? CompletedAt);
+
 public sealed record AdminVisitEndTimeChangeSummary(
     Guid Id,
     Guid OperationId,
@@ -232,6 +244,18 @@ public sealed record AdminVisitEndTimeChangeSummary(
     DateTimeOffset? RequestedDesiredEndAt,
     DateTimeOffset CreatedAt,
     VisitEndTimeChangeResult Result);
+
+public sealed record AdminVisitTimelineEventSummary(
+    Guid Id,
+    DateTimeOffset OccurredAt,
+    int EventOrder,
+    string SourceType,
+    Guid SourceId,
+    string EventType,
+    string GroupKey,
+    int? AttemptNumber,
+    string ReasonCode,
+    string? DetailsJson);
 
 public sealed record AdminRuleSetSummary(
     Guid Id,
@@ -249,7 +273,9 @@ public sealed record AdminVisitDetail(
     AdminVisitPolicySnapshotSummary PolicySnapshot,
     IReadOnlyList<AdminProviderParkingActionSummary> ProviderActions,
     IReadOnlyList<AdminProviderOperationSummary> ProviderOperations,
+    IReadOnlyList<AdminVisitSchedulerWorkSummary> SchedulerWork,
     IReadOnlyList<AdminVisitEndTimeChangeSummary> EndTimeChanges,
+    IReadOnlyList<AdminVisitTimelineEventSummary> TimelineEvents,
     IReadOnlyList<AdminRuleSetSummary> RelevantRuleSets);
 
 public sealed record AdminParkingPolicyValues(

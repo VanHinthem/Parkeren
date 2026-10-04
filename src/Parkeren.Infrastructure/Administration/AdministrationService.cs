@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Administration;
@@ -1909,6 +1910,22 @@ internal sealed class AdministrationService(
                 x.CompletedAt))
             .ToListAsync(cancellationToken);
 
+        var schedulerWork = await dbContext.VisitSchedulerWork.AsNoTracking()
+            .Where(x => x.VisitId == visitId)
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new AdminVisitSchedulerWorkSummary(
+                x.Id,
+                x.Type,
+                x.Status,
+                x.DueAt,
+                x.EndReason,
+                x.ProviderParkingActionId,
+                x.AttemptCount,
+                x.CreatedAt,
+                x.ClaimedAt,
+                x.CompletedAt))
+            .ToListAsync(cancellationToken);
+
         var endTimeChanges = await (
             from change in dbContext.VisitEndTimeChanges.AsNoTracking()
             join actor in dbContext.Users.AsNoTracking() on change.ActorUserId equals actor.Id
@@ -1924,6 +1941,59 @@ internal sealed class AdministrationService(
                 change.CreatedAt,
                 change.Result))
             .ToListAsync(cancellationToken);
+
+        var schedulerTimelineEvents = await dbContext.VisitSchedulerAuditEvents.AsNoTracking()
+            .Where(x => x.VisitId == visitId)
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.EventOrder)
+            .ThenBy(x => x.Id)
+            .Select(x => new AdminVisitTimelineEventSummary(
+                x.Id,
+                x.OccurredAt,
+                x.EventOrder,
+                x.SourceType,
+                x.SourceId,
+                x.EventType,
+                x.GroupKey,
+                x.AttemptNumber,
+                x.ReasonCode,
+                x.DetailsJson))
+            .ToListAsync(cancellationToken);
+
+        var timelineEvents = schedulerTimelineEvents
+            .Concat(endTimeChanges.Select(change => new AdminVisitTimelineEventSummary(
+                change.Id,
+                change.CreatedAt,
+                0,
+                "visit_end_time_change",
+                change.Id,
+                change.Result switch
+                {
+                    VisitEndTimeChangeResult.Pending => "visit.desired_end_change_requested",
+                    VisitEndTimeChangeResult.Rejected => "visit.desired_end_change_rejected",
+                    VisitEndTimeChangeResult.Applied => "visit.desired_end_change_applied",
+                    _ => throw new ArgumentOutOfRangeException(nameof(change.Result))
+                },
+                $"attempt:{change.OperationId}:0",
+                null,
+                change.Result switch
+                {
+                    VisitEndTimeChangeResult.Pending => "desired_end_change_requested",
+                    VisitEndTimeChangeResult.Rejected => "desired_end_change_rejected",
+                    VisitEndTimeChangeResult.Applied => "desired_end_change_applied",
+                    _ => throw new ArgumentOutOfRangeException(nameof(change.Result))
+                },
+                JsonSerializer.Serialize(new
+                {
+                    change.ActorUsername,
+                    change.PreviousDesiredEndAt,
+                    change.RequestedDesiredEndAt,
+                    result = change.Result.ToString()
+                }))))
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.EventOrder)
+            .ThenBy(x => x.Id)
+            .ToArray();
 
         var relevantRuleSets = ruleSets
             .Select(x => new AdminRuleSetSummary(
@@ -1950,7 +2020,9 @@ internal sealed class AdministrationService(
             policySnapshot,
             providerActions,
             providerOperations,
+            schedulerWork,
             endTimeChanges,
+            timelineEvents,
             relevantRuleSets);
     }
 

@@ -62,13 +62,13 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
                 return work;
 
             case VisitSchedulerWorkExecutionDecision.Defer:
-                work.Defer(now.Add(VisitSchedulerWorkExecutionPolicy.DefaultDeferDelay));
+                work.Defer(now.Add(VisitSchedulerWorkExecutionPolicy.DefaultDeferDelay), "execution_policy_deferred");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return null;
 
             case VisitSchedulerWorkExecutionDecision.Cancel:
-                work.Cancel();
+                work.Cancel("execution_policy_cancelled");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return null;
@@ -121,12 +121,12 @@ internal sealed class PostgresVisitSchedulerWorkClaimer(ParkerenDbContext dbCont
             case VisitSchedulerWorkExecutionDecision.Defer:
             {
                 var claimedAt = work.ClaimedAt ?? throw new InvalidOperationException("Claimed work has no claim time.");
-                work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1));
+                work.Release(retryAt > claimedAt ? retryAt : claimedAt.AddTicks(1), "processor_exception_retry");
                 break;
             }
 
             case VisitSchedulerWorkExecutionDecision.Cancel:
-                work.Cancel();
+                work.Cancel("execution_policy_cancelled_after_failure");
                 break;
 
             default:

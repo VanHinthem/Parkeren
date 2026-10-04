@@ -1,10 +1,10 @@
 # Scheduler hardening — voortgang
 
-**Laatst bijgewerkt:** 2 oktober 2026
+**Laatst bijgewerkt:** 4 oktober 2026
 
-## Eindstatus vóór SCHED-018
+## Huidige status
 
-Scheduler-hardening en regressieverificatie voor **SCHED-001 t/m SCHED-017 zijn afgerond en CI-groen**. De enige bewust nog niet gestarte schedulerverbetering is **SCHED-018 — persistente scheduler observability/audit trail**.
+Scheduler-hardening en regressieverificatie voor **SCHED-001 t/m SCHED-018 zijn afgerond en lokaal geverifieerd**. SCHED-018 heeft persistente events, beheer-API en gegroepeerde timeline-UI; reason-catalogus, correlatie, autorisatie, frontend en migratieketen zijn gecontroleerd.
 
 ## Fase A — state policy en locking ✅
 
@@ -107,19 +107,25 @@ Scenario's en gedeelde bevindingen zijn opnieuw tegen de geharde implementatie g
 - SCHED-013 t/m 017 gedeelde hardening opnieuw geverifieerd ✅ — `f7aba92d`
 - SCHED-001/002 detaildocumentatie wordt in de aansluitende documentatieronde gelijkgetrokken met het reeds groene implementatiebewijs.
 
-## Documentatieronde vóór SCHED-018 🚧
+## Functionele scope SCHED-018 ✅ BEVESTIGD
 
-Voor aanvang van SCHED-018 wordt eerst alle levende functionele en technische Visit/scheduler-documentatie gelijkgetrokken met de actuele implementatie:
+De bevestigde scope en actuele implementatiestatus staan in [SCHED-018.md](SCHED-018.md). De timeline is read-only, alleen voor beheerders, Visit-gebonden en gegroepeerd per poging; bestaande eindtijdhistorie wordt geprojecteerd in plaats van dubbel opgeslagen.
 
-- functionele Visit/schedulerregels;
-- terminale lifecycle en eindredenen;
-- T-5 JIT en free-gap semantics;
-- provider matching/tolerance;
-- Visit-first locking en work-type policy;
-- recovery/single-instance contract;
-- TwoParkMock boundary harness;
-- auditstatus SCHED-001 t/m 017.
+## Fase I — SCHED-018 observability ✅ ACCEPTATIE AFGEROND
 
-## Fase I — SCHED-018 observability 📋 NIET GESTART
+De eerste implementatie legt Visit-, schedulerwork-, provideroperation- en provideractiontransities transactioneel vast en toont ze in de admin-Visit-detailpagina.
 
-SCHED-018 blijft bewust geparkeerd. Eerst wordt deze documentatieronde afgerond en beoordeeld. Er is nog geen observability-datamodel, eventcatalogus of implementatie gestart.
+Nieuw geverifieerd:
+
+- specifieke reason codes voor belangrijke scheduler-cancel-/releasebeslissingen, waaronder Stop, DesiredEndAt-wijziging, terminal-work-herplanning en providerrecovery;
+- startup recovery van geclaimd werk legt de policy-release vast vóór een daaropvolgende annulering;
+- provider-Unknown met gevonden read-back toont `outcome_unknown → reconciliation_started → succeeded`;
+- bevestigde afwezigheid toont `outcome_unknown → reconciliation_started → retry_ready → volgende attempt`;
+- beide recoverypaden zijn replay-getest zonder dubbele reconciliation-events.
+- timeline-events linken naar de corresponderende schedulerwork-, provideroperation- en provideractionrecords; de admin-detailresponse levert die workrecords mee;
+- een React-render-test verifieert de zichtbare bronlinks en ankerdoelen voor work, operation en action;
+- de Visit-detailquery weigert niet-admingebruikers; reason-details gebruiken vaste foutcodes en begrensde eventprojecties;
+- de PostgreSQL-testfixture voert de volledige EF-migratieketen uit op een wegwerpcontainer; migratielijst bevat ook `AddLongVisitNotificationSettings`;
+- volledige verificatie: 430 .NET-tests, 16 frontendtests en productiebuild geslaagd; `git diff --check` schoon.
+
+Geen resterende SCHED-018-acceptatiepunten. Migraties zijn niet toegepast op een blijvende database.

@@ -7,6 +7,7 @@ import {
   type AdminVisitDetail,
   type AdminVisitFilters,
   type AdminVisitSummary,
+  type AdminVisitTimelineEvent,
   type UserSummary
 } from "../../api/client";
 import { LicensePlate } from "../../components/LicensePlate";
@@ -15,6 +16,7 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminVisits.css";
+import { groupTimelineEvents,timelineSourceHref } from "./visitTimeline";
 
 type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
 type AdminVisitStatusFilter=AdminVisitStatus|"";
@@ -41,6 +43,52 @@ function statusLabel(status:AdminVisitStatus){
     case "Completed": return "Afgerond";
     case "Cancelled": return "Geannuleerd";
   }
+}
+
+function timelineTitle(event:AdminVisitTimelineEvent){
+  const titles:Record<string,string>={
+    "visit.created":"Visit aangemaakt",
+    "visit.status_changed":"Visitstatus gewijzigd",
+    "visit.health_changed":"Visitgezondheid gewijzigd",
+    "visit.desired_end_change_requested":"Eindtijdwijziging aangevraagd",
+    "visit.desired_end_change_rejected":"Eindtijdwijziging afgewezen",
+    "visit.desired_end_change_applied":"Eindtijd gewijzigd",
+    "visit.desired_end_changed":"Eindtijd gewijzigd",
+    "scheduler_work.created":"Schedulerwerk aangemaakt",
+    "scheduler_work.claimed":"Schedulerwerk opgepakt",
+    "scheduler_work.deferred":"Schedulerwerk uitgesteld",
+    "scheduler_work.released":"Schedulerwerk opnieuw ingepland",
+    "scheduler_work.completed":"Schedulerwerk afgerond",
+    "scheduler_work.cancelled":"Schedulerwerk geannuleerd",
+    "provider_operation.created":"Provideroperatie aangemaakt",
+    "provider_operation.attempt_started":"Providerpoging gestart",
+    "provider_operation.outcome_unknown":"Provideruitkomst onbekend",
+    "provider_operation.reconciliation_started":"Reconciliatie gestart",
+    "provider_operation.succeeded":"Provideroperatie geslaagd",
+    "provider_operation.failed":"Provideroperatie mislukt",
+    "provider_operation.retry_ready":"Provideroperatie klaar voor retry",
+    "provider_action.created":"Provideractie aangemaakt",
+    "provider_action.state_changed":"Provideractiestatus gewijzigd",
+    "provider_action.health_changed":"Provideractiegezondheid gewijzigd",
+    "provider_action.history_changed":"Providerhistorie bijgewerkt",
+    "provider_action.timing_changed":"Provideractietijden gewijzigd"
+  };
+  return titles[event.eventType]??event.eventType;
+}
+
+function timelineGroupTitle(event:AdminVisitTimelineEvent){
+  if(event.attemptNumber!==null)return event.attemptNumber>0?`Poging ${event.attemptNumber}`:"Voorbereiding";
+  switch(event.sourceType){
+    case "visit": return "Visitstatus";
+    case "provider_action": return "Provideractie";
+    case "visit_end_time_change": return "Eindtijdwijziging";
+    default: return "Schedulerverloop";
+  }
+}
+
+function formatAuditDetails(detailsJson:string){
+  try{return JSON.stringify(JSON.parse(detailsJson),null,2);}
+  catch{return detailsJson;}
 }
 
 function localDayStart(value:string){
@@ -290,7 +338,7 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
             {detail.providerActions.length===0
               ? <p className="admin-visit-detail__muted">Geen provideracties vastgelegd.</p>
               : <div className="admin-visit-detail__list">
-                  {detail.providerActions.map(action=><div className="admin-visit-detail__row" key={action.id}>
+                  {detail.providerActions.map(action=><div id={`provider-action-${action.id}`} className="admin-visit-detail__row" key={action.id}>
                     <div className="admin-visit-detail__row-head">
                       <strong>{action.providerActionId??"Nog geen provider action-ID"}</strong>
                       <span>{action.state} · {action.health}</span>
@@ -307,11 +355,67 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
           </section>
 
           <section className="admin-visits__panel admin-visit-detail__section">
+            <h2>Schedulerverloop</h2>
+            {detail.timelineEvents.length===0
+              ? <p className="admin-visit-detail__muted">Geen schedulergebeurtenissen vastgelegd.</p>
+              : <div className="admin-visit-detail__timeline">
+                  {groupTimelineEvents(detail.timelineEvents).map(group=><details className="admin-visit-detail__timeline-group" key={group.key}>
+                    <summary>
+                      <strong>{timelineGroupTitle(group.events[0])}</strong>
+                      <span>{formatDateTime(group.events[0].occurredAt)}</span>
+                      <span>{group.events.length} gebeurtenissen</span>
+                    </summary>
+                    <ol>
+                      {group.events.map(event=><li key={event.id}>
+                        <div className="admin-visit-detail__timeline-event-head">
+                          <strong>{timelineTitle(event)}</strong>
+                          <time>{formatDateTime(event.occurredAt)}</time>
+                        </div>
+                        <p>{event.reasonCode.replaceAll("_"," ")}</p>
+                        <details className="admin-visit-detail__timeline-details">
+                          <summary>Bron en technische details</summary>
+                          <dl className="admin-visit-detail__timeline-source">
+                            <div><dt>Bron</dt><dd><code>{event.sourceType}</code></dd></div>
+                            <div><dt>Record-ID</dt><dd>
+                              {timelineSourceHref(event)
+                                ? <a href={timelineSourceHref(event)!}><code>{event.sourceId}</code></a>
+                                : <code>{event.sourceId}</code>}
+                            </dd></div>
+                          </dl>
+                          {event.detailsJson&&<pre>{formatAuditDetails(event.detailsJson)}</pre>}
+                        </details>
+                      </li>)}
+                    </ol>
+                  </details>)}
+                </div>}
+          </section>
+
+          <section className="admin-visits__panel admin-visit-detail__section">
+            <h2>Schedulerwerk</h2>
+            {detail.schedulerWork.length===0
+              ? <p className="admin-visit-detail__muted">Geen schedulerwerk vastgelegd.</p>
+              : <div className="admin-visit-detail__list">
+                  {detail.schedulerWork.map(work=><div id={`scheduler-work-${work.id}`} className="admin-visit-detail__row" key={work.id}>
+                    <div className="admin-visit-detail__row-head">
+                      <strong>{work.type}</strong>
+                      <span>{work.status}</span>
+                    </div>
+                    <div className="admin-visit-detail__row-meta">
+                      <span>Uitvoeren: {formatDateTime(work.dueAt)}</span>
+                      <span>Pogingen: {work.attemptCount}</span>
+                      <span>Eindreden: {work.endReason??"—"}</span>
+                      {work.providerParkingActionId&&<a href={`#provider-action-${work.providerParkingActionId}`}>Gekoppelde provideractie</a>}
+                    </div>
+                  </div>)}
+                </div>}
+          </section>
+
+          <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Provideroperations</h2>
             {detail.providerOperations.length===0
               ? <p className="admin-visit-detail__muted">Geen provideroperations vastgelegd.</p>
               : <div className="admin-visit-detail__list">
-                  {detail.providerOperations.map(operation=><div className="admin-visit-detail__row" key={operation.id}>
+                  {detail.providerOperations.map(operation=><div id={`provider-operation-${operation.id}`} className="admin-visit-detail__row" key={operation.id}>
                     <div className="admin-visit-detail__row-head">
                       <strong>{operation.type}</strong>
                       <span>{operation.status}</span>

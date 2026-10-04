@@ -118,6 +118,12 @@ public sealed class VisitTerminalRecoveryTests(PostgreSqlFixture fixture)
 
             Assert.Equal(2, works.Count);
             Assert.Equal(VisitSchedulerWorkStatus.Cancelled, works.Single(x => x.Id == obsolete.Id).Status);
+            var cancellationEvent = Assert.Single(await verify.VisitSchedulerAuditEvents
+                .Where(x => x.VisitId == visit.Id &&
+                            x.SourceId == obsolete.Id &&
+                            x.EventType == "scheduler_work.cancelled")
+                .ToListAsync(ct));
+            Assert.Equal("terminal_boundary_replanned", cancellationEvent.ReasonCode);
 
             var replacement = Assert.Single(works, x => x.Status == VisitSchedulerWorkStatus.Pending);
             Assert.Equal(VisitEndReason.DesiredEndReached, replacement.EndReason);

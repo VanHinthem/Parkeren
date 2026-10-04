@@ -42,6 +42,9 @@ internal sealed class ProviderExtendResultStore(
         if (operation.Status is not (ProviderOperationStatus.InProgress or ProviderOperationStatus.Reconciling))
             throw new InvalidOperationException("Provider continuation operation is not in progress or reconciliation.");
 
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            await dbContext.SaveChangesAsync(cancellationToken);
+
         action.ExtendPlannedEnd(providerAction.End);
         operation.Succeed(timeProvider.GetUtcNow());
 
@@ -216,6 +219,7 @@ internal sealed class ProviderExtendResultStore(
             throw new InvalidOperationException("Only an unknown provider continuation can be resolved from the Stop read-back.");
 
         operation.BeginReconciliation();
+        await dbContext.SaveChangesAsync(cancellationToken);
         if (providerAction.End > action.PlannedEndAt)
             action.ExtendPlannedEnd(providerAction.End);
 

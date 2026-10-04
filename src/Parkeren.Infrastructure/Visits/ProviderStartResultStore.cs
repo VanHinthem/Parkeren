@@ -32,6 +32,8 @@ internal sealed class ProviderStartResultStore(
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
         var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
+        if (operation.Status == ProviderOperationStatus.Unknown)
+            dbContext.RecordProviderOperationReconciliationStarted(operation);
         action.ResetForRetry();
         operation.ResetForRetry();
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
@@ -55,6 +57,8 @@ internal sealed class ProviderStartResultStore(
             operation.BeginReconciliation();
         if (action.Health == ProviderActionHealth.Unknown)
             action.BeginReconciliation();
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            await dbContext.SaveChangesAsync(cancellationToken);
         action.MarkActive(providerAction.ProviderActionId, providerAction.Start, providerAction.Status);
         operation.Succeed(timeProvider.GetUtcNow());
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);
@@ -114,6 +118,8 @@ internal sealed class ProviderStartResultStore(
         var (operation, action) = await LoadPersistedAttemptAsync(preparation, cancellationToken);
         if (operation.Status == ProviderOperationStatus.Unknown)
             operation.BeginReconciliation();
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            await dbContext.SaveChangesAsync(cancellationToken);
         operation.Fail(errorCode, timeProvider.GetUtcNow());
         action.MarkFailed();
         var visit = await dbContext.Visits.SingleAsync(x => x.Id == operation.VisitId, cancellationToken);

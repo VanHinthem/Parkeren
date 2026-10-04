@@ -117,4 +117,4 @@ V1 ondersteunt exact één actieve `Parkeren.Api` / `VisitSchedulerWorker` insta
 
 ## Status
 
-De lifecycle-hardening uit SCHED-013 en de gekoppelde SCHED-003/004/005/007/008-scenario's is geïmplementeerd en opnieuw geverifieerd. Persistente scheduler-observability (SCHED-018) is nog niet geïmplementeerd.
+De lifecycle-hardening uit SCHED-013 en de gekoppelde SCHED-003/004/005/007/008-scenario's is geïmplementeerd en opnieuw geverifieerd. Persistente scheduler-observability (SCHED-018) is afgerond; zie het [SCHED-018-statusdocument](visit-scheduler-audit/SCHED-018.md).

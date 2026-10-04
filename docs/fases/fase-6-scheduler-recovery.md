@@ -93,4 +93,4 @@ Onbewezen live providersemantiek wordt niet als mockdefault vastgelegd.
 
 SCHED-001 t/m SCHED-017 zijn geïmplementeerd en scenario-voor-scenario opnieuw geverifieerd. Daarmee is scheduler correctness voor V1 op de huidige single-instance architectuur opnieuw afgedekt.
 
-SCHED-018 — persistente scheduler observability/audit trail — is bewust een aparte vervolgstap en is nog niet gestart.
+SCHED-018 — persistente scheduler observability/audit trail — is als aparte observabilitystap afgerond. De admin-only Visit-timeline, eventcorrelatie, reason-catalogus en migratieketen zijn geverifieerd; zie het actuele bewijs in `docs/technisch/visit-scheduler-audit/SCHED-018.md`.

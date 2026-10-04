@@ -183,8 +183,17 @@ internal sealed class VisitRecoveryService(
                         (x.Status == VisitSchedulerWorkStatus.Pending ||
                          x.Status == VisitSchedulerWorkStatus.Claimed))
                     .ToListAsync(cancellationToken);
+                var cancellationReason = remote is null
+                    ? "recovery_provider_action_missing"
+                    : string.Equals(remote.Status, "stopped", StringComparison.OrdinalIgnoreCase)
+                        ? "recovery_external_provider_stop"
+                        : !string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase)
+                            ? "recovery_provider_status_mismatch"
+                            : !ProviderActionMatchPolicy.TimestampsMatch(remote.End, action.PlannedEndAt)
+                                ? "recovery_provider_action_end_mismatch"
+                                : "recovery_provider_action_mismatch";
                 foreach (var item in work)
-                    item.Cancel();
+                    item.Cancel(cancellationReason);
 
                 logger.LogWarning(
                     "Provider action {ProviderActionId} for Visit {VisitId} changed externally; continuation blocked.",
@@ -819,6 +828,7 @@ internal sealed class VisitRecoveryService(
 
         persistedOperation.BeginReconciliation();
         persistedAction.BeginReconciliation();
+        await dbContext.SaveChangesAsync(cancellationToken);
         var stoppedAt = timeProvider.GetUtcNow();
         persistedAction.MarkStopped(stoppedAt, remote.Status, remote.Start);
         await ProviderActionInitialCostInitializer.TryInitializeAsync(dbContext, persistedAction, cancellationToken);
@@ -897,7 +907,7 @@ internal sealed class VisitRecoveryService(
             .ToListAsync(cancellationToken);
 
         foreach (var work in schedulerWork)
-            work.Cancel();
+            work.Cancel("recovery_ambiguous_visit");
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -985,7 +995,7 @@ internal sealed class VisitRecoveryService(
                     var dueAt = work.DueAt > claimedAt
                         ? work.DueAt
                         : claimedAt.AddTicks(1);
-                    work.Release(dueAt);
+                    work.Release(dueAt, "recovery_claimed_work_execute");
                     break;
                 }
 
@@ -993,12 +1003,14 @@ internal sealed class VisitRecoveryService(
                 {
                     var dueAt = timeProvider.GetUtcNow()
                         .Add(VisitSchedulerWorkExecutionPolicy.DefaultDeferDelay);
-                    work.Release(dueAt > claimedAt ? dueAt : claimedAt.AddTicks(1));
+                    work.Release(
+                        dueAt > claimedAt ? dueAt : claimedAt.AddTicks(1),
+                        "recovery_claimed_work_deferred");
                     break;
                 }
 
                 case VisitSchedulerWorkExecutionDecision.Cancel:
-                    work.Cancel();
+                    work.Cancel("recovery_execution_policy_cancelled");
                     break;
 
                 default:

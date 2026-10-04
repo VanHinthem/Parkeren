@@ -34,6 +34,8 @@ internal sealed class ProviderContinuationStartResultStore(
         Validate(preparation);
         await using var transaction = await LockVisitAsync(preparation, cancellationToken);
         var (operation, action) = await LoadOperationAsync(preparation, cancellationToken);
+        if (operation.Status == ProviderOperationStatus.Unknown)
+            dbContext.RecordProviderOperationReconciliationStarted(operation);
         action.ResetForRetry();
         operation.ResetForRetry();
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -59,6 +61,8 @@ internal sealed class ProviderContinuationStartResultStore(
         if (action.Health == ProviderActionHealth.Unknown &&
             preparation.Action.Health == ProviderActionHealth.Reconciling)
             action.BeginReconciliation();
+        if (operation.Status == ProviderOperationStatus.Reconciling)
+            await dbContext.SaveChangesAsync(cancellationToken);
 
         if (string.Equals(providerAction.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
             action.MarkScheduled(providerAction.ProviderActionId, providerAction.Status);

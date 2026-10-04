@@ -18,7 +18,7 @@ De uitvoerbare V1-volgorde wordt primair bijgehouden in GitHub issue #92. Dit do
 
 De volgorde is dependency-driven en niet gebaseerd op issue-nummers. API, persistence, UI, tests en documentatie worden zoveel mogelijk samen opgeleverd.
 
-## Actuele schedulerstatus — 2 oktober 2026
+## Actuele schedulerstatus — 4 oktober 2026
 
 De reliability-hardening rond Visit lifecycle, scheduler, provider matching, locking, recovery en TwoParkMock is voor **SCHED-001 t/m SCHED-017 afgerond en opnieuw geverifieerd**.
 
@@ -32,6 +32,6 @@ Daarmee zijn onder andere gerealiseerd:
 - deterministische boundary test harness;
 - regressieverificatie van de oorspronkelijke scheduler-scenario's.
 
-**SCHED-018 scheduler observability is nog niet gestart.** Die stap wordt pas opgepakt na expliciete beslissing na de documentatieronde.
+**SCHED-018 scheduler observability:** afgerond en geverifieerd met 430/430 .NET-tests, 16/16 frontendtests en een productiebuild. De volledige migratieketen slaagt op de wegwerp-PostgreSQL-testdatabase; migratie naar een blijvende omgeving hoort bij deployment.
 
 Zie `docs/technisch/visit-scheduler-audit/PROGRESS.md` voor de scheduler-hardeninghistorie en #92 voor de bredere V1-planning.

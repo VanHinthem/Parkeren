@@ -170,4 +170,4 @@ TwoParkMock kan beide gedragingen expliciet configureren voor tests, maar kiest 
 
 ## Betrouwbaarheidsstatus
 
-De scheduler-hardening voor SCHED-001 t/m SCHED-017 is geïmplementeerd en scenario-voor-scenario opnieuw geverifieerd. Persistente scheduler-observability (`SCHED-018`) is nog niet gestart en is een aparte vervolgstap.
+De scheduler-hardening voor SCHED-001 t/m SCHED-017 is geïmplementeerd en scenario-voor-scenario opnieuw geverifieerd. SCHED-018 (persistente scheduler-observability) is afgerond: de admin-only Visit-timeline toont gecorreleerde work-, provideroperation- en provideractiontransities en maakt onderscheid tussen aangevraagde, afgewezen en toegepaste eindtijdwijzigingen. De actuele verificatiestatus staat in [SCHED-018](../technisch/visit-scheduler-audit/SCHED-018.md).

@@ -40,7 +40,7 @@ public sealed class VisitTerminalWorkPlanner(ParkerenDbContext dbContext)
                              x.Id != exact.Id &&
                              x.Status == VisitSchedulerWorkStatus.Pending))
                 {
-                    duplicate.Cancel();
+                    duplicate.Cancel("duplicate_terminal_work");
                 }
 
                 return boundary;
@@ -51,7 +51,7 @@ public sealed class VisitTerminalWorkPlanner(ParkerenDbContext dbContext)
             throw new InvalidOperationException("Claimed terminal scheduler work cannot be replaced while it is being processed.");
 
         foreach (var obsolete in activeTerminalWork.Where(x => x.Status == VisitSchedulerWorkStatus.Pending))
-            obsolete.Cancel();
+            obsolete.Cancel("terminal_boundary_replanned");
 
         if (boundary is not null)
         {

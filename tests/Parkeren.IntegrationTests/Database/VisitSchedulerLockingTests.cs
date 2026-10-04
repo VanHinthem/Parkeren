@@ -15,6 +15,116 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task Scheduler_work_transitions_are_persisted_and_grouped_by_attempt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+        var now = new DateTimeOffset(2026, 10, 2, 10, 0, 0, TimeSpan.Zero);
+        var (visit, work) = await SeedActiveVisitWithWorkAsync(
+            now,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            now,
+            ct);
+
+        var services = CreateServices();
+        await using (var provider = services.BuildServiceProvider())
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+            var claimed = await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkClaimer>()
+                .ClaimNextDueAsync("scheduler-audit-test", now, ct);
+
+            Assert.NotNull(claimed);
+            claimed!.Release(now.AddMinutes(1));
+            await dbContext.SaveChangesAsync(ct);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var events = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.SourceType == "scheduler_work")
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.Id)
+            .ToListAsync(ct);
+
+        Assert.Equal(3, events.Count);
+        Assert.Equal("scheduler_work.created", events[0].EventType);
+        Assert.Equal("scheduler_work.claimed", events[1].EventType);
+        Assert.Equal("scheduler_work.released", events[2].EventType);
+        Assert.Equal($"attempt:{work.Id}:1", events[1].GroupKey);
+        Assert.Equal(events[1].GroupKey, events[2].GroupKey);
+        Assert.Equal(1, events[2].AttemptNumber);
+        Assert.Equal(events.Count, events.Select(x => x.EventKey).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Cancelled_scheduler_audit_save_can_be_retried_on_the_same_context()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+        var now = new DateTimeOffset(2026, 10, 2, 10, 0, 0, TimeSpan.Zero);
+        var (visit, work) = await SeedActiveVisitWithWorkAsync(
+            now,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            now,
+            ct);
+
+        await using var dbContext = fixture.CreateDbContext();
+        var trackedWork = await dbContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, ct);
+        trackedWork.Claim("scheduler-retry-test", now);
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => dbContext.SaveChangesAsync(cancelled.Token));
+
+        await dbContext.SaveChangesAsync(ct);
+
+        await using var verify = fixture.CreateDbContext();
+        var claimEvents = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.EventType == "scheduler_work.claimed")
+            .ToListAsync(ct);
+        Assert.Single(claimEvents);
+    }
+
+    [Fact]
+    public async Task Provider_operation_attempt_and_success_in_one_save_are_both_audited()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+        var now = new DateTimeOffset(2026, 10, 2, 10, 0, 0, TimeSpan.Zero);
+        var (visit, _) = await SeedActiveVisitWithWorkAsync(
+            now,
+            VisitSchedulerWorkType.ContinueProviderCoverage,
+            now,
+            ct);
+        var operation = new ProviderOperation(
+            Guid.NewGuid(), Guid.NewGuid(), visit.Id, null, ProviderOperationType.Stop);
+
+        await using (var dbContext = fixture.CreateDbContext())
+        {
+            dbContext.ProviderOperations.Add(operation);
+            await dbContext.SaveChangesAsync(ct);
+
+            operation.BeginAttempt();
+            operation.Succeed(now);
+            await dbContext.SaveChangesAsync(ct);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var events = await verify.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id && x.SourceId == operation.Id)
+            .OrderBy(x => x.OccurredAt)
+            .ThenBy(x => x.Id)
+            .ToListAsync(ct);
+
+        var attemptEvent = Assert.Single(events, x => x.EventType == "provider_operation.attempt_started");
+        var successEvent = Assert.Single(events, x => x.EventType == "provider_operation.succeeded");
+        Assert.Equal(attemptEvent.GroupKey, successEvent.GroupKey);
+        Assert.Equal(attemptEvent.OccurredAt, successEvent.OccurredAt);
+        Assert.True(attemptEvent.EventOrder < successEvent.EventOrder);
+    }
+
+    [Fact]
     public async Task Two_workers_cannot_claim_the_same_scheduler_work()
     {
         var ct = TestContext.Current.CancellationToken;

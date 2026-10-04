@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
@@ -34,10 +35,413 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<VisitEndTimeChange> VisitEndTimeChanges => Set<VisitEndTimeChange>();
     public DbSet<VisitSchedulerWork> VisitSchedulerWork => Set<VisitSchedulerWork>();
+    public DbSet<VisitSchedulerAuditEvent> VisitSchedulerAuditEvents => Set<VisitSchedulerAuditEvent>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
     public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
     public DbSet<ProviderDiscrepancy> ProviderDiscrepancies => Set<ProviderDiscrepancy>();
     public DbSet<AdminAuditEvent> AdminAuditEvents => Set<AdminAuditEvent>();
+    private int nextAuditEventOrder = 1;
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        try
+        {
+            CaptureVisitSchedulerAuditEvents();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        catch
+        {
+            DetachAuditEventsAddedByFailedSave();
+            throw;
+        }
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        return SaveChangesWithAuditAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private async Task<int> SaveChangesWithAuditAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+    {
+        try
+        {
+            CaptureVisitSchedulerAuditEvents();
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch
+        {
+            DetachAuditEventsAddedByFailedSave();
+            throw;
+        }
+    }
+
+    internal void RecordProviderOperationReconciliationStarted(ProviderOperation operation)
+    {
+        if (operation.VisitId is not Guid visitId)
+            throw new InvalidOperationException("Provider reconciliation requires a Visit.");
+
+        var version = Entry(operation).Property(x => x.Version).OriginalValue;
+        var eventType = "provider_operation.reconciliation_started";
+        AddAuditEvent(
+            visitId,
+            DateTimeOffset.UtcNow,
+            "provider_operation",
+            operation.Id,
+            eventType,
+            $"attempt:{operation.OperationId}:{operation.AttemptCount}",
+            operation.AttemptCount,
+            "provider_operation_reconciliation_started",
+            new
+            {
+                type = operation.Type.ToString(),
+                previousStatus = ProviderOperationStatus.Unknown.ToString(),
+                status = ProviderOperationStatus.Reconciling.ToString(),
+                operation.AttemptCount,
+                operation.LastErrorCode,
+                operation.ProviderParkingActionId,
+                operation.RequestedEndAt
+            },
+            $"provider-operation:{operation.Id}:version:{version}:{eventType}");
+    }
+
+    private void DetachAuditEventsAddedByFailedSave()
+    {
+        foreach (var entry in ChangeTracker.Entries<VisitSchedulerAuditEvent>().ToArray())
+        {
+            if (entry.State == EntityState.Added)
+                entry.State = EntityState.Detached;
+        }
+    }
+
+    private void CaptureVisitSchedulerAuditEvents()
+    {
+        ChangeTracker.DetectChanges();
+        var occurredAt = DateTimeOffset.UtcNow;
+        CaptureVisitAuditEvents(occurredAt);
+        CaptureProviderOperationAuditEvents(occurredAt);
+        CaptureProviderActionAuditEvents(occurredAt);
+        CaptureSchedulerWorkAuditEvents(occurredAt);
+    }
+
+    private void CaptureVisitAuditEvents(DateTimeOffset occurredAt)
+    {
+        foreach (var entry in ChangeTracker.Entries<Visit>().ToArray())
+        {
+            var visit = entry.Entity;
+            if (entry.State == EntityState.Added)
+            {
+                AddAuditEvent(
+                    visit.Id, occurredAt, "visit", visit.Id, "visit.created", $"visit:{visit.Id}", null,
+                    "visit_created", new
+                    {
+                        status = visit.Status.ToString(),
+                        health = visit.Health.ToString(),
+                        visit.StartAt,
+                        visit.DesiredEndAt
+                    },
+                    $"visit:{visit.Id}:created");
+                continue;
+            }
+
+            if (entry.State != EntityState.Modified)
+                continue;
+
+            var previousStatus = entry.Property(x => x.Status).OriginalValue;
+            var previousHealth = entry.Property(x => x.Health).OriginalValue;
+            var statusChanged = previousStatus != visit.Status;
+            var healthChanged = previousHealth != visit.Health;
+            if (!statusChanged && !healthChanged)
+                continue;
+
+            var eventType = statusChanged ? "visit.status_changed" : "visit.health_changed";
+            var version = entry.Property(x => x.Version).OriginalValue;
+            AddAuditEvent(
+                visit.Id, occurredAt, "visit", visit.Id, eventType, $"visit:{visit.Id}", null,
+                statusChanged ? "visit_status_changed" : "visit_health_changed",
+                new
+                {
+                    previousStatus = previousStatus.ToString(),
+                    status = visit.Status.ToString(),
+                    previousHealth = previousHealth.ToString(),
+                    health = visit.Health.ToString(),
+                    endReason = visit.EndReason?.ToString(),
+                    visit.ActualEndAt
+                },
+                $"visit:{visit.Id}:version:{version}:{eventType}");
+        }
+    }
+
+    private void CaptureProviderOperationAuditEvents(DateTimeOffset occurredAt)
+    {
+        foreach (var entry in ChangeTracker.Entries<ProviderOperation>().ToArray())
+        {
+            var operation = entry.Entity;
+            if (operation.VisitId is not Guid visitId)
+                continue;
+
+            if (entry.State == EntityState.Added)
+            {
+                AddAuditEvent(
+                    visitId, occurredAt, "provider_operation", operation.Id, "provider_operation.created",
+                    $"attempt:{operation.OperationId}:{operation.AttemptCount}", operation.AttemptCount,
+                    "provider_operation_created", new
+                    {
+                        type = operation.Type.ToString(),
+                        status = operation.Status.ToString(),
+                        operation.AttemptCount,
+                        operation.ProviderParkingActionId,
+                        operation.RequestedEndAt
+                    },
+                    $"provider-operation:{operation.Id}:created");
+                continue;
+            }
+
+            if (entry.State != EntityState.Modified)
+                continue;
+
+            var previousStatus = entry.Property(x => x.Status).OriginalValue;
+            var previousAttemptCount = entry.Property(x => x.AttemptCount).OriginalValue;
+            var previousErrorCode = entry.Property(x => x.LastErrorCode).OriginalValue;
+            var statusChanged = previousStatus != operation.Status;
+            var attemptChanged = previousAttemptCount != operation.AttemptCount;
+            var errorChanged = previousErrorCode != operation.LastErrorCode;
+            if (!statusChanged && !attemptChanged && !errorChanged)
+                continue;
+
+            var version = entry.Property(x => x.Version).OriginalValue;
+            var groupKey = $"attempt:{operation.OperationId}:{operation.AttemptCount}";
+            if (attemptChanged)
+            {
+                const string attemptStartedEvent = "provider_operation.attempt_started";
+                AddAuditEvent(
+                    visitId, occurredAt, "provider_operation", operation.Id, attemptStartedEvent,
+                    groupKey, operation.AttemptCount, "provider_operation_attempt_started", new
+                    {
+                        type = operation.Type.ToString(),
+                        previousStatus = previousStatus.ToString(),
+                        status = ProviderOperationStatus.InProgress.ToString(),
+                        previousAttemptCount,
+                        attemptCount = operation.AttemptCount,
+                        previousErrorCode,
+                        errorCode = operation.LastErrorCode,
+                        operation.ProviderParkingActionId,
+                        operation.RequestedEndAt
+                    },
+                    $"provider-operation:{operation.Id}:version:{version}:{attemptStartedEvent}");
+            }
+
+            if ((statusChanged && operation.Status != ProviderOperationStatus.InProgress) ||
+                (!attemptChanged && errorChanged))
+            {
+                var resultEvent = operation.Status switch
+                {
+                    ProviderOperationStatus.Unknown => "provider_operation.outcome_unknown",
+                    ProviderOperationStatus.Reconciling => "provider_operation.reconciliation_started",
+                    ProviderOperationStatus.Succeeded => "provider_operation.succeeded",
+                    ProviderOperationStatus.Failed => "provider_operation.failed",
+                    ProviderOperationStatus.Pending => "provider_operation.retry_ready",
+                    _ => "provider_operation.state_changed"
+                };
+                AddAuditEvent(
+                    visitId, occurredAt, "provider_operation", operation.Id, resultEvent,
+                    groupKey, operation.AttemptCount, resultEvent.Replace('.', '_'), new
+                    {
+                        type = operation.Type.ToString(),
+                        previousStatus = attemptChanged
+                            ? ProviderOperationStatus.InProgress.ToString()
+                            : previousStatus.ToString(),
+                        status = operation.Status.ToString(),
+                        previousAttemptCount = attemptChanged ? operation.AttemptCount : previousAttemptCount,
+                        attemptCount = operation.AttemptCount,
+                        previousErrorCode,
+                        errorCode = operation.LastErrorCode,
+                        operation.ProviderParkingActionId,
+                        operation.RequestedEndAt,
+                        operation.CompletedAt
+                    },
+                    $"provider-operation:{operation.Id}:version:{version}:{resultEvent}");
+            }
+        }
+    }
+
+    private void CaptureProviderActionAuditEvents(DateTimeOffset occurredAt)
+    {
+        foreach (var entry in ChangeTracker.Entries<ProviderParkingAction>().ToArray())
+        {
+            var action = entry.Entity;
+            if (action.VisitId is not Guid visitId)
+                continue;
+
+            if (entry.State == EntityState.Added)
+            {
+                AddAuditEvent(
+                    visitId, occurredAt, "provider_action", action.Id, "provider_action.created",
+                    $"action:{action.Id}", null, "provider_action_created", new
+                    {
+                        state = action.State.ToString(),
+                        health = action.Health.ToString(),
+                        action.PlannedStartAt,
+                        action.PlannedEndAt,
+                        action.ProviderProductId
+                    },
+                    $"provider-action:{action.Id}:created");
+                continue;
+            }
+
+            if (entry.State != EntityState.Modified)
+                continue;
+
+            var previousState = entry.Property(x => x.State).OriginalValue;
+            var previousHealth = entry.Property(x => x.Health).OriginalValue;
+            var previousHistoryStatus = entry.Property(x => x.HistoryStatus).OriginalValue;
+            var stateChanged = previousState != action.State;
+            var healthChanged = previousHealth != action.Health;
+            var historyChanged = previousHistoryStatus != action.HistoryStatus;
+            var timingChanged = entry.Property(x => x.PlannedStartAt).IsModified ||
+                entry.Property(x => x.PlannedEndAt).IsModified ||
+                entry.Property(x => x.ActualStartAt).IsModified ||
+                entry.Property(x => x.ActualEndAt).IsModified;
+            if (!stateChanged && !healthChanged && !historyChanged && !timingChanged)
+                continue;
+
+            var eventType = stateChanged
+                ? "provider_action.state_changed"
+                : healthChanged
+                    ? "provider_action.health_changed"
+                    : historyChanged
+                        ? "provider_action.history_changed"
+                        : "provider_action.timing_changed";
+            var version = entry.Property(x => x.Version).OriginalValue;
+            AddAuditEvent(
+                visitId, occurredAt, "provider_action", action.Id, eventType, $"action:{action.Id}", null,
+                eventType.Replace('.', '_'), new
+                {
+                    previousState = previousState.ToString(),
+                    state = action.State.ToString(),
+                    previousHealth = previousHealth.ToString(),
+                    health = action.Health.ToString(),
+                    previousHistoryStatus = previousHistoryStatus.ToString(),
+                    historyStatus = action.HistoryStatus.ToString(),
+                    action.PlannedStartAt,
+                    action.PlannedEndAt,
+                    action.ActualStartAt,
+                    action.ActualEndAt,
+                    action.ProviderStatus,
+                    action.ProviderCostAmount
+                },
+                $"provider-action:{action.Id}:version:{version}:{eventType}");
+        }
+    }
+
+    private void CaptureSchedulerWorkAuditEvents(DateTimeOffset occurredAt)
+    {
+        foreach (var entry in ChangeTracker.Entries<VisitSchedulerWork>().ToArray())
+        {
+            var work = entry.Entity;
+            if (entry.State == EntityState.Added)
+            {
+                AddSchedulerWorkAuditEvent(
+                    work,
+                    occurredAt,
+                    "scheduler_work.created",
+                    "work_created",
+                    null,
+                    work.Status,
+                    null,
+                    work.DueAt,
+                    $"scheduler-work:{work.Id}:created");
+                continue;
+            }
+
+            if (entry.State != EntityState.Modified)
+                continue;
+
+            var oldStatus = entry.Property(x => x.Status).OriginalValue;
+            var oldDueAt = entry.Property(x => x.DueAt).OriginalValue;
+            var statusChanged = oldStatus != work.Status;
+            var dueAtChanged = oldDueAt != work.DueAt;
+            if (!statusChanged && !dueAtChanged)
+                continue;
+
+            var (eventType, defaultReasonCode) = statusChanged
+                ? work.Status switch
+                {
+                    VisitSchedulerWorkStatus.Claimed => ("scheduler_work.claimed", "due_work_claimed"),
+                    VisitSchedulerWorkStatus.Pending => ("scheduler_work.released", "work_rescheduled"),
+                    VisitSchedulerWorkStatus.Completed => ("scheduler_work.completed", "work_completed"),
+                    VisitSchedulerWorkStatus.Cancelled => ("scheduler_work.cancelled", "work_cancelled"),
+                    _ => ("scheduler_work.changed", "work_state_changed")
+                }
+                : ("scheduler_work.deferred", "due_time_changed");
+            var version = entry.Property(x => x.Version).OriginalValue;
+            AddSchedulerWorkAuditEvent(
+                work,
+                occurredAt,
+                eventType,
+                work.AuditReasonCode ?? defaultReasonCode,
+                oldStatus,
+                work.Status,
+                oldDueAt,
+                work.DueAt,
+                $"scheduler-work:{work.Id}:version:{version}:{eventType}");
+        }
+    }
+
+    private void AddSchedulerWorkAuditEvent(
+        VisitSchedulerWork work,
+        DateTimeOffset occurredAt,
+        string eventType,
+        string reasonCode,
+        VisitSchedulerWorkStatus? previousStatus,
+        VisitSchedulerWorkStatus currentStatus,
+        DateTimeOffset? previousDueAt,
+        DateTimeOffset currentDueAt,
+        string eventKey)
+    {
+        AddAuditEvent(
+            work.VisitId, occurredAt, "scheduler_work", work.Id, eventType,
+            $"attempt:{work.Id}:{work.AttemptCount}", work.AttemptCount,
+            reasonCode, new
+            {
+                workType = work.Type.ToString(),
+                previousStatus = previousStatus?.ToString(),
+                status = currentStatus.ToString(),
+                previousDueAt,
+                dueAt = currentDueAt,
+                attemptCount = work.AttemptCount,
+                endReason = work.EndReason?.ToString()
+            },
+            eventKey);
+    }
+
+    private void AddAuditEvent(
+        Guid visitId,
+        DateTimeOffset occurredAt,
+        string sourceType,
+        Guid sourceId,
+        string eventType,
+        string groupKey,
+        int? attemptNumber,
+        string reasonCode,
+        object details,
+        string eventKey)
+    {
+        VisitSchedulerAuditEvents.Add(new VisitSchedulerAuditEvent(
+            Guid.NewGuid(),
+            visitId,
+            occurredAt,
+            nextAuditEventOrder++,
+            sourceType,
+            sourceId,
+            eventType,
+            groupKey,
+            attemptNumber,
+            reasonCode,
+            JsonSerializer.Serialize(details),
+            eventKey));
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -308,6 +712,7 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("visit_scheduler_work");
             entity.HasKey(x => x.Id);
+            entity.Ignore(x => x.AuditReasonCode);
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             entity.Property(x => x.Version).IsRowVersion();
@@ -320,6 +725,23 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
                 .HasFilter("\"Status\" IN ('Pending', 'Claimed') AND \"Type\" <> 'ReconcileProviderAction'");
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<VisitSchedulerAuditEvent>(entity =>
+        {
+            entity.ToTable("visit_scheduler_audit_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EventOrder).IsRequired();
+            entity.Property(x => x.SourceType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.EventType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.GroupKey).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.ReasonCode).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DetailsJson).HasColumnType("jsonb");
+            entity.Property(x => x.EventKey).HasMaxLength(200).IsRequired();
+            entity.HasIndex(x => x.EventKey).IsUnique();
+            entity.HasIndex(x => new { x.VisitId, x.OccurredAt });
+            entity.HasIndex(x => new { x.VisitId, x.GroupKey, x.OccurredAt });
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Visit>(entity =>

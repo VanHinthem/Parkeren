@@ -1916,12 +1916,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var snapshot = new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
         var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id, startAt, originalEndAt, snapshot);
         visit.Activate();
+        var obsoleteWork = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+            requestedEndAt.AddMinutes(5));
 
         await using (var seedContext = fixture.CreateDbContext())
         {
             seedContext.Users.Add(user);
             seedContext.Vehicles.Add(vehicle);
             seedContext.Visits.Add(visit);
+            seedContext.VisitSchedulerWork.Add(obsoleteWork);
             seedContext.ParkingRuleSets.Add(new ParkingRuleSet(
                 Guid.NewGuid(),
                 startAt.AddDays(-1),
@@ -1971,6 +1975,14 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.NotNull(changes[0].RequestedDesiredEndAt);
         Assert.True((changes[0].RequestedDesiredEndAt.GetValueOrDefault() - requestedEndAt).Duration() <= TimeSpan.FromMilliseconds(1));
         Assert.Equal(VisitEndTimeChangeResult.Applied, changes[0].Result);
+        Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
+            (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == obsoleteWork.Id, cancellationToken)).Status);
+        var cancellationEvent = Assert.Single(await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id &&
+                        x.SourceId == obsoleteWork.Id &&
+                        x.EventType == "scheduler_work.cancelled")
+            .ToListAsync(cancellationToken));
+        Assert.Equal("desired_end_time_changed", cancellationEvent.ReasonCode);
     }
 
     [Fact]
@@ -2926,6 +2938,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled, persistedWork.Status);
         Assert.Null(persistedWork.ClaimedAt);
         Assert.Null(persistedWork.ClaimedBy);
+        var cancellationEvent = Assert.Single(await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id &&
+                        x.SourceId == work.Id &&
+                        x.EventType == "scheduler_work.cancelled")
+            .ToListAsync(cancellationToken));
+        Assert.Equal("visit_entered_stopping", cancellationEvent.ReasonCode);
     }
 
     [Fact]
@@ -3409,6 +3427,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
             (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+        var recoveryCancellation = Assert.Single(await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id &&
+                        x.SourceId == work.Id &&
+                        x.EventType == "scheduler_work.cancelled")
+            .ToListAsync(cancellationToken));
+        Assert.Equal("recovery_external_provider_stop", recoveryCancellation.ReasonCode);
         Assert.Single(await verifyContext.NotificationEvents
             .Where(x => x.AggregateId == visit.Id &&
                         x.Type == NotificationEventType.ProviderContinuationAttentionRequired)
@@ -3514,6 +3538,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         action.MarkActive(remote.ProviderActionId, start);
         var work = new VisitSchedulerWork(Guid.NewGuid(), visit.Id,
             VisitSchedulerWorkType.ContinueProviderCoverage, end.AddMinutes(-5));
+        work.Claim("crashed-worker", now.AddMinutes(-1));
 
         await using (var seedContext = fixture.CreateDbContext())
         {
@@ -3551,6 +3576,18 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
             (await verifyContext.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Health);
         Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
             (await verifyContext.VisitSchedulerWork.SingleAsync(x => x.Id == work.Id, cancellationToken)).Status);
+        var recoveredRelease = Assert.Single(await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id &&
+                        x.SourceId == work.Id &&
+                        x.EventType == "scheduler_work.released")
+            .ToListAsync(cancellationToken));
+        Assert.Equal("recovery_claimed_work_execute", recoveredRelease.ReasonCode);
+        var recoveryCancellation = Assert.Single(await verifyContext.VisitSchedulerAuditEvents
+            .Where(x => x.VisitId == visit.Id &&
+                        x.SourceId == work.Id &&
+                        x.EventType == "scheduler_work.cancelled")
+            .ToListAsync(cancellationToken));
+        Assert.Equal("recovery_ambiguous_visit", recoveryCancellation.ReasonCode);
         Assert.Single(await verifyContext.NotificationEvents
             .Where(x => x.AggregateId == visit.Id &&
                         x.Type == NotificationEventType.ProviderContinuationAttentionRequired)

@@ -21,7 +21,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         await container.StartAsync();
 
         await using var dbContext = CreateDbContext();
-        await dbContext.Database.EnsureCreatedAsync();
+        await dbContext.Database.MigrateAsync();
         dbContext.ParkingSystemSettings.Add(new ParkingSystemSettings(Guid.NewGuid(), 5));
         dbContext.DefaultParkingPolicies.Add(new DefaultParkingPolicy(
             Guid.NewGuid(),

@@ -49,7 +49,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         {
             if (visit.Status != VisitStatus.Active)
             {
-                work.Cancel();
+                work.Cancel("visit_not_active");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -108,7 +108,7 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (visit.Status != VisitStatus.Active || visit.Health != VisitHealth.Healthy)
         {
-            work.Cancel();
+            work.Cancel("visit_not_healthy_for_continuation");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -133,7 +133,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             if (remote is null)
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
+                work.Cancel("scheduled_action_missing_at_provider");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -143,7 +143,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                 var wakeAt = latestAction.PlannedStartAt > timeProvider.GetUtcNow()
                     ? latestAction.PlannedStartAt
                     : timeProvider.GetUtcNow().AddMinutes(1);
-                work.Release(wakeAt);
+                work.Release(wakeAt, "scheduled_action_not_started_yet");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -151,7 +151,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             if (!string.Equals(remote.Status, "active", StringComparison.OrdinalIgnoreCase))
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
+                work.Cancel("scheduled_action_status_changed");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -201,7 +201,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         var continuationPrecheckAt = ProviderCoverageSchedule.PrecheckAt(latestAction.PlannedEndAt);
         if (continuationPrecheckAt > now)
         {
-            work.Release(continuationPrecheckAt);
+            work.Release(continuationPrecheckAt, "continuation_precheck_not_due");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -280,7 +280,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             if (visit.DesiredEndAt is null &&
                 visit.PolicySnapshot.MaxVisitElapsedDuration is null &&
                 visit.PolicySnapshot.MaxPaidParkingDuration is null)
-                work.Release(desiredEndAt);
+                work.Release(desiredEndAt, "unbounded_visit_waiting_for_paid_window");
             else
                 work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -292,7 +292,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var nextPaidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(nextPaid.Start);
             if (nextPaidPrecheckAt > now)
             {
-                work.Release(nextPaidPrecheckAt);
+                work.Release(nextPaidPrecheckAt, "next_paid_window_precheck");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -317,7 +317,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             .FirstOrDefault();
         if (actionRules is null)
         {
-            work.Release(now.AddMinutes(1));
+            work.Release(now.AddMinutes(1), "parking_rules_temporarily_unavailable");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -328,7 +328,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             if (parkingProvider is null || string.IsNullOrWhiteSpace(latestAction.ProviderActionId))
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
+                work.Cancel("continuation_provider_reference_unavailable");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -353,7 +353,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                         dbContext, latestAction, timeProvider.GetUtcNow().AddMinutes(1), cancellationToken);
                 }
                 visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
+                work.Cancel("previous_provider_action_mismatch");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -372,7 +372,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
             if (string.IsNullOrWhiteSpace(providerLocation) || executor is null)
             {
-                work.Release(now.AddMinutes(1));
+                work.Release(now.AddMinutes(1), "continuation_start_executor_unavailable");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -387,7 +387,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                 startPreparation, licensePlate, providerLocation, cancellationToken);
             if (startExecution.RequiresReconciliation)
             {
-                work.Release(now.AddMinutes(1));
+                work.Release(now.AddMinutes(1), "continuation_start_requires_reconciliation");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -413,7 +413,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         var providerExtendExecutor = serviceProvider.GetService<ContinueVisitProviderExecutor>();
         if (providerExtendExecutor is null)
         {
-            work.Release(now.AddMinutes(1));
+            work.Release(now.AddMinutes(1), "provider_extend_executor_unavailable");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -443,7 +443,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                 }
             }
 
-            work.Release(now.AddMinutes(1));
+            work.Release(now.AddMinutes(1), "provider_extend_requires_reconciliation");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -510,7 +510,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             if (visit.DesiredEndAt is null &&
                 visit.PolicySnapshot.MaxVisitElapsedDuration is null &&
                 visit.PolicySnapshot.MaxPaidParkingDuration is null)
-                work.Release(desiredEndAt);
+                work.Release(desiredEndAt, "unbounded_visit_waiting_for_paid_window");
             else
                 work.Complete(now);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -522,7 +522,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var paidPrecheckAt = ProviderCoverageSchedule.PrecheckAt(paid.Start);
             if (paidPrecheckAt > now)
             {
-                work.Release(paidPrecheckAt);
+                work.Release(paidPrecheckAt, "initial_coverage_paid_window_precheck");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -545,7 +545,7 @@ internal sealed class VisitSchedulerWorkProcessor(
         var executor = serviceProvider.GetService<ContinueVisitStartExecutor>();
         if (string.IsNullOrWhiteSpace(providerLocation) || executor is null)
         {
-            work.Release(now.AddMinutes(1));
+            work.Release(now.AddMinutes(1), "initial_coverage_start_executor_unavailable");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -568,7 +568,7 @@ internal sealed class VisitSchedulerWorkProcessor(
                     ProviderActionMatchPolicy.Matches(action, possibleDuplicate)))
             {
                 visit.SetHealth(VisitHealth.AttentionRequired);
-                work.Cancel();
+                work.Cancel("possible_duplicate_provider_action");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -577,7 +577,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             visit, work.Id, paid.Start, endAt, cancellationToken);
         var execution = await executor.ExecuteAsync(preparation, licensePlate, providerLocation, cancellationToken);
         if (execution.RequiresReconciliation)
-            work.Release(now.AddMinutes(1));
+            work.Release(now.AddMinutes(1), "initial_coverage_start_requires_reconciliation");
         else
             work.Complete(now);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -596,7 +596,7 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (action.HistoryStatus != ProviderHistoryStatus.Pending)
         {
-            work.Cancel();
+            work.Cancel("provider_action_history_already_resolved");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -645,7 +645,9 @@ internal sealed class VisitSchedulerWorkProcessor(
                 _ => TimeSpan.FromHours(1)
             };
             var retryAt = now + retryDelay;
-            work.Release(retryAt < historyDeadline ? retryAt : historyDeadline);
+            work.Release(
+                retryAt < historyDeadline ? retryAt : historyDeadline,
+                "provider_action_history_retry_scheduled");
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -702,7 +704,7 @@ internal sealed class VisitSchedulerWorkProcessor(
 
         if (visit.Status != VisitStatus.Active && visit.Status != VisitStatus.Stopping)
         {
-            work.Cancel();
+            work.Cancel("visit_not_stoppable");
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -727,7 +729,7 @@ internal sealed class VisitSchedulerWorkProcessor(
             var execution = await executor.ExecuteAsync(preparation, cancellationToken);
             if (execution.RequiresReconciliation)
             {
-                work.Release(now.AddMinutes(1));
+                work.Release(now.AddMinutes(1), "scheduled_stop_requires_reconciliation");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }

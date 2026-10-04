@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Parkeren.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Parkeren.Infrastructure.Persistence;
 namespace Parkeren.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ParkerenDbContext))]
-    partial class ParkerenDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261004092142_AddVisitSchedulerAuditEventOrder")]
+    partial class AddVisitSchedulerAuditEventOrder
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

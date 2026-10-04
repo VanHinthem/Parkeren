@@ -151,6 +151,7 @@ Post-End gedrag en scheduled-capacity hebben bewust geen providerdefault zolang 
 
 Exact één actieve `Parkeren.Api` / `VisitSchedulerWorker` instance. Geen horizontale schaal en geen overlappende rolling deployment in V1.
 
-## Nog niet geïmplementeerd
+## SCHED-018 observability
+### Implementatiestatus
 
-SCHED-018: persistente Visit-gerelateerde scheduler observability/audit trail. Dit is bewust de eerstvolgende aparte ontwerp-/implementatiestap en maakt geen deel uit van de huidige scheduler-hardening.
+Persistente Visit-gerelateerde scheduler observability is afgerond als aparte uitbreiding op scheduler-hardening. Zie [SCHED-018](visit-scheduler-audit/SCHED-018.md) voor de actuele implementatie- en verificatiestatus.

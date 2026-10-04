@@ -580,6 +580,18 @@ export type AdminVisitEndTimeChangeSummary={
   createdAt:string;
   result:"Pending"|"Applied"|"Rejected";
 };
+export type AdminVisitSchedulerWorkSummary={
+  id:string;
+  type:"ContinueProviderCoverage"|"StopVisit"|"LongVisitWarning"|"ReconcileProviderAction";
+  status:"Pending"|"Claimed"|"Completed"|"Cancelled";
+  dueAt:string;
+  endReason:string|null;
+  providerParkingActionId:string|null;
+  attemptCount:number;
+  createdAt:string;
+  claimedAt:string|null;
+  completedAt:string|null;
+};
 export type AdminRuleSetSummary={
   id:string;
   validFrom:string;
@@ -601,8 +613,22 @@ export type AdminVisitDetail={
   };
   providerActions:AdminProviderParkingActionSummary[];
   providerOperations:AdminProviderOperationSummary[];
+  schedulerWork:AdminVisitSchedulerWorkSummary[];
   endTimeChanges:AdminVisitEndTimeChangeSummary[];
+  timelineEvents:AdminVisitTimelineEvent[];
   relevantRuleSets:AdminRuleSetSummary[];
+};
+export type AdminVisitTimelineEvent={
+  id:string;
+  occurredAt:string;
+  eventOrder:number;
+  sourceType:string;
+  sourceId:string;
+  eventType:string;
+  groupKey:string;
+  attemptNumber:number|null;
+  reasonCode:string;
+  detailsJson:string|null;
 };
 export type AdminVisitFilters={
   userId?:string;

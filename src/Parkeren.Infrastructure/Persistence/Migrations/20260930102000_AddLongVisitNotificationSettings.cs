@@ -1,11 +1,15 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Parkeren.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace Parkeren.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ParkerenDbContext))]
+    [Migration("20260930102000_AddLongVisitNotificationSettings")]
     public partial class AddLongVisitNotificationSettings : Migration
     {
         /// <inheritdoc />

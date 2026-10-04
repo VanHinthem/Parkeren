@@ -213,6 +213,104 @@
   color:var(--color-text-muted);
 }
 
+.admin-visit-detail__timeline{
+  display:grid;
+  gap:.65rem;
+}
+
+.admin-visit-detail__timeline-group{
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-surface-muted);
+}
+
+.admin-visit-detail__timeline-group>summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  padding:.8rem .9rem;
+  cursor:pointer;
+}
+
+.admin-visit-detail__timeline-group>summary span{
+  color:var(--color-text-muted);
+  font-size:.8rem;
+}
+
+.admin-visit-detail__timeline-group ol{
+  display:grid;
+  gap:.6rem;
+  margin:0;
+  padding:0 1rem 1rem 2.5rem;
+}
+
+.admin-visit-detail__timeline-group li{
+  padding:.65rem .75rem;
+  border-left:2px solid var(--color-border);
+  background:var(--color-surface);
+}
+
+.admin-visit-detail__timeline-event-head{
+  display:flex;
+  justify-content:space-between;
+  gap:.75rem;
+}
+
+.admin-visit-detail__timeline-event-head time,
+.admin-visit-detail__timeline-group li>p{
+  color:var(--color-text-muted);
+  font-size:.8rem;
+}
+
+.admin-visit-detail__timeline-group li>p{
+  margin:.3rem 0 0;
+}
+
+.admin-visit-detail__timeline-details{
+  margin-top:.5rem;
+  font-size:.8rem;
+}
+
+.admin-visit-detail__timeline-details pre{
+  max-width:100%;
+  overflow:auto;
+  padding:.6rem;
+  background:var(--color-surface-muted);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+.admin-visit-detail__timeline-source{
+  display:grid;
+  gap:.35rem;
+  margin:.5rem 0;
+  font-size:.8rem;
+}
+
+.admin-visit-detail__timeline-source>div{
+  display:grid;
+  grid-template-columns:6rem minmax(0,1fr);
+  gap:.5rem;
+}
+
+.admin-visit-detail__timeline-source dd{
+  margin:0;
+  overflow-wrap:anywhere;
+}
+
+.admin-visit-detail__timeline-source a{
+  color:var(--color-primary);
+}
+
+@media(max-width:760px){
+  .admin-visit-detail__timeline-group>summary,
+  .admin-visit-detail__timeline-event-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
 @media(max-width:1150px){
   .admin-visits__filters{
     grid-template-columns:repeat(3,minmax(0,1fr));
