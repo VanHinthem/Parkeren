@@ -10,6 +10,8 @@ services:
       ParkingProvider__Type: TwoParkMock
       ParkingProvider__BaseUrl: http://two-park-mock:8080
       Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      # Optional: set Subject, PublicKey, and PrivateKey together to enable browser push.
+      # Use a separate key pair for development; the private key stays on this server.
       WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
       WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
       WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}

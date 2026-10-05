@@ -11,6 +11,8 @@ services:
       ParkingProvider__Email: ${PARKEREN_TWOPARK_EMAIL:?Set PARKEREN_TWOPARK_EMAIL}
       ParkingProvider__Password: ${PARKEREN_TWOPARK_PASSWORD:?Set PARKEREN_TWOPARK_PASSWORD}
       Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      # Optional: set Subject, PublicKey, and PrivateKey together to enable browser push.
+      # The public key is served to authenticated browsers; the private key stays on this server.
       WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
       WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
       WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
