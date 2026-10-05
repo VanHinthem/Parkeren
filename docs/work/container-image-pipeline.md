@@ -64,6 +64,7 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 - Gitleaks Action v3 scant de volledige gitgeschiedenis; PR-commentaar en scan-artifactuploads staan uit.
 - Trivy Action v0.36.0 scant gebouwde images op secrets en HIGH/CRITICAL-kwetsbaarheden. Iedere scan heeft een niet-nul exitcode bij een bevinding; unfixed kwetsbaarheden worden niet genegeerd.
 - De buildjob scant lokaal en uploadt daarna alleen het exacte gescande image-archief als artifact met retentie van één dag. Een aparte publisher-job met uitsluitend `packages: write` downloadt dat artifact en publiceert alleen op relevante develop-pushes of gevalideerde releasetags. PR-jobs loggen niet in bij GHCR en pushen nooit.
+- PR-validatie in run 37305258414 slaagde voor Gitleaks, backend/frontendchecks, beide imagebuilds en alle vier Trivy-scans; alle publish-jobs werden overgeslagen. Push-run 37305245070 slaagde voor Gitleaks en tests en bouwde/pushte geen images op de featurebranch. Er is nog niets naar GHCR gepubliceerd.
 
 ### 5. NAS pull-instructie en overdracht
 
