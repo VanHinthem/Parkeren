@@ -5,10 +5,14 @@ namespace Parkeren.Application.Visits;
 public interface IVisitStartStore
 {
     Task SaveAsync(Visit visit, CancellationToken cancellationToken = default);
+    Task<bool> CancelUnpreparedStartAsync(Guid visitId, CancellationToken cancellationToken = default);
 }
 
 public sealed class StartVisitFinalizer(IVisitStartStore store)
 {
+    public Task<bool> CancelUnpreparedStartAsync(Guid visitId, CancellationToken cancellationToken = default) =>
+        store.CancelUnpreparedStartAsync(visitId, cancellationToken);
+
     public async Task<Visit> FinalizeFreeStartAsync(StartVisitClaimResult claim, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(claim);

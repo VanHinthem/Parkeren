@@ -8,6 +8,37 @@ namespace Parkeren.Infrastructure.Visits;
 
 internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStartStore
 {
+    public async Task<bool> CancelUnpreparedStartAsync(Guid visitId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var lockKey = VisitAdvisoryLock.For(visitId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({lockKey})", cancellationToken);
+
+        var visit = await dbContext.Visits.SingleOrDefaultAsync(x => x.Id == visitId, cancellationToken);
+        if (visit is null || visit.Status != VisitStatus.Starting)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
+
+        var hasProviderOperation = await dbContext.ProviderOperations
+            .AnyAsync(x => x.VisitId == visitId, cancellationToken);
+        var hasProviderAction = await dbContext.ProviderParkingActions
+            .AnyAsync(x => x.VisitId == visitId, cancellationToken);
+        if (hasProviderOperation || hasProviderAction)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
+
+        visit.SetHealth(VisitHealth.Healthy);
+        visit.Cancel();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task SaveAsync(Visit visit, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(visit);
