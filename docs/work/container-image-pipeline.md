@@ -91,6 +91,6 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 5. Voer alleen de eerstvolgende concrete stap uit. Houd wijzigingen beperkt tot die fase.
 6. Na de eerste wijziging voer je direct de dichtstbijzijnde relevante test, build of securitycheck uit. Repareer lokale fouten en herhaal dezelfde check.
 7. Werk na elke afgeronde fase de GitHub-issue en de voortgang, uitgevoerde commando's en relevante resultaten in dit dossier bij. Leg mislukte of niet-uitgevoerde validaties expliciet vast.
-8. Maak aan het einde een PR naar `develop`, link het issue en laat de PR open voor review en handmatige afronding door de gebruiker. Merge de PR niet, squash niet en schakel geen auto-merge in.
+8. Maak aan het einde een PR naar `develop`, link het issue en laat de PR open voor review en handmatige afronding door de gebruiker. Omdat `develop` niet de standaardbranch is, sluiten GitHub-closing keywords het issue niet automatisch; meld na de merge als het issue nog handmatig gesloten moet worden. Merge de PR niet, squash niet en schakel geen auto-merge in.
 9. Stop bij een benodigde gebruikerskeuze, ontbrekende NAS-toegang/configuratie of een migratierisico; noteer exact wat nodig is en ga niet stilzwijgend buiten scope.
 10. Verwijder geen bestaande gebruikerswijzigingen, migratiebestanden of productiegegevens.
