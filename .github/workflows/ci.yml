@@ -63,8 +63,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    env:
-      PARKEREN_BUILD_ID: ${{ github.sha }}
     defaults:
       run:
         working-directory: src/Parkeren.Web
@@ -74,8 +72,16 @@ jobs:
         with:
           node-version: '24'
       - run: npm install
-      - run: npm run build
-      - run: npm run check:pwa
+      - name: Build and check production PWA
+        env:
+          PARKEREN_BUILD_ID: ${{ github.sha }}
+          PARKEREN_APP_VARIANT: production
+        run: npm run build && npm run check:pwa
+      - name: Build and check development PWA
+        env:
+          PARKEREN_BUILD_ID: ${{ github.sha }}
+          PARKEREN_APP_VARIANT: dev
+        run: npm run build && npm run check:pwa
       - run: npm test -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
       - name: Publish frontend test results
         uses: dorny/test-reporter@v2
