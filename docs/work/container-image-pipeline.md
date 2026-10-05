@@ -75,12 +75,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 2 geïmplementeerd en klaar voor review; fase 1 blijft afgerond.
-- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105.
-- Laatst afgerond: fase 1 gemerged naar `develop`; API-build en GitHub Actions-backendchecks, inclusief de PostgreSQL/Testcontainers-suite, zijn geslaagd.
-- Volgende stap: review en merge PR #105; daarna fase 3, workflow- en imagebouw, starten met een eigen issue en branch vanaf `develop`.
+- Status: fase 2 afgerond en gemerged naar `develop`; fase 1 blijft afgerond.
+- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106.
+- Laatst afgerond: productie- en dev-PWA-identiteit zijn gescheiden; CI valideerde beide PWA-builds en de frontendtests.
+- Volgende stap: start fase 3, workflow- en imagebouw, met een eigen feature-issue en branch vanaf `develop`.
 - Blokkades/besluiten: geen functionele blokkades voor fase 2. Er is geen NAS- of database-reset uitgevoerd. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
-- Laatste validatie: productie- en dev-PWA-builds en `check:pwa` geslaagd; frontendtests 22/22 geslaagd; dev-Compose-config met `mock`-profile valideert stil.
+- Laatste validatie: productie- en dev-PWA-builds en `check:pwa` geslaagd; frontendtests 22/22 geslaagd; dev-Compose-config met `mock`-profile valideert stil; GitHub Actions backend- en frontendchecks op PR #106 geslaagd.
 
 ## Agent-werkwijze
 
