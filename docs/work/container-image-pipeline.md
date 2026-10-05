@@ -75,12 +75,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: planning vastgelegd; implementatie is nog niet gestart.
-- GitHub-tracking: initiatief #99; eerste documentatiefeature #100.
+- Status: fase 1 in uitvoering; API gebruikt lokaal in alle omgevingen dezelfde EF Core-migratieketen.
+- GitHub-tracking: initiatief #99; migratiefeature #102.
 - Laatst afgerond: gebruikerskeuzes voor branchbeleid, publieke GHCR-images, releasetags, mock op dev, migraties in alle omgevingen en PWA-herkenbaarheid zijn verzameld.
-- Volgende stap: fase 1, migratiegedrag in `Program.cs` aanpassen zodat dev ook EF Core-migraties gebruikt; daarna de migratieketen en relevante tests valideren.
-- Blokkades/besluiten: geen inhoudelijke blokkades bekend. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
-- Laatste validatie: nog niet uitgevoerd; er zijn nog geen implementatiewijzigingen.
+- Volgende stap: de Docker-backed PostgreSQL-integratietest laten slagen in CI; Docker is lokaal niet beschikbaar. Daarna fase 1 afronden en issue #99 bijwerken.
+- Blokkades/besluiten: lokale Testcontainers-tests blokkeren op ontbrekende Docker-engine (`npipe://./pipe/docker_engine`). Er is geen NAS- of database-reset uitgevoerd. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
+- Laatste validatie: `dotnet build src/Parkeren.Api/Parkeren.Api.csproj --no-restore --configuration Release` geslaagd; `dotnet test tests/Parkeren.IntegrationTests/Parkeren.IntegrationTests.csproj --no-restore --configuration Release` gestart maar geblokkeerd omdat Docker niet bereikbaar was.
 
 ## Agent-werkwijze
 
