@@ -1,5 +1,8 @@
 services:
   app:
+    build:
+      args:
+        PARKEREN_APP_VARIANT: dev
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD}
