@@ -1,5 +1,3 @@
-name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to an isolated development project name}
-
 services:
   app:
     image: ghcr.io/vanhinthem/parkeren-app:${PARKEREN_DEV_IMAGE_TAG:?Set PARKEREN_DEV_IMAGE_TAG}
