@@ -17,6 +17,7 @@ internal sealed class VisitRecoveryService(
     StopVisitProviderReconciler stopReconciler,
     StartVisitProviderReconciler startReconciler,
     IProviderStartStore providerStartStore,
+    IVisitStartStore visitStartStore,
     StartVisitProviderExecutor startProviderExecutor,
     IProviderContinuationStartResultStore continuationStartResults,
     IVisitEndTimeProviderAdjuster endTimeProviderAdjuster,
@@ -445,6 +446,7 @@ internal sealed class VisitRecoveryService(
 
     private async Task ReconcileAsync(bool startup, CancellationToken cancellationToken)
     {
+        await RecoverExpiredUnpreparedStartClaimsAsync(cancellationToken);
         await RecoverPendingEndTimeChangesAsync(cancellationToken);
         var resumedStops = await ResumeStoppingVisitsAsync(cancellationToken);
         var items = await LoadAsync(cancellationToken);
@@ -453,6 +455,16 @@ internal sealed class VisitRecoveryService(
         {
             if (resumedStops.Contains(item.Visit.Id))
                 continue;
+
+            if (item.Visit.Status == VisitStatus.Starting &&
+                item.ProviderActions.Count == 0 &&
+                item.UnresolvedOperations.Count == 0)
+            {
+                var hasProviderOperation = await dbContext.ProviderOperations
+                    .AnyAsync(x => x.VisitId == item.Visit.Id, cancellationToken);
+                if (!hasProviderOperation)
+                    continue;
+            }
 
             var hasUnknownOperation = item.UnresolvedOperations
                 .Any(x => x.Status == ProviderOperationStatus.Unknown);
@@ -709,6 +721,18 @@ internal sealed class VisitRecoveryService(
             logger.LogInformation("Provider Start retry for Visit {VisitId} requires another reconciliation.", visit.Id);
 
         return !execution.RequiresReconciliation && !execution.DefinitiveFailure;
+    }
+
+    private async Task RecoverExpiredUnpreparedStartClaimsAsync(CancellationToken cancellationToken)
+    {
+        var staleBefore = timeProvider.GetUtcNow() - ProviderOperationStartupRecovery.AttemptLease;
+        var visitIds = await dbContext.Visits.AsNoTracking()
+            .Where(x => x.Status == VisitStatus.Starting && x.CreatedAt <= staleBefore)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var visitId in visitIds)
+            await visitStartStore.CancelUnpreparedStartAsync(visitId, cancellationToken);
     }
 
 

@@ -64,13 +64,16 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
 
     private sealed class ErrorParkingProvider(
         ProviderResponseException exception,
-        IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>? actions = null) : IParkingProvider
+        IReadOnlyList<Parkeren.Application.ParkingProvider.ProviderParkingAction>? actions = null,
+        bool failReadiness = false) : IParkingProvider
     {
         public Task<IReadOnlyList<ProviderCategory>> GetCategoriesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ProviderCategory>>([]);
 
         public Task<ProviderProduct> GetProductAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ProviderProduct("test-product", "Test product", "Oss"));
+            failReadiness
+                ? Task.FromException<ProviderProduct>(exception)
+                : Task.FromResult(new ProviderProduct("test-product", "Test product", "Oss"));
 
         public Task<ProviderBalance> GetBalanceAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new ProviderBalance(100m, ProviderBalanceUnit.Euro, DateTimeOffset.UtcNow));
@@ -1156,6 +1159,80 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         Assert.All(work, item => Assert.Equal(startAt.ToUniversalTime().AddHours(4).AddMinutes(-5), item.DueAt));
         Assert.All(work, item => Assert.Equal(TimeSpan.Zero, item.DueAt.Offset));
         Assert.Single(await parkingProvider.GetActionsAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task Paid_start_readiness_failure_cancels_visit_and_releases_capacity()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(cancellationToken);
+
+        try
+        {
+            var suffix = Guid.NewGuid().ToString("N")[..8];
+            var user = new User(Guid.NewGuid(), $"readiness-{suffix}", $"READINESS-{suffix}", "hash", UserRole.Visitor);
+            var vehicle = new Vehicle(Guid.NewGuid(), $"RF-{suffix[..2]}-{suffix[2..4]}", $"RF{suffix[..4]}", null);
+            var startAt = DateTimeOffset.UtcNow;
+            var desiredEndAt = startAt.AddHours(1);
+            var rules = new ParkingRuleSet(Guid.NewGuid(), startAt.AddDays(-1), null,
+                TimeSpan.FromHours(4), Enumerable.Range(0, 7)
+                    .Select(day => new PaidWindow((DayOfWeek)day, TimeOnly.MinValue, new TimeOnly(23, 59, 59)))
+                    .ToArray());
+
+            await using (var seedContext = fixture.CreateDbContext())
+            {
+                seedContext.Users.Add(user);
+                seedContext.Vehicles.Add(vehicle);
+                seedContext.ParkingRuleSets.Add(rules);
+                await seedContext.SaveChangesAsync(cancellationToken);
+            }
+
+            var readinessFailure = new ProviderResponseException(
+                "PROVIDER_READINESS_FAILURE", "readiness failed", "provider product lookup failed");
+            var parkingProvider = new ErrorParkingProvider(readinessFailure, failReadiness: true);
+            var configuration = new ConfigurationManager();
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Parkeren"] = fixture.ConnectionString
+            });
+            var services = new ServiceCollection();
+            services.AddInfrastructure(configuration);
+            services.AddSingleton<IParkingProvider>(parkingProvider);
+            await using var provider = services.BuildServiceProvider();
+
+            var operationId = Guid.NewGuid();
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var command = new StartVisitCommand(operationId, user.Id, user.Id, vehicle.Id, startAt, desiredEndAt);
+                var context = new StartVisitContext(new(user.Id, UserRole.Visitor, true),
+                    new(user.Id, true), new(vehicle.Id, true, true));
+
+                await Assert.ThrowsAsync<ProviderResponseException>(() =>
+                    scope.ServiceProvider.GetRequiredService<StartVisitFlow>().StartAsync(
+                        command,
+                        context,
+                        new EffectiveParkingPolicy(TimeSpan.FromHours(4), TimeSpan.FromHours(4), true),
+                        [rules],
+                        desiredEndAt,
+                        5,
+                        new StartVisitProviderContext(vehicle.NormalizedLicensePlate, "Oss"),
+                        cancellationToken));
+            }
+
+            await using var verifyContext = fixture.CreateDbContext();
+            var visit = await verifyContext.Visits.SingleAsync(x => x.StartOperationId == operationId, cancellationToken);
+            Assert.Equal(VisitStatus.Cancelled, visit.Status);
+            Assert.Equal(VisitHealth.Healthy, visit.Health);
+            Assert.Empty(await verifyContext.ProviderOperations.Where(x => x.VisitId == visit.Id).ToListAsync(cancellationToken));
+            Assert.Empty(await verifyContext.ProviderParkingActions.Where(x => x.VisitId == visit.Id).ToListAsync(cancellationToken));
+            Assert.Equal(0, await verifyContext.Visits.CountAsync(
+                x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled,
+                cancellationToken));
+        }
+        finally
+        {
+            await ClearVisitsAsync(cancellationToken);
+        }
     }
 
     [Fact]
