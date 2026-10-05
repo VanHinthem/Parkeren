@@ -1,5 +1,3 @@
-name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to the existing production project name}
-
 services:
   app:
     image: ${PARKEREN_APP_IMAGE:?Set PARKEREN_APP_IMAGE to an explicit release image}
