@@ -1,0 +1,55 @@
+name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to an isolated development project name}
+
+services:
+  app:
+    image: ghcr.io/vanhinthem/parkeren-app:${PARKEREN_DEV_IMAGE_TAG:?Set PARKEREN_DEV_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+      ParkingProvider__Type: TwoParkMock
+      ParkingProvider__BaseUrl: http://two-park-mock:8080
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      # Optional: set Subject, PublicKey, and PrivateKey together to enable browser push.
+      # Use a separate key pair for development; the private key stays on this server.
+      WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
+      WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
+      BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
+      BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+    ports:
+      - "${PARKEREN_APP_PORT:-5080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      two-park-mock:
+        condition: service_started
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren_dev
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+    volumes:
+      - parkeren_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  two-park-mock:
+    image: ghcr.io/vanhinthem/parkeren-two-park-mock:${PARKEREN_DEV_IMAGE_TAG:?Set PARKEREN_DEV_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      TwoParkMock__StatePath: /data/actions.json
+    ports:
+      - "${PARKEREN_TWOPARK_MOCK_PORT:-5081}:8080"
+    volumes:
+      - two_park_mock_data:/data
+
+volumes:
+  parkeren_db:
+  two_park_mock_data:
