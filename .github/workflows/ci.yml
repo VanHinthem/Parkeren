@@ -186,6 +186,7 @@ jobs:
             parkeren-app:dev
           build-args: |
             PARKEREN_BUILD_ID=${{ github.sha }}
+            PARKEREN_APP_VERSION=dev
             PARKEREN_APP_VARIANT=dev
           labels: |
             org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
@@ -315,6 +316,7 @@ jobs:
             parkeren-app:sha-${{ github.sha }}
           build-args: |
             PARKEREN_BUILD_ID=${{ github.sha }}
+            PARKEREN_APP_VERSION=${{ github.ref_name }}
             PARKEREN_APP_VARIANT=production
           labels: |
             org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren

@@ -16,6 +16,12 @@ function resolveBuildId(): string {
   }
 }
 
+function resolveAppVersion(): string {
+  const configured = process.env.PARKEREN_APP_VERSION;
+  if (configured) return configured;
+  return process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "local";
+}
+
 const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
 const appName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
 const appIcon192 = appVariant === "dev" ? "/pwa-192x192-dev.png" : "/pwa-192x192.png";
@@ -23,7 +29,8 @@ const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512
 
 export default defineConfig({
   define: {
-    __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId())
+    __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId()),
+    __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion())
   },
   plugins: [
     react(),
