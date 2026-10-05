@@ -4,7 +4,7 @@ These examples pull public images from GHCR. They do not replace the active file
 
 ## Before you start
 
-You need Docker Compose v2 on the NAS and these example files copied there. To generate passwords or Web Push keys, use a trusted computer with Node.js installed (npm/npx is included). The commands below assume the examples are copied with the same `deploy/examples` folder path and are run from the directory above `deploy/`; adjust paths if you put them elsewhere. The production example also needs a published production image; none is available until a release is published, so do not pull or start it with the placeholder image reference.
+You need Docker Compose v2 on the NAS and these example files copied there. To generate passwords or Web Push keys, use a trusted computer with Node.js installed (npm/npx is included). The commands below assume the examples are copied with the same `deploy/examples` folder path and are run from the directory above `deploy/`; adjust paths if you put them elsewhere. The production example needs a published production image; set the explicit release or immutable SHA tag before pulling or starting it.
 
 Never commit a populated `.env` file or share its contents. It contains database and provider credentials, and may contain a Web Push private key. The plain `docker compose config` command prints resolved environment values; use `config --quiet` for validation and do not paste full config output into tickets or chat.
 
@@ -49,6 +49,8 @@ The browser receives the public key from the authenticated app. The server uses 
 Set `COMPOSE_PROJECT_NAME` to the exact project name of the current production stack; this is essential to reuse its named database volume. If the existing project name or volume is unknown, stop and ask the NAS owner rather than guessing.
 
 Set `PARKEREN_APP_IMAGE` to an already-published immutable production release or commit-SHA reference. Do not use `dev`. The current placeholder is intentionally not pullable. Keep the production database password and TwoPark credentials in this private env file. For a brand-new database only, set the bootstrap administrator username and six-digit PIN; remove those two values after the first administrator is created.
+
+Set `PARKEREN_APP_PORT` to the NAS host port for the app; it defaults to `5080` and maps to container port `8080`.
 
 From the repository root, validate without printing secrets, then pull and start:
 

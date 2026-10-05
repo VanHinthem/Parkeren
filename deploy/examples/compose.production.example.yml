@@ -2,6 +2,8 @@ services:
   app:
     image: ${PARKEREN_APP_IMAGE:?Set PARKEREN_APP_IMAGE to an explicit release image}
     restart: unless-stopped
+    ports:
+      - "${PARKEREN_APP_PORT:-5080}:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
