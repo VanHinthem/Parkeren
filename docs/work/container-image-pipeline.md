@@ -76,12 +76,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 3 buildworkflow en path-filteroptimalisatie #111 zijn gemerged via PR #109 en #112. Docs-only-skip, develop-push/release-tagtriggers en fase 4-securitygate/publicatie staan nog open.
+- Status: fase 3 buildworkflow en path-filteroptimalisatie #111 zijn gemerged via PR #109 en #112. Docs-only-skip, relevante develop-pushes en `workflow_dispatch` zijn gevalideerd. Alleen de release-tagtrigger en fase 4-securitygate/publicatie staan nog open.
 - GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108 via PR #109; path-filteroptimalisatie #111 via PR #112.
-- Laatst afgerond: de PR-run voor #112 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole; de featurebranch-push slaagde voor backend/frontend en sloeg images over.
-- Volgende stap: valideer een docs-only wijziging (checks en images overgeslagen) en de echte develop-push-, release-tag- en handmatige triggers. Maak daarna een feature-issue voor fase 4-securityscans en GHCR-publicatie.
-- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De develop-push- en release-tagpaden zijn nog niet afzonderlijk uitgevoerd. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
-- Laatste validatie: PR #112-run 37297909502 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole; release-imagejob werd overgeslagen zoals verwacht. Push-run 37297895553 slaagde voor backend/frontend en sloeg imagebouw over op de featurebranch. Beide runs matchten relevante paden omdat de PR workflowbestanden wijzigt; docs-only-skip en release-/handmatige triggers zijn nog niet runtime-gevalideerd. YAML-editorfouten ontbreken en `git diff --check` slaagde. PR #109 en de PWA/Compose-checks bleven eerder groen.
+- Laatst afgerond: relevante develop-push bouwde checks en dev-images; docs-only develop-push sloeg checks en images over; handmatige run slaagde voor backend- en frontendchecks.
+- Volgende stap: valideer een `vMAJOR.MINOR.PATCH`-tag op `main` (zonder GHCR-publicatie). Maak daarna een feature-issue voor fase 4-securityscans en GHCR-publicatie.
+- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De release-tagtrigger is nog niet uitgevoerd; hiervoor is een concrete SemVer-tag op `main` nodig. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
+- Laatste validatie: PR #112-run 37297909502 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole. Relevante develop-push 37298750049 slaagde voor backend/frontend en dev-images; docs-only develop-push 37298971301 slaagde met backend/frontend en alle imagejobs overgeslagen. `workflow_dispatch`-run 37299299282 slaagde voor backend/frontend en sloeg images over. PR #113 docs-only-run 37298895213 bevestigde eveneens dat alle buildjobs worden overgeslagen. De release-tagtrigger is nog niet runtime-gevalideerd.
 
 ## Agent-werkwijze
 
