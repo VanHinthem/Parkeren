@@ -75,12 +75,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 1 in uitvoering; API gebruikt lokaal in alle omgevingen dezelfde EF Core-migratieketen.
-- GitHub-tracking: initiatief #99; migratiefeature #102.
-- Laatst afgerond: gebruikerskeuzes voor branchbeleid, publieke GHCR-images, releasetags, mock op dev, migraties in alle omgevingen en PWA-herkenbaarheid zijn verzameld.
-- Volgende stap: de Docker-backed PostgreSQL-integratietest laten slagen in CI; Docker is lokaal niet beschikbaar. Daarna fase 1 afronden en issue #99 bijwerken.
-- Blokkades/besluiten: lokale Testcontainers-tests blokkeren op ontbrekende Docker-engine (`npipe://./pipe/docker_engine`). Er is geen NAS- of database-reset uitgevoerd. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
-- Laatste validatie: `dotnet build src/Parkeren.Api/Parkeren.Api.csproj --no-restore --configuration Release` geslaagd; `dotnet test tests/Parkeren.IntegrationTests/Parkeren.IntegrationTests.csproj --no-restore --configuration Release` gestart maar geblokkeerd omdat Docker niet bereikbaar was.
+- Status: fase 1 afgerond; alle omgevingen gebruiken dezelfde EF Core-migratieketen.
+- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103.
+- Laatst afgerond: fase 1 gemerged naar `develop`; API-build en GitHub Actions-backendchecks, inclusief de PostgreSQL/Testcontainers-suite, zijn geslaagd.
+- Volgende stap: start fase 2, PWA-identiteit per buildvariant, met een eigen feature-issue en branch vanaf `develop`.
+- Blokkades/besluiten: lokaal kon de Testcontainers-suite niet draaien omdat Docker niet bereikbaar was (`npipe://./pipe/docker_engine`); de equivalente CI-check is geslaagd. Er is geen NAS- of database-reset uitgevoerd. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
+- Laatste validatie: `dotnet build src/Parkeren.Api/Parkeren.Api.csproj --no-restore --configuration Release` geslaagd; GitHub Actions backend-checks op PR #103 geslaagd.
 
 ## Agent-werkwijze
 
