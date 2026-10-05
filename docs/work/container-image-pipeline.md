@@ -76,12 +76,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 3 workflowwijzigingen geïmplementeerd en in validatie; fase 1 en 2 zijn afgerond.
+- Status: fase 3 buildworkflow gemerged; verificatie van de push/tag-triggers en fase 4-securitygate/publicatie staan nog open.
 - GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108.
-- Laatst afgerond: dev/prod PWA-identiteit is gemerged; CI valideerde beide PWA-builds, frontendtests en de backendchecks.
-- Volgende stap: valideer de imagebuildjobs op de issue-#108-PR; publiceer geen images in fase 3. Daarna start fase 4 met securityscans en GHCR-publicatie.
-- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds moeten via GitHub Actions worden gevalideerd. Geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
-- Laatste validatie: workflowdiagnostiek schoon; PWA productie/dev-builds en checks geslaagd; frontendtests 22/22; Compose dev-config met mock-profile valideert.
+- Laatst afgerond: fase 3 gemerged via PR #109; develop-PR-build van API- en TwoPark-mock-images, inclusief SHA/dev-tags, is in CI geslaagd met push uitgeschakeld.
+- Volgende stap: maak een feature-issue voor fase 4; verifieer daarin ook de develop-push- en release-tagtriggers en voeg secret/image-scans toe voordat GHCR-publicatie wordt ingeschakeld.
+- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De develop-push- en release-tagpaden zijn nog niet afzonderlijk uitgevoerd. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
+- Laatste validatie: workflowdiagnostiek schoon; PR #109 backend/frontendchecks en dev-imagebuild geslaagd; PWA productie/dev-builds en checks geslaagd; frontendtests 22/22; Compose dev-config met mock-profile valideert.
 
 ## Agent-werkwijze
 
