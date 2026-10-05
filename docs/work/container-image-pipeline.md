@@ -76,11 +76,11 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 3 buildworkflow en path-filteroptimalisatie #111 zijn gemerged via PR #109 en #112. Docs-only-skip, relevante develop-pushes en `workflow_dispatch` zijn gevalideerd. Alleen de release-tagtrigger en fase 4-securitygate/publicatie staan nog open.
+- Status: fase 3 buildworkflow en path-filteroptimalisatie #111 zijn gemerged via PR #109 en #112. Docs-only-skip, relevante develop-pushes en `workflow_dispatch` zijn gevalideerd. Release-tagvalidatie blijft open en is bewust uitgesteld tot alle geplande wijzigingen op `main` staan; fase 4-securitygate/publicatie staat ook nog open.
 - GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108 via PR #109; path-filteroptimalisatie #111 via PR #112.
 - Laatst afgerond: relevante develop-push bouwde checks en dev-images; docs-only develop-push sloeg checks en images over; handmatige run slaagde voor backend- en frontendchecks.
-- Volgende stap: valideer een `vMAJOR.MINOR.PATCH`-tag op `main` (zonder GHCR-publicatie). Maak daarna een feature-issue voor fase 4-securityscans en GHCR-publicatie.
-- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De release-tagtrigger is nog niet uitgevoerd; hiervoor is een concrete SemVer-tag op `main` nodig. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
+- Volgende stap: maak een feature-issue voor fase 4-securityscans en GHCR-publicatie. Voer de release-tagvalidatie pas uit nadat alle geplande wijzigingen op `main` zijn gepromoveerd; gebruik daarvoor een concrete SemVer-tag op die geteste commit.
+- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De release-tagtrigger is bewust uitgesteld omdat `main` nog niet de volledige geplande wijzigingsset bevat; maak geen releasetag tot die promotie is afgerond. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
 - Laatste validatie: PR #112-run 37297909502 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole. Relevante develop-push 37298750049 slaagde voor backend/frontend en dev-images; docs-only develop-push 37298971301 slaagde met backend/frontend en alle imagejobs overgeslagen. `workflow_dispatch`-run 37299299282 slaagde voor backend/frontend en sloeg images over. PR #113 docs-only-run 37298895213 bevestigde eveneens dat alle buildjobs worden overgeslagen. De release-tagtrigger is nog niet runtime-gevalideerd.
 
 ## Agent-werkwijze
