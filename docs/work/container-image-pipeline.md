@@ -7,9 +7,9 @@ Bouw en publiceer reproduceerbare Docker-images vanuit GitHub Actions, zodat de 
 ## Vastgelegde besluiten
 
 - De GitHub-repository blijft private; de GHCR-container packages worden public zodat de NAS images kan pullen.
-- `develop`: iedere commit doorloopt de CI-tests en bouwt de app-image en TwoPark-mock-image. Beide krijgen dezelfde commit-SHA als immutable tag en een beweegbare `dev`-tag.
+- `develop`: relevante backend- en frontendwijzigingen doorlopen de bijbehorende CI-checks; bij ten minste één relevante wijziging worden na geslaagde toepasselijke checks de app-image en TwoPark-mock-image gebouwd. Beide krijgen dezelfde commit-SHA als immutable tag en een beweegbare `dev`-tag. Wijzigingen zonder relevante buildinput, zoals alleen documentatie, slaan checks en imagebuilds over.
 - De dev-stack gebruikt de mock-provider, niet de echte TwoPark-service.
-- `main`: commits doorlopen automatisch tests, maar bouwen/publiceren geen image.
+- `main`: relevante wijzigingen doorlopen de bijbehorende CI-checks, maar bouwen/publiceren geen image.
 - Een release-Git-tag zoals `v1.2.3` triggert de productie-app-imagebuild. Alleen de app-image wordt voor productie gepubliceerd; de mock wordt niet gepubliceerd als productie-release.
 - De release-image krijgt de SemVer-tag en de commit-SHA. De tag moet wijzen naar een geteste commit op `main`.
 - Productiebuilds zijn alleen voor de app; de NAS haalt de gewenste image handmatig op. NAS-deployautomatisering valt buiten scope.
@@ -42,12 +42,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ### 3. Workflow- en imagebouw
 
-- Behoud tests op pull requests en pushes volgens de bestaande CI-path filters.
-- Op iedere push naar `develop`: vereiste tests slagen, bouw app en mock, en geef beide images dezelfde commit-SHA-tag plus `dev`. Bouw dezelfde dev-images ook op PR's naar `develop` om Dockerfiles vóór merge te valideren.
-- Op gewone pushes naar `main`: voer tests uit, maar publiceer geen images.
+- Laat de bestaande CI-path filters bepalen welke backend- en frontendchecks nodig zijn op pull requests en branch-pushes; houd handmatige runs en release-tagvalidatie expliciet.
+- Op een push naar `develop` of PR naar `develop` met relevante backend- of frontendbuildinput: laat de toepasselijke checks slagen, bouw app en mock, en geef beide images dezelfde commit-SHA-tag plus `dev`. Sla checks en images over als geen van beide path filters matcht.
+- Op gewone pushes naar `main`: voer alleen de checks uit waarvan de path filters matchen; bouw geen images.
 - Op een `vMAJOR.MINOR.PATCH` releasetag: valideer dat de getagde commit op `main` staat en de CI-tests voor die commit geslaagd zijn; bouw uitsluitend de productie-app-image met SemVer- en SHA-tag.
 - In fase 3 blijven alle gebouwde images lokaal op de tijdelijke CI-runner en wordt niets naar GHCR gepusht. Fase 4 voegt scans en pas daarna publicatie toe.
-- Acceptatie: dev-app en mock zijn op PR/push gebouwd met dezelfde commit-SHA en `dev`-alias; releasetags op geteste `main`-commits bouwen alleen de productie-app; gewone `main`-commits bouwen geen images; er is geen GHCR-login of push.
+- Acceptatie: relevante dev-PR/push-wijzigingen bouwen app en mock na geslaagde toepasselijke checks met dezelfde commit-SHA en `dev`-alias; niet-relevante wijzigingen slaan checks en images over; releasetags op geteste `main`-commits bouwen alleen de productie-app; gewone `main`-commits bouwen geen images; er is geen GHCR-login of push.
 
 ### 4. Security gates en GHCR
 
@@ -70,18 +70,18 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 - Bestaande relevante .NET- en frontendtests blijven slagen.
 - Migratieketen slaagt op een lege PostgreSQL-database; blijvende productiegegevens worden niet gereset.
 - Dev- en productie-PWA-builds slagen elk voor hun manifest-, icon- en PWA-checks.
-- Workflowconfiguratie slaagt voor beide triggerpaden: `develop`-push en `v*`-tag; `main`-push publiceert geen image.
+- Workflowconfiguratie slaagt voor relevante en niet-relevante path-filterpaden op PR/push, voor release-tags en handmatige runs; `main`-push publiceert geen image.
 - GHCR-publicatie vindt pas plaats na tests en beveiligingsscans.
 - Geen NAS-deploy of databasebackuptaak toevoegen binnen dit werk.
 
 ## Voortgangscheckpoint
 
-- Status: fase 3 buildworkflow gemerged; verificatie van de push/tag-triggers en fase 4-securitygate/publicatie staan nog open.
-- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108.
+- Status: fase 3 buildworkflow gemerged; path-filteroptimalisatie #111 is geïmplementeerd in PR #112 en de relevante PR-run is geslaagd. Docs-only-skip, develop-push/release-tagtriggers en fase 4-securitygate/publicatie staan nog open.
+- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108; path-filteroptimalisatie #111.
 - Laatst afgerond: fase 3 gemerged via PR #109; develop-PR-build van API- en TwoPark-mock-images, inclusief SHA/dev-tags, is in CI geslaagd met push uitgeschakeld.
-- Volgende stap: maak een feature-issue voor fase 4; verifieer daarin ook de develop-push- en release-tagtriggers en voeg secret/image-scans toe voordat GHCR-publicatie wordt ingeschakeld.
+- Volgende stap: laat PR #112 reviewen; valideer na merge een docs-only wijziging (checks en images overgeslagen) en de echte develop-push-, release-tag- en handmatige triggers. Maak daarna een feature-issue voor fase 4-securityscans en GHCR-publicatie.
 - Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De develop-push- en release-tagpaden zijn nog niet afzonderlijk uitgevoerd. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
-- Laatste validatie: workflowdiagnostiek schoon; PR #109 backend/frontendchecks en dev-imagebuild geslaagd; PWA productie/dev-builds en checks geslaagd; frontendtests 22/22; Compose dev-config met mock-profile valideert.
+- Laatste validatie: PR #112-run 37297909502 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole; release-imagejob werd overgeslagen zoals verwacht. Push-run 37297895553 slaagde voor backend/frontend en sloeg imagebouw over op de featurebranch. Beide runs matchten relevante paden omdat de PR workflowbestanden wijzigt; docs-only-skip en release-/handmatige triggers zijn nog niet runtime-gevalideerd. YAML-editorfouten ontbreken en `git diff --check` slaagde. PR #109 en de PWA/Compose-checks bleven eerder groen.
 
 ## Agent-werkwijze
 

@@ -47,9 +47,7 @@ jobs:
       always() && (
         needs.changes.outputs.backend == 'true' ||
         github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
-        (github.event_name == 'push' &&
-          (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
       )
     runs-on: ubuntu-latest
     steps:
@@ -75,9 +73,7 @@ jobs:
       always() && (
         needs.changes.outputs.frontend == 'true' ||
         github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
-        (github.event_name == 'push' &&
-          (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
       )
     runs-on: ubuntu-latest
     defaults:
@@ -130,9 +126,24 @@ jobs:
 
   build-development-images:
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
-      (github.event_name == 'pull_request' && github.base_ref == 'develop')
-    needs: [backend, frontend]
+      always() &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'develop')
+      ) &&
+      (
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.frontend == 'true'
+      ) &&
+      (
+        (needs.changes.outputs.backend != 'true' && needs.backend.result == 'skipped') ||
+        needs.backend.result == 'success'
+      ) &&
+      (
+        (needs.changes.outputs.frontend != 'true' && needs.frontend.result == 'skipped') ||
+        needs.frontend.result == 'success'
+      )
+    needs: [changes, backend, frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
