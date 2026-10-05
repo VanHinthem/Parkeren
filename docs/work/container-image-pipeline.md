@@ -52,11 +52,18 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 ### 4. Security gates en GHCR
 
 - Configureer GHCR-pakketten als public en bevestig dat de repository private blijft.
+- De eerste GHCR-push maakt de packages aan; zet `parkeren-app` en `parkeren-two-park-mock` daarna eenmalig via de GitHub-package-instellingen op public en verifieer een anonieme pull. Voeg geen PAT toe aan Actions alleen om package visibility te beheren.
 - Scan repositorywijzigingen op gelekte secrets en scan elke gebouwde image vóór publicatie op secrets en relevante bekende kwetsbaarheden.
 - Voeg GHCR-login en image-push pas toe nadat de bron- en image-scans succesvol zijn.
 - Gebruik secrets uitsluitend als runtimeconfiguratie op de NAS; geef ze niet mee als Docker build arguments of bestanden in de image.
 - Controleer workflows en applicatielogs op het afdrukken van PINs, wachtwoorden, tokens, sleutels of connection strings. Voeg gerichte regressiechecks toe waar dit betrouwbaar te automatiseren is.
 - Acceptatie: secret- of image-scanfouten blokkeren publicatie; normale workflowlogs bevatten geen secretwaarden; een anonieme pull van een image werkt zonder toegang tot de private bronrepository.
+
+#### Implementatiekeuzes
+
+- Gitleaks Action v3 scant de volledige gitgeschiedenis; PR-commentaar en scan-artifactuploads staan uit.
+- Trivy Action v0.36.0 scant gebouwde images op secrets en HIGH/CRITICAL-kwetsbaarheden. Iedere scan heeft een niet-nul exitcode bij een bevinding; unfixed kwetsbaarheden worden niet genegeerd.
+- De buildjob scant lokaal en uploadt daarna alleen het exacte gescande image-archief als artifact met retentie van één dag. Een aparte publisher-job met uitsluitend `packages: write` downloadt dat artifact en publiceert alleen op relevante develop-pushes of gevalideerde releasetags. PR-jobs loggen niet in bij GHCR en pushen nooit.
 
 ### 5. NAS pull-instructie en overdracht
 
