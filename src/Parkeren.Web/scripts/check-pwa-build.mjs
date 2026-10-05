@@ -21,7 +21,18 @@ function expectedBuildId() {
   }
 }
 
+function expectedAppVersion() {
+  const configured = process.env.PARKEREN_APP_VERSION;
+  if (configured) return configured;
+  return process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "local";
+}
+
 const manifest = JSON.parse(await readFile(join(distRoot, "manifest.webmanifest"), "utf8"));
+const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
+const expectedAppName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
+const iconSuffix = appVariant === "dev" ? "-dev" : "";
+ensure(manifest.name === expectedAppName, `PWA name must be '${expectedAppName}'.`);
+ensure(manifest.short_name === expectedAppName, `PWA short_name must be '${expectedAppName}'.`);
 ensure(manifest.start_url === "/", "PWA start_url must be '/'.");
 ensure(manifest.scope === "/", "PWA scope must be explicitly set to '/'.");
 ensure(manifest.display === "standalone", "PWA display must be standalone.");
@@ -32,6 +43,7 @@ ensure(Array.isArray(manifest.icons) && manifest.icons.length >= 2, "PWA needs a
 for (const expectedSize of [192, 512]) {
   const icon = manifest.icons.find(item => item.sizes === `${expectedSize}x${expectedSize}`);
   ensure(icon, `PWA ${expectedSize}px icon is missing.`);
+  ensure(icon.src === `/pwa-${expectedSize}x${expectedSize}${iconSuffix}.png`, `PWA ${expectedSize}px icon does not match the ${appVariant} variant.`);
   ensure(icon.type === "image/png", `PWA ${expectedSize}px icon must be PNG.`);
   ensure(icon.purpose.split(/\s+/).includes("maskable"), `PWA ${expectedSize}px icon must support maskable rendering.`);
 
@@ -40,9 +52,13 @@ for (const expectedSize of [192, 512]) {
   ensure(image.readUInt32BE(16) === expectedSize && image.readUInt32BE(20) === expectedSize, `PWA ${expectedSize}px icon dimensions do not match the manifest.`);
 }
 
+const expectedAppShellIcon = await readFile(join(distRoot, `pwa-192x192${iconSuffix}.png`));
+const appShellIcon = await readFile(join(distRoot, "pwa-192x192.png"));
+ensure(appShellIcon.equals(expectedAppShellIcon), `App shell icon does not match the ${appVariant} variant.`);
+
 const html = await readFile(join(distRoot, "index.html"), "utf8");
 ensure(html.includes('lang="nl"'), "Built app must declare Dutch document language.");
-ensure(/<title>[^<]+<\/title>/.test(html), "Built app must have a non-empty document title.");
+ensure(html.includes(`<title>${expectedAppName}</title>`), `Built app title must be '${expectedAppName}'.`);
 ensure(/<meta\s+name="viewport"[^>]*content="[^"]+"/.test(html), "Built app must declare a viewport for mobile devices.");
 ensure(html.includes("manifest.webmanifest"), "Built app must link its web manifest.");
 await stat(join(distRoot, "sw.js"));
@@ -86,5 +102,7 @@ ensure(totalStylesheets <= 80 * 1024, `CSS budget exceeded: ${kibibytes(totalSty
 
 const buildId = expectedBuildId();
 ensure(bundledJavaScript.some(asset => asset.includes(buildId)), "Configured build ID is missing from production JavaScript assets.");
+const appVersion = expectedAppVersion();
+ensure(bundledJavaScript.some(asset => asset.includes(appVersion)), "Configured app version is missing from production JavaScript assets.");
 
 console.log(`PWA checks passed. JavaScript ${kibibytes(totalJavascript)} total / ${kibibytes(largestJavascript)} max chunk; CSS ${kibibytes(totalStylesheets)}.`);

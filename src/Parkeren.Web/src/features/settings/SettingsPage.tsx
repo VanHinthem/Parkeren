@@ -119,6 +119,7 @@ export function SettingsPage({user,onLoggedOut}:{user:AuthenticatedUser;onLogged
 
     <Card className="settings-card">
       <h2>Diagnostiek</h2>
+      <p className="settings-copy">Versie <code>{__PARKEREN_APP_VERSION__}</code></p>
       <p className="settings-copy">Build-id <code title={__PARKEREN_BUILD_ID__}>{__PARKEREN_BUILD_ID__.slice(0,7)}</code></p>
     </Card>
 

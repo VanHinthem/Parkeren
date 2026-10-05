@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -7,6 +10,7 @@ on:
 
 jobs:
   changes:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -32,16 +36,42 @@ jobs:
               - 'global.json'
               - 'Directory.Packages.props'
               - 'compose*.yml'
+              - 'deploy/compose*.yml'
               - '.github/workflows/**'
             frontend:
               - 'src/Parkeren.Web/**'
               - 'compose*.yml'
+              - 'deploy/compose*.yml'
               - '.github/workflows/**'
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Scan repository for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
 
   backend:
     needs: changes
-    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    if: >-
+      always() && (
+        needs.changes.outputs.backend == 'true' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v5
@@ -61,10 +91,16 @@ jobs:
 
   frontend:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    if: >-
+      always() && (
+        needs.changes.outputs.frontend == 'true' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      )
     runs-on: ubuntu-latest
-    env:
-      PARKEREN_BUILD_ID: ${{ github.sha }}
+    permissions:
+      contents: read
+      checks: write
     defaults:
       run:
         working-directory: src/Parkeren.Web
@@ -74,8 +110,16 @@ jobs:
         with:
           node-version: '24'
       - run: npm install
-      - run: npm run build
-      - run: npm run check:pwa
+      - name: Build and check production PWA
+        env:
+          PARKEREN_BUILD_ID: ${{ github.sha }}
+          PARKEREN_APP_VARIANT: production
+        run: npm run build && npm run check:pwa
+      - name: Build and check development PWA
+        env:
+          PARKEREN_BUILD_ID: ${{ github.sha }}
+          PARKEREN_APP_VARIANT: dev
+        run: npm run build && npm run check:pwa
       - run: npm test -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
       - name: Publish frontend test results
         uses: dorny/test-reporter@v2
@@ -85,3 +129,259 @@ jobs:
           path: 'src/Parkeren.Web/test-results.xml'
           reporter: java-junit
           fail-on-error: false
+
+  validate-release-tag:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release tag
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tags must use vMAJOR.MINOR.PATCH, for example v1.2.3."
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::Release tag must point to a commit reachable from main."
+            exit 1
+          fi
+
+  build-development-images:
+    if: >-
+      always() &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'develop')
+      ) &&
+      (
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.frontend == 'true'
+      ) &&
+      needs.secret-scan.result == 'success' &&
+      (
+        (needs.changes.outputs.backend != 'true' && needs.backend.result == 'skipped') ||
+        needs.backend.result == 'success'
+      ) &&
+      (
+        (needs.changes.outputs.frontend != 'true' && needs.frontend.result == 'skipped') ||
+        needs.frontend.result == 'success'
+      )
+    needs: [changes, backend, frontend, secret-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build development app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Parkeren.Api/Dockerfile
+          load: true
+          push: false
+          tags: |
+            parkeren-app:dev-${{ github.sha }}
+            parkeren-app:dev
+          build-args: |
+            PARKEREN_BUILD_ID=${{ github.sha }}
+            PARKEREN_APP_VERSION=dev
+            PARKEREN_APP_VARIANT=dev
+          labels: |
+            org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
+      - name: Build TwoPark mock image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Parkeren.TwoParkMock/Dockerfile
+          load: true
+          push: false
+          tags: |
+            parkeren-two-park-mock:dev-${{ github.sha }}
+            parkeren-two-park-mock:dev
+          labels: |
+            org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
+      - name: Verify development image tags
+        run: |
+          docker image inspect parkeren-app:dev-${GITHUB_SHA}
+          docker image inspect parkeren-app:dev
+          docker image inspect parkeren-two-park-mock:dev-${GITHUB_SHA}
+          docker image inspect parkeren-two-park-mock:dev
+      - name: Scan development app image for secrets
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-app:dev-${{ github.sha }}
+          scanners: secret
+          format: json
+          output: trivy-app-secrets.json
+          exit-code: '1'
+          hide-progress: true
+      - name: Scan development app image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-app:dev-${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          skip-setup-trivy: true
+          hide-progress: true
+      - name: Scan TwoPark mock image for secrets
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-two-park-mock:dev-${{ github.sha }}
+          scanners: secret
+          format: json
+          output: trivy-mock-secrets.json
+          exit-code: '1'
+          skip-setup-trivy: true
+          hide-progress: true
+      - name: Scan TwoPark mock image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-two-park-mock:dev-${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          skip-setup-trivy: true
+          hide-progress: true
+      - name: Save scanned development images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: |
+          docker save -o dev-images.tar \
+            parkeren-app:dev-${GITHUB_SHA} \
+            parkeren-app:dev \
+            parkeren-two-park-mock:dev-${GITHUB_SHA} \
+            parkeren-two-park-mock:dev
+      - name: Upload scanned development images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-images-${{ github.sha }}
+          path: dev-images.tar
+          compression-level: 0
+          retention-days: 1
+
+  publish-development-images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [build-development-images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download scanned development images
+        uses: actions/download-artifact@v4
+        with:
+          name: development-images-${{ github.sha }}
+      - name: Load scanned development images
+        run: docker load --input dev-images.tar
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish development images
+        env:
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          docker tag parkeren-app:dev-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-app:dev-${IMAGE_SHA}
+          docker tag parkeren-app:dev ghcr.io/vanhinthem/parkeren-app:dev
+          docker tag parkeren-two-park-mock:dev-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-two-park-mock:dev-${IMAGE_SHA}
+          docker tag parkeren-two-park-mock:dev ghcr.io/vanhinthem/parkeren-two-park-mock:dev
+          docker push ghcr.io/vanhinthem/parkeren-app:dev-${IMAGE_SHA}
+          docker push ghcr.io/vanhinthem/parkeren-app:dev
+          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:dev-${IMAGE_SHA}
+          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:dev
+
+  build-release-image:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [backend, frontend, validate-release-tag, secret-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Parkeren.Api/Dockerfile
+          load: true
+          push: false
+          tags: |
+            parkeren-app:${{ github.ref_name }}
+            parkeren-app:sha-${{ github.sha }}
+          build-args: |
+            PARKEREN_BUILD_ID=${{ github.sha }}
+            PARKEREN_APP_VERSION=${{ github.ref_name }}
+            PARKEREN_APP_VARIANT=production
+          labels: |
+            org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
+      - name: Verify release image tags
+        run: |
+          docker image inspect parkeren-app:${GITHUB_REF_NAME}
+          docker image inspect parkeren-app:sha-${GITHUB_SHA}
+      - name: Scan release image for secrets
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-app:${{ github.ref_name }}
+          scanners: secret
+          format: json
+          output: trivy-release-secrets.json
+          exit-code: '1'
+          hide-progress: true
+      - name: Scan release image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: parkeren-app:${{ github.ref_name }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          skip-setup-trivy: true
+          hide-progress: true
+      - name: Save scanned release image
+        run: |
+          docker save -o release-image.tar \
+            parkeren-app:${GITHUB_REF_NAME} \
+            parkeren-app:sha-${GITHUB_SHA}
+      - name: Upload scanned release image
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-image-${{ github.sha }}
+          path: release-image.tar
+          compression-level: 0
+          retention-days: 1
+
+  publish-release-image:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-release-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download scanned release image
+        uses: actions/download-artifact@v4
+        with:
+          name: release-image-${{ github.sha }}
+      - name: Load scanned release image
+        run: docker load --input release-image.tar
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish release image
+        env:
+          IMAGE_SHA: ${{ github.sha }}
+          IMAGE_VERSION: ${{ github.ref_name }}
+        run: |
+          docker tag parkeren-app:${IMAGE_VERSION} ghcr.io/vanhinthem/parkeren-app:${IMAGE_VERSION}
+          docker tag parkeren-app:sha-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-app:sha-${IMAGE_SHA}
+          docker push ghcr.io/vanhinthem/parkeren-app:${IMAGE_VERSION}
+          docker push ghcr.io/vanhinthem/parkeren-app:sha-${IMAGE_SHA}
