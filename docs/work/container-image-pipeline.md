@@ -43,16 +43,17 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 ### 3. Workflow- en imagebouw
 
 - Behoud tests op pull requests en pushes volgens de bestaande CI-path filters.
-- Op iedere push naar `develop`: vereiste tests slagen, bouw app en mock, en geef beide images dezelfde commit-SHA-tag plus `dev`.
+- Op iedere push naar `develop`: vereiste tests slagen, bouw app en mock, en geef beide images dezelfde commit-SHA-tag plus `dev`. Bouw dezelfde dev-images ook op PR's naar `develop` om Dockerfiles vóór merge te valideren.
 - Op gewone pushes naar `main`: voer tests uit, maar publiceer geen images.
-- Op een `v*` releasetag: valideer dat de getagde commit op `main` staat en de CI-tests voor die commit geslaagd zijn; bouw en publiceer uitsluitend de productie-app-image met SemVer- en SHA-tag.
-- Maak geen image-build of push voordat alle beveiligingscontroles voor die image slagen.
-- Acceptatie: de tags verwijzen naar de bedoelde commit; app en mock in dev hebben dezelfde SHA; release tags bouwen alleen de app; normale `main`-commits publiceren niets.
+- Op een `vMAJOR.MINOR.PATCH` releasetag: valideer dat de getagde commit op `main` staat en de CI-tests voor die commit geslaagd zijn; bouw uitsluitend de productie-app-image met SemVer- en SHA-tag.
+- In fase 3 blijven alle gebouwde images lokaal op de tijdelijke CI-runner en wordt niets naar GHCR gepusht. Fase 4 voegt scans en pas daarna publicatie toe.
+- Acceptatie: dev-app en mock zijn op PR/push gebouwd met dezelfde commit-SHA en `dev`-alias; releasetags op geteste `main`-commits bouwen alleen de productie-app; gewone `main`-commits bouwen geen images; er is geen GHCR-login of push.
 
 ### 4. Security gates en GHCR
 
 - Configureer GHCR-pakketten als public en bevestig dat de repository private blijft.
 - Scan repositorywijzigingen op gelekte secrets en scan elke gebouwde image vóór publicatie op secrets en relevante bekende kwetsbaarheden.
+- Voeg GHCR-login en image-push pas toe nadat de bron- en image-scans succesvol zijn.
 - Gebruik secrets uitsluitend als runtimeconfiguratie op de NAS; geef ze niet mee als Docker build arguments of bestanden in de image.
 - Controleer workflows en applicatielogs op het afdrukken van PINs, wachtwoorden, tokens, sleutels of connection strings. Voeg gerichte regressiechecks toe waar dit betrouwbaar te automatiseren is.
 - Acceptatie: secret- of image-scanfouten blokkeren publicatie; normale workflowlogs bevatten geen secretwaarden; een anonieme pull van een image werkt zonder toegang tot de private bronrepository.
@@ -75,12 +76,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 2 afgerond en gemerged naar `develop`; fase 1 blijft afgerond.
-- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106.
-- Laatst afgerond: productie- en dev-PWA-identiteit zijn gescheiden; CI valideerde beide PWA-builds en de frontendtests.
-- Volgende stap: start fase 3, workflow- en imagebouw, met een eigen feature-issue en branch vanaf `develop`.
-- Blokkades/besluiten: geen functionele blokkades voor fase 2. Er is geen NAS- of database-reset uitgevoerd. Voor fase 5 is NAS-configuratie nodig; deploy blijft handmatig en buiten scope.
-- Laatste validatie: productie- en dev-PWA-builds en `check:pwa` geslaagd; frontendtests 22/22 geslaagd; dev-Compose-config met `mock`-profile valideert stil; GitHub Actions backend- en frontendchecks op PR #106 geslaagd.
+- Status: fase 3 workflowwijzigingen geïmplementeerd en in validatie; fase 1 en 2 zijn afgerond.
+- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108.
+- Laatst afgerond: dev/prod PWA-identiteit is gemerged; CI valideerde beide PWA-builds, frontendtests en de backendchecks.
+- Volgende stap: valideer de imagebuildjobs op de issue-#108-PR; publiceer geen images in fase 3. Daarna start fase 4 met securityscans en GHCR-publicatie.
+- Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds moeten via GitHub Actions worden gevalideerd. Geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
+- Laatste validatie: workflowdiagnostiek schoon; PWA productie/dev-builds en checks geslaagd; frontendtests 22/22; Compose dev-config met mock-profile valideert.
 
 ## Agent-werkwijze
 
