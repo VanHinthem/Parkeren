@@ -21,6 +21,12 @@ function expectedBuildId() {
   }
 }
 
+function expectedAppVersion() {
+  const configured = process.env.PARKEREN_APP_VERSION;
+  if (configured) return configured;
+  return process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "local";
+}
+
 const manifest = JSON.parse(await readFile(join(distRoot, "manifest.webmanifest"), "utf8"));
 const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
 const expectedAppName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
@@ -96,5 +102,7 @@ ensure(totalStylesheets <= 80 * 1024, `CSS budget exceeded: ${kibibytes(totalSty
 
 const buildId = expectedBuildId();
 ensure(bundledJavaScript.some(asset => asset.includes(buildId)), "Configured build ID is missing from production JavaScript assets.");
+const appVersion = expectedAppVersion();
+ensure(bundledJavaScript.some(asset => asset.includes(appVersion)), "Configured app version is missing from production JavaScript assets.");
 
 console.log(`PWA checks passed. JavaScript ${kibibytes(totalJavascript)} total / ${kibibytes(largestJavascript)} max chunk; CSS ${kibibytes(totalStylesheets)}.`);

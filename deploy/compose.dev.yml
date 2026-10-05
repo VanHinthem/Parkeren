@@ -2,6 +2,7 @@ services:
   app:
     build:
       args:
+        PARKEREN_APP_VERSION: dev
         PARKEREN_APP_VARIANT: dev
     environment:
       ASPNETCORE_ENVIRONMENT: Development
