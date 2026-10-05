@@ -69,9 +69,9 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ### 5. NAS pull-instructie en overdracht
 
-- Pas de Compose-deployconfiguratie aan om gepubliceerde images te gebruiken in plaats van lokaal te bouwen.
-- Houd secrets en omgevingsconfiguratie op de NAS; documenteer welke image/tag daar handmatig wordt opgehaald en gestart.
-- Documenteer rollback via een eerdere SHA- of releasetag.
+- Lever aparte voorbeeld-Composebestanden voor productie en development die gepubliceerde GHCR-images pullen; wijzig de actieve Compose-files en de 2Park-testupdate niet.
+- Lever bij elk voorbeeld een `.env`-template. Houd echte secrets en omgevingsconfiguratie uitsluitend op de NAS.
+- Documenteer handmatig pullen/starten en rollback via een eerdere immutable SHA- of releasetag; behoud bij productie de bestaande Compose-projectnaam en databasevolume-identiteit.
 - Acceptatie: de NAS kan de gekozen publieke GHCR-image ophalen en de stack starten zonder Git checkout of lokale app-imagebuild. Voer dit pas uit wanneer de NAS-eigenaar de juiste configuratie heeft gezet.
 
 ## Validatiegates
@@ -85,12 +85,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fasen 1-4 zijn afgerond en gemerged. Fase 3 path-filtergedrag en imagebouw zijn gevalideerd; fase 4-securitygates en GHCR-publicatie zijn via PR #116 gemerged. De packages zijn public en beide development-images zijn anoniem pullbaar. Release-tagvalidatie blijft bewust uitgesteld tot alle geplande wijzigingen op `main` staan.
-- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108 via PR #109; path-filteroptimalisatie #111 via PR #112; securitygates en GHCR-publicatie #115 via PR #116.
-- Laatst afgerond: docs-only-wijzigingen slaan relevante checks en imagejobs over; relevante develop-wijzigingen draaien checks, bouwen en scannen beide images en publiceren ze daarna; handmatige runs draaien checks zonder images te publiceren. De anonieme pulls van beide `dev`-images zijn lokaal bevestigd.
-- Volgende stap: maak een afzonderlijk feature-issue voor fase 5, werk Compose en documentatie bij voor handmatige GHCR-pulls en rollback via SHA- of releasetag, en laat de feitelijke NAS-start over aan de NAS-eigenaar. Voer de release-tagvalidatie pas uit nadat alle geplande wijzigingen op `main` staan; gebruik daarvoor een concrete SemVer-tag op een geteste commit.
-- Blokkades/besluiten: de fase 4-push en anonieme pulls zijn bevestigd. Docker Desktop is beschikbaar voor pulls; builds en securityscans worden op GitHub Actions gevalideerd. De release-tagtrigger is bewust uitgesteld omdat `main` nog niet de volledige geplande wijzigingsset bevat; maak geen releasetag tot die promotie is afgerond. Geen NAS-deploy, backupwijziging of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope van deze pipeline.
-- Laatste validatie: develop-push-run 37306419871 slaagde voor Gitleaks, backend/frontend, beide development-imagebuilds, vier Trivy-scans en de GHCR-publisher; releasejobs werden overgeslagen. Anonieme pulls slaagden voor `ghcr.io/vanhinthem/parkeren-app:dev` (digest `sha256:01c48e8b2232d1a341039b610a9689d91953201d2d7b923152e0b77b6e4200c9`) en `ghcr.io/vanhinthem/parkeren-two-park-mock:dev` (digest `sha256:0043eeb1f91af35137f7de3648f762dc1ff0dd30b784e8060838c08498546c54`). De release-tagtrigger is nog niet runtime-gevalideerd.
+- Status: fasen 1-4 zijn afgerond en gemerged. Fase 5 is in uitvoering onder issue #118: twee zelfstandige productie-/development-Composevoorbeelden die GHCR-images pullen, elk met een env-template en een handmatige pull-/rollbackhandleiding. Beide voorbeelden zijn toegevoegd en hun Compose-configuratie is lokaal gevalideerd. Productie-release-imagevalidatie en NAS-start blijven afhankelijk van respectievelijk een latere releasetag en de NAS-eigenaar. Release-tagvalidatie blijft bewust uitgesteld tot alle geplande wijzigingen op `main` staan.
+- GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108 via PR #109; path-filteroptimalisatie #111 via PR #112; securitygates en GHCR-publicatie #115 via PR #116; Compose-imagevoorbeelden en overdracht #118.
+- Laatst afgerond: docs-only-wijzigingen slaan relevante checks en imagejobs over; relevante develop-wijzigingen draaien checks, bouwen en scannen beide images en publiceren ze daarna; handmatige runs draaien checks zonder images te publiceren. De anonieme pulls van beide `dev`-images zijn lokaal bevestigd. De prod- en dev-voorbeeldcompose valideren met hun env-templates zonder imagebuilds.
+- Volgende stap: review de diff, voer de laatste repositorychecks uit en open een PR naar `develop`. Laat productie pull/start en verificatie van de bestaande project-/volume-identiteit over aan de NAS-eigenaar. Voer de release-tagvalidatie pas uit nadat alle geplande wijzigingen op `main` staan; gebruik daarvoor een concrete SemVer-tag op een geteste commit.
+- Blokkades/besluiten: de fase 4-push en anonieme development-pulls zijn bevestigd. Er bestaat nog geen productie-releaseimage; de production-template bevat daarom uitsluitend een expliciete vervang-placeholder en mag die niet pullen voordat een release is gepubliceerd. NAS-deploy, backupwijziging en database-reset blijven buiten scope van deze uitvoering.
+- Laatste validatie: develop-push-run 37306419871 slaagde voor Gitleaks, backend/frontend, beide development-imagebuilds, vier Trivy-scans en de GHCR-publisher; releasejobs werden overgeslagen. Anonieme pulls slaagden voor `ghcr.io/vanhinthem/parkeren-app:dev` (digest `sha256:01c48e8b2232d1a341039b610a9689d91953201d2d7b923152e0b77b6e4200c9`) en `ghcr.io/vanhinthem/parkeren-two-park-mock:dev` (digest `sha256:0043eeb1f91af35137f7de3648f762dc1ff0dd30b784e8060838c08498546c54`). Voor beide nieuwe Compose-voorbeelden slaagde `docker compose config --quiet` met het bijbehorende env-template; de production-app verwijst naar één expliciete GHCR-image zonder build, en het dev-voorbeeld gebruikt dezelfde instelbare tag voor app en mock met een eigen project-/datavolumenaam. Geen containers gestart. De release-tagtrigger is nog niet runtime-gevalideerd.
 
 ## Agent-werkwijze
 

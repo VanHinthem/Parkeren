@@ -1,0 +1,39 @@
+name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to the existing production project name}
+
+services:
+  app:
+    image: ${PARKEREN_APP_IMAGE:?Set PARKEREN_APP_IMAGE to an explicit release image}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+      ParkingProvider__Type: TwoPark
+      ParkingProvider__Email: ${PARKEREN_TWOPARK_EMAIL:?Set PARKEREN_TWOPARK_EMAIL}
+      ParkingProvider__Password: ${PARKEREN_TWOPARK_PASSWORD:?Set PARKEREN_TWOPARK_PASSWORD}
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
+      WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
+      BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
+      BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+    volumes:
+      - parkeren_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  parkeren_db:

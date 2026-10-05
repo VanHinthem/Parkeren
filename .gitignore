@@ -10,6 +10,8 @@ dist/
 .env
 .env.*
 !.env.example
+!deploy/examples/.env.production.example
+!deploy/examples/.env.development.example
 coverage/
 playwright-report/
 test-results/
