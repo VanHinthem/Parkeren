@@ -76,12 +76,12 @@ Buiten scope: automatisch deployen naar de NAS, het ontwerpen of uitvoeren van d
 
 ## Voortgangscheckpoint
 
-- Status: fase 3 buildworkflow gemerged; verificatie van de push/tag-triggers en fase 4-securitygate/publicatie staan nog open.
+- Status: fase 3 buildworkflow gemerged; path-filteroptimalisatie #111 is geïmplementeerd in PR #112 en de relevante PR-run is geslaagd. Docs-only-skip, develop-push/release-tagtriggers en fase 4-securitygate/publicatie staan nog open.
 - GitHub-tracking: initiatief #99; migratiefeature #102 via PR #103; PWA-feature #105 via PR #106; imageworkflowfeature #108; path-filteroptimalisatie #111.
 - Laatst afgerond: fase 3 gemerged via PR #109; develop-PR-build van API- en TwoPark-mock-images, inclusief SHA/dev-tags, is in CI geslaagd met push uitgeschakeld.
-- Volgende stap: valideer issue #111 voor relevante/niet-relevante path-filterpaden, release-tags en handmatige runs; daarna maak een feature-issue voor fase 4-securityscans en GHCR-publicatie.
+- Volgende stap: laat PR #112 reviewen; valideer na merge een docs-only wijziging (checks en images overgeslagen) en de echte develop-push-, release-tag- en handmatige triggers. Maak daarna een feature-issue voor fase 4-securityscans en GHCR-publicatie.
 - Blokkades/besluiten: Docker is lokaal niet beschikbaar, dus imagebuilds worden via GitHub Actions gevalideerd. De develop-push- en release-tagpaden zijn nog niet afzonderlijk uitgevoerd. Er is geen GHCR-login of push toegevoegd; geen NAS- of database-reset uitgevoerd. NAS-deploy en backups blijven buiten scope.
-- Laatste validatie: issue #111 workflowwijzigingen hebben geen YAML-editorfouten en `git diff --check` slaagt; workflowdiagnostiek/runtime-validatie is nog nodig. PR #109 backend/frontendchecks en dev-imagebuild geslaagd; PWA productie/dev-builds en checks geslaagd; frontendtests 22/22; Compose dev-config met mock-profile valideert.
+- Laatste validatie: PR #112-run 37297909502 slaagde voor backend, frontend, app/mock-imagebouw en tagcontrole; release-imagejob werd overgeslagen zoals verwacht. Push-run 37297895553 slaagde voor backend/frontend en sloeg imagebouw over op de featurebranch. Beide runs matchten relevante paden omdat de PR workflowbestanden wijzigt; docs-only-skip en release-/handmatige triggers zijn nog niet runtime-gevalideerd. YAML-editorfouten ontbreken en `git diff --check` slaagde. PR #109 en de PWA/Compose-checks bleven eerder groen.
 
 ## Agent-werkwijze
 
