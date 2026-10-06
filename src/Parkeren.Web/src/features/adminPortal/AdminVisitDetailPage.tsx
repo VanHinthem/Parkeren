@@ -138,9 +138,10 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
           </section>
 
           <AdminVisitSchedulerSections
+            visit={detail.visit}
+            endTimeChanges={detail.endTimeChanges}
             timelineEvents={detail.timelineEvents}
             schedulerWork={detail.schedulerWork}
-            providerOperations={detail.providerOperations}
           />
 
           <section className="admin-visits__panel admin-visit-detail__section">
