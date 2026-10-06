@@ -174,14 +174,7 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             )
           ) : section.path === "/beheer/systeem" ? (
             currentPath === "/beheer/systeem" ? (
-              <>
-                <section className="admin-portal__panel admin-portal__placeholder">
-                  <h2>Beheeraudit</h2>
-                  <p>Bekijk recente administratieve mutaties met actor, target en veilige context.</p>
-                  <p><a href="/beheer/systeem/audit">Auditlog openen</a></p>
-                </section>
-                <AdminSystemPage />
-              </>
+              <AdminSystemPage />
             ) : currentPath === "/beheer/systeem/diagnostiek" ? (
               <AdminSystemDiagnosticsPage />
             ) : currentPath === "/beheer/systeem/audit" ? (
