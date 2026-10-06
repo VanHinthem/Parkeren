@@ -267,23 +267,23 @@ export function AdminParkingRulesPage(){
           </label>
         </div>
 
-        <div className="admin-rules__subsection">
+        <div className="admin-rules__subsection admin-rules__subsection--windows">
           <div className="admin-rules__subsection-head">
             <h3>Betaalvensters</h3>
-            <Button variant="secondary" onClick={()=>setWindows(rows=>[...rows,{key:nextKey++,day:"Monday",start:"09:00",end:"20:00"}])}>Venster toevoegen</Button>
+            <Button className="admin-action--compact" variant="secondary" onClick={()=>setWindows(rows=>[...rows,{key:nextKey++,day:"Monday",start:"09:00",end:"20:00"}])}>Venster toevoegen</Button>
           </div>
           {windows.length===0?<p className="admin-rules__empty">Geen betaalvensters: alle reguliere tijden zijn gratis.</p>:null}
-          <div className="admin-rules__rows">
-            {windows.map(row=><div className="admin-rules__row" key={row.key}>
-              <label className="admin-rules__field">
+          <div className="admin-rules__rows admin-rules__rows--windows">
+            {windows.map(row=><div className="admin-rules__row admin-rules__row--window" key={row.key}>
+              <label className="admin-field">
                 <span>Dag</span>
                 <select value={row.day} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,day:event.target.value as DayOfWeekName}:item))}>
                   {days.map(day=><option key={day} value={day}>{dayLabels[day]}</option>)}
                 </select>
               </label>
-              <label className="admin-rules__field"><span>Start</span><input type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></label>
-              <label className="admin-rules__field"><span>Einde</span><input type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></label>
-              <button className="admin-rules__remove" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</button>
+              <label className="admin-field"><span>Start</span><input type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></label>
+              <label className="admin-field"><span>Einde</span><input type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></label>
+              <Button className="admin-action--compact admin-rules__remove-action" variant="danger" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button>
             </div>)}
           </div>
         </div>
