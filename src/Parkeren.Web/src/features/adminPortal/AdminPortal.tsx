@@ -3,7 +3,7 @@ import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
-import { AdminUserDetailPage } from "./AdminUsersPage";
+import { AdminUserDetailPage } from "./AdminUserDetailPage";
 import { AdminUsersOverviewPage } from "./AdminUsersOverviewPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminSystemDiagnosticsPage } from "./AdminSystemDiagnosticsPage";
