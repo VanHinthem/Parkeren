@@ -11,3 +11,11 @@ export function formatAdminDateTime(value:string|null,unavailable="—"){
     ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"}).replace(",","")
     : unavailable;
 }
+
+export function formatAdminNumber(value:number){
+  return new Intl.NumberFormat("nl-NL").format(value);
+}
+
+export function formatAdminCapacity(used:number,total:number){
+  return `${formatAdminNumber(used)} van ${formatAdminNumber(total)}`;
+}
