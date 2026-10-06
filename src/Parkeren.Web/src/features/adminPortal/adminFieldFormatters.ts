@@ -46,7 +46,7 @@ export function formatAdminProviderBalance(value:number|null,unit:AdminProviderB
   switch(unit){
     case "Euro": return formatAdminMoney(value,unavailable);
     case "Minute": return formatAdminDuration(value,unavailable);
-    case "Times": return `${formatAdminNumber(value)} ${value===1?"keer":"keer"}`;
+    case "Times": return `${formatAdminNumber(value)} keer`;
     case "Unknown": return formatAdminNumber(value);
   }
 }
@@ -91,5 +91,14 @@ export function adminProviderActionStatusTone(status:string):AdminStatusTone{
     case "stopping": return "warning";
     case "failed": return "danger";
     default: return "neutral";
+  }
+}
+
+export function adminStatusClass(tone:AdminStatusTone){
+  switch(tone){
+    case "active": return "admin-status admin-status--active";
+    case "warning": return "admin-status admin-status--warning";
+    case "danger": return "admin-status admin-status--danger";
+    case "neutral": return "admin-status";
   }
 }
