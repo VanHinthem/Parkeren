@@ -109,9 +109,42 @@
   overflow-wrap:anywhere;
 }
 
+.admin-visit-detail__status-stack{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.35rem .65rem;
+}
+
 .admin-visit-detail__section h2{
   margin:0 0 .85rem;
   font-size:1.05rem;
+}
+
+.admin-visit-detail__provider-actions-table th:nth-child(1),
+.admin-visit-detail__provider-actions-table td:nth-child(1){width:24%;}
+.admin-visit-detail__provider-actions-table th:nth-child(2),
+.admin-visit-detail__provider-actions-table td:nth-child(2){width:19%;}
+.admin-visit-detail__provider-actions-table th:nth-child(3),
+.admin-visit-detail__provider-actions-table td:nth-child(3){width:19%;}
+.admin-visit-detail__provider-actions-table th:nth-child(4),
+.admin-visit-detail__provider-actions-table td:nth-child(4){width:18%;}
+.admin-visit-detail__provider-actions-table th:nth-child(5),
+.admin-visit-detail__provider-actions-table td:nth-child(5){width:20%;}
+
+.admin-visit-detail__provider-actions-table td{
+  white-space:normal;
+}
+
+.admin-visit-detail__time-range{
+  display:grid;
+  gap:.14rem;
+  font-variant-numeric:tabular-nums;
+}
+
+.admin-visit-detail__time-range span+span{
+  color:var(--color-text-muted);
+  font-size:.78rem;
 }
 
 .admin-visit-detail__list{
@@ -270,6 +303,10 @@
 
   .admin-visit-detail__facts{
     grid-template-columns:1fr 1fr;
+  }
+
+  .admin-visit-detail__provider-actions-table{
+    min-width:58rem;
   }
 
   .admin-visit-detail__row-meta{
