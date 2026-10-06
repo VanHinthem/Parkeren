@@ -17,7 +17,7 @@ function formatMinutes(value:number|null){
   if(value<60)return `${value} min`;
   const hours=Math.floor(value/60);
   const minutes=value%60;
-  return minutes===0?`${hours} uur`:`${hours} u ${minutes} min`;
+  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
 }
 
 function formatMoney(value:number|null){
