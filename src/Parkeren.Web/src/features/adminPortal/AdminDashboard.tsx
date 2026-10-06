@@ -21,7 +21,7 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminDashboard.css";
-import { formatAdminCapacity,formatAdminDateTime,formatAdminDuration,formatAdminNumber } from "./adminFieldFormatters";
+import { formatAdminCapacity,formatAdminDateTime,formatAdminDuration,formatAdminMoney,formatAdminNumber } from "./adminFieldFormatters";
 
 function statusLabel(status:AdminDashboardSummary["activeVisits"][number]["status"]){
   switch(status){
@@ -37,7 +37,7 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   const balance=status?.balance;
   if(!balance)return "Niet beschikbaar";
   switch(balance.unit){
-    case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
+    case "Euro": return formatAdminMoney(balance.remainingBalance);
     case "Minute": return formatAdminDuration(balance.remainingBalance);
     case "Times": return `${formatAdminNumber(balance.remainingBalance)} keer`;
     default: return String(balance.remainingBalance);
@@ -230,7 +230,7 @@ export function AdminDashboard(){
       </section>
       <section className="admin-dashboard__metric">
         <span>Officieel 2Park-saldo</span>
-        <strong>{formatProviderBalance(providerStatus)}</strong>
+        <strong className={providerStatus?.balance?.unit==="Euro"?"admin-money":providerStatus?.balance?.unit==="Minute"?"admin-duration":"admin-number"}>{formatProviderBalance(providerStatus)}</strong>
         <small>
           {providerStatus?.balanceIsStale
             ?"Verouderde laatst bekende waarde"
@@ -241,7 +241,7 @@ export function AdminDashboard(){
       </section>
       <section className="admin-dashboard__metric">
         <span>Lokaal jaarbudget</span>
-        <strong>{budgetUsage?.isComplete
+        <strong className="admin-duration">{budgetUsage?.isComplete
           ? formatAdminDuration(budgetUsage.remainingPaidDurationMinutes)
           : budgetUsage==null
             ?"Niet ingesteld"
