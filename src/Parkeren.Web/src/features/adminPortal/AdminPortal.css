@@ -164,6 +164,28 @@
   text-align:right !important;
 }
 
+.admin-identity,
+.admin-dashboard__visit-user,
+.admin-visits__identity{
+  display:grid;
+  gap:.12rem;
+}
+
+.admin-identity__primary,
+.admin-identity>strong,
+.admin-dashboard__visit-user>strong,
+.admin-visits__identity>strong{
+  font-weight:650;
+}
+
+.admin-identity__secondary,
+.admin-identity>small,
+.admin-dashboard__visit-user>small,
+.admin-visits__identity>small{
+  color:var(--color-text-muted);
+  font-size:.78rem;
+}
+
 @media(max-width:899px){
   .admin-portal{
     grid-template-columns:1fr;
