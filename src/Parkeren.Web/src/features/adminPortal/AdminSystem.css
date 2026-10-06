@@ -122,46 +122,22 @@
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:.75rem;
-  margin:1rem 0 .8rem;
+  margin:.8rem 0;
 }
 
-.admin-system__audit-list{
-  display:grid;
-  gap:.75rem;
+.admin-system__audit-table th:nth-child(1){width:16%;}
+.admin-system__audit-table th:nth-child(2){width:12%;}
+.admin-system__audit-table th:nth-child(3){width:20%;}
+.admin-system__audit-table th:nth-child(4){width:13%;}
+.admin-system__audit-table th:nth-child(5){width:31%;}
+.admin-system__audit-table th:nth-child(6){width:8%;}
+
+.admin-system__audit-detail-facts{
+  margin-top:.6rem;
 }
 
-.admin-system__audit-event{
-  padding-block:1rem;
-}
-
-.admin-system__audit-actor{
-  color:var(--color-text-muted);
-  font-size:.78rem;
-  font-weight:650;
-}
-
-.admin-system__audit-context-row{
-  align-items:flex-start;
-}
-
-.admin-system__audit-context-row dd{
-  min-width:0;
-  max-width:78%;
-}
-
-.admin-system__audit-context{
-  margin:0;
-  padding:.6rem .7rem;
-  overflow:auto;
-  border-radius:var(--radius-sm);
-  background:var(--color-surface-muted);
-  color:var(--color-text);
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-  text-align:left;
-  font:inherit;
-  font-size:.78rem;
-  font-weight:500;
+.admin-system__audit-detail-facts+.admin-code-block{
+  margin-top:.7rem;
 }
 
 @media(max-width:950px){
@@ -180,14 +156,5 @@
 @media(max-width:650px){
   .admin-system__audit-filters{
     grid-template-columns:1fr;
-  }
-
-  .admin-system__audit-context-row{
-    display:grid!important;
-  }
-
-  .admin-system__audit-context-row dd{
-    max-width:none;
-    text-align:left;
   }
 }
