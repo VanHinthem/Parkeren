@@ -48,6 +48,50 @@
   font-variant-numeric:tabular-nums;
 }
 
+.admin-settings-form{
+  display:grid;
+  gap:.75rem;
+}
+
+.admin-setting-row{
+  display:grid;
+  grid-template-columns:minmax(12rem,1fr) minmax(10rem,.78fr);
+  gap:1rem;
+  align-items:end;
+  padding:.15rem 0;
+}
+
+.admin-setting-copy strong{
+  display:block;
+  font-size:.87rem;
+}
+
+.admin-setting-copy small{
+  display:block;
+  margin-top:.2rem;
+  color:var(--color-text-muted);
+  font-size:.78rem;
+  line-height:1.4;
+}
+
+.admin-setting-controls{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:.55rem;
+  align-items:end;
+}
+
+.admin-action-group--start{
+  justify-content:flex-start;
+  flex-wrap:wrap;
+}
+
+.admin-meta{
+  color:var(--color-text-muted);
+  font-size:.76rem;
+  line-height:1.4;
+}
+
 .admin-facts--grid{
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:0;
@@ -101,6 +145,13 @@
 @media(max-width:850px){
   .admin-rules .admin-rules__panel > .admin-rules__grid,
   .admin-finance .admin-finance__product-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:650px){
+  .admin-setting-row,
+  .admin-setting-controls{
     grid-template-columns:1fr;
   }
 }
