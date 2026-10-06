@@ -166,6 +166,33 @@ export function adminProviderActionStatusTone(status:string):AdminStatusTone{
   }
 }
 
+export function formatAdminProcessStatus(status:string){
+  switch(status.toLowerCase()){
+    case "pending": return "Wachtend";
+    case "claimed": return "Opgepakt";
+    case "inprogress": return "Bezig";
+    case "completed": return "Afgerond";
+    case "succeeded": return "Geslaagd";
+    case "cancelled": return "Geannuleerd";
+    case "failed": return "Mislukt";
+    case "unknown": return "Onbekend";
+    case "reconciling": return "Reconciliatie";
+    default: return status;
+  }
+}
+
+export function adminProcessStatusTone(status:string):AdminStatusTone{
+  switch(status.toLowerCase()){
+    case "completed":
+    case "succeeded": return "active";
+    case "claimed":
+    case "inprogress":
+    case "reconciling": return "warning";
+    case "failed": return "danger";
+    default: return "neutral";
+  }
+}
+
 export function adminStatusClass(tone:AdminStatusTone){
   switch(tone){
     case "active": return "admin-status admin-status--active";
