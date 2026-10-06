@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
-import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
+import { AdminVisitsPage } from "./AdminVisitsPage";
+import { AdminVisitDetailPage } from "./AdminVisitDetailPage";
 import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
 import { AdminUserDetailPage } from "./AdminUserDetailPage";
