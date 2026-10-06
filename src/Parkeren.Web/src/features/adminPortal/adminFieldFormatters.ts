@@ -1,4 +1,5 @@
 export type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
+export type AdminRecordStatus="Active"|"Inactive"|"Archived";
 
 export function formatAdminDuration(value:number|null,unavailable="Niet beschikbaar"){
   if(value===null)return unavailable;
@@ -41,5 +42,13 @@ export function formatAdminVisitStatus(status:AdminVisitStatus){
     case "Stopping": return "Wordt gestopt";
     case "Completed": return "Afgerond";
     case "Cancelled": return "Geannuleerd";
+  }
+}
+
+export function formatAdminRecordStatus(status:AdminRecordStatus){
+  switch(status){
+    case "Active": return "Actief";
+    case "Inactive": return "Inactief";
+    case "Archived": return "Gearchiveerd";
   }
 }
