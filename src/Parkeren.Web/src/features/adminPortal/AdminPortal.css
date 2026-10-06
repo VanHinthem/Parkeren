@@ -186,6 +186,29 @@
   font-size:.78rem;
 }
 
+.admin-action-group{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:.4rem;
+}
+
+.admin-action--compact{
+  min-height:2.25rem;
+  padding:.45rem .65rem;
+  border-radius:var(--radius-sm);
+}
+
+.admin-action-link{
+  color:var(--color-primary);
+  font-weight:650;
+  text-decoration:none;
+}
+
+.admin-action-link:hover{
+  text-decoration:underline;
+}
+
 @media(max-width:899px){
   .admin-portal{
     grid-template-columns:1fr;
