@@ -1,18 +1,11 @@
-import { useEffect,useState } from "react";
+import { Fragment,useEffect,useState } from "react";
 import { getAdminAuditEvents,type AdminAuditEvent,type AdminAuditQuery } from "../../api/adminAudit";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import { formatAdminDateTimePrecise,formatAdminJson } from "./adminFieldFormatters";
+import "./adminFieldPresentation.css";
 import "./AdminSystem.css";
-
-function formatDateTime(value:string){
-  return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"medium"});
-}
-
-function formatContext(value:string|null){
-  if(!value)return "—";
-  try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}
-}
 
 function toIso(value:string,endOfMinute=false){
   if(!value)return undefined;
@@ -31,6 +24,7 @@ export function AdminSystemAuditPage(){
   const[targetId,setTargetId]=useState("");
   const[from,setFrom]=useState("");
   const[to,setTo]=useState("");
+  const[expandedId,setExpandedId]=useState<string>();
   const[appliedQuery,setAppliedQuery]=useState<AdminAuditQuery>({limit:100});
 
   async function load(query:AdminAuditQuery=appliedQuery){
@@ -59,55 +53,61 @@ export function AdminSystemAuditPage(){
       limit:100
     };
     setAppliedQuery(query);
+    setExpandedId(undefined);
     void load(query);
   }
 
   function clearFilters(){
-    setActorUserId("");setAction("");setTargetType("");setTargetId("");setFrom("");setTo("");
+    setActorUserId("");
+    setAction("");
+    setTargetType("");
+    setTargetId("");
+    setFrom("");
+    setTo("");
+    setExpandedId(undefined);
     const query={limit:100};
     setAppliedQuery(query);
     void load(query);
   }
 
+  const subnav=<nav className="admin-subnav" aria-label="Systeem">
+    <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+    <a className="admin-subnav__link active" href="/beheer/systeem/audit">Audit</a>
+    <a className="admin-subnav__link" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+  </nav>;
+
   if(!events&&!error)return <Loading label="Auditlog laden"/>;
   if(!events)return <div className="admin-system">
-    <nav className="admin-subnav" aria-label="Systeem">
-      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
-      <a className="admin-subnav__link active" href="/beheer/systeem/audit">Audit</a>
-      <a className="admin-subnav__link" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
-    </nav>
+    {subnav}
     <Alert tone="danger">{error??"Auditlog kon niet worden geladen."}</Alert>
-    <div className="admin-system__actions"><Button onClick={()=>void load()}>Opnieuw proberen</Button></div>
+    <div className="admin-action-group admin-action-group--start">
+      <Button className="admin-action--compact" onClick={()=>void load()}>Opnieuw proberen</Button>
+    </div>
   </div>;
 
   return <div className="admin-system">
-    <nav className="admin-subnav" aria-label="Systeem">
-      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
-      <a className="admin-subnav__link active" href="/beheer/systeem/audit">Audit</a>
-      <a className="admin-subnav__link" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
-    </nav>
-
+    {subnav}
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-system__panel">
       <div className="admin-system__panel-heading">
         <div>
           <h2>Auditlog filteren</h2>
-          <p className="admin-system__navigation-copy">Filter op actor, actie, target en periode. Maximaal 100 nieuwste resultaten worden getoond.</p>
+          <p>Filter op actor, actie, target en periode. Maximaal 100 nieuwste resultaten worden getoond.</p>
         </div>
       </div>
       <div className="admin-system__audit-filters">
-        <label className="admin-system__field"><span>Actor user-id</span><input value={actorUserId} onChange={event=>setActorUserId(event.target.value)} placeholder="GUID"/></label>
-        <label className="admin-system__field"><span>Actie</span><input value={action} onChange={event=>setAction(event.target.value)} placeholder="bijv. UserPolicyChanged"/></label>
-        <label className="admin-system__field"><span>Targettype</span><input value={targetType} onChange={event=>setTargetType(event.target.value)} placeholder="bijv. User"/></label>
-        <label className="admin-system__field"><span>Target-id</span><input value={targetId} onChange={event=>setTargetId(event.target.value)} placeholder="GUID of externe sleutel"/></label>
-        <label className="admin-system__field"><span>Vanaf</span><input type="datetime-local" value={from} onChange={event=>setFrom(event.target.value)}/></label>
-        <label className="admin-system__field"><span>Tot en met</span><input type="datetime-local" value={to} onChange={event=>setTo(event.target.value)}/></label>
+        <label className="admin-field"><span>Actor user-id</span><input value={actorUserId} onChange={event=>setActorUserId(event.target.value)} placeholder="GUID"/></label>
+        <label className="admin-field"><span>Actie</span><input value={action} onChange={event=>setAction(event.target.value)} placeholder="bijv. UserPolicyChanged"/></label>
+        <label className="admin-field"><span>Targettype</span><input value={targetType} onChange={event=>setTargetType(event.target.value)} placeholder="bijv. User"/></label>
+        <label className="admin-field"><span>Target-id</span><input value={targetId} onChange={event=>setTargetId(event.target.value)} placeholder="GUID of externe sleutel"/></label>
+        <label className="admin-field"><span>Vanaf</span><input type="datetime-local" value={from} onChange={event=>setFrom(event.target.value)}/></label>
+        <label className="admin-field"><span>Tot en met</span><input type="datetime-local" value={to} onChange={event=>setTo(event.target.value)}/></label>
       </div>
-      <div className="admin-system__actions">
-        <Button onClick={applyFilters}>Filters toepassen</Button>
-        <Button variant="secondary" onClick={clearFilters}>Wissen</Button>
-        <Button variant="secondary" onClick={()=>void load()}>Vernieuwen</Button>
+      <div className="admin-action-group admin-action-group--start">
+        <Button className="admin-action--compact" onClick={applyFilters}>Filters toepassen</Button>
+        <Button className="admin-action--compact" variant="secondary" onClick={clearFilters}>Wissen</Button>
+        <Button className="admin-action--compact" variant="secondary" onClick={()=>void load()}>Vernieuwen</Button>
       </div>
     </section>
 
@@ -117,21 +117,59 @@ export function AdminSystemAuditPage(){
         <p>Er zijn geen audit-events die aan de gekozen filters voldoen.</p>
       </section>
     ):(
-      <div className="admin-system__audit-list">
-        {events.map(event=><section className="admin-system__panel admin-system__audit-event" key={event.id}>
-          <div className="admin-system__panel-heading">
-            <div>
-              <h2>{event.action}</h2>
-              <span className="admin-system__audit-actor">{event.actorUsername}</span>
-            </div>
-            <span className="admin-system__meta">{formatDateTime(event.createdAt)}</span>
-          </div>
-          <dl className="admin-system__diagnostics-list">
-            <div><dt>Target</dt><dd>{event.targetType}{event.targetId?` · ${event.targetId}`:""}</dd></div>
-            <div className="admin-system__audit-context-row"><dt>Context</dt><dd><pre className="admin-system__audit-context">{formatContext(event.contextJson)}</pre></dd></div>
-          </dl>
-        </section>)}
-      </div>
+      <section className="admin-system__panel">
+        <div className="admin-table-wrap">
+          <table className="admin-table admin-table--fixed admin-system__audit-table">
+            <thead>
+              <tr>
+                <th>Datum/tijd</th>
+                <th>Actor</th>
+                <th>Actie</th>
+                <th>Targettype</th>
+                <th>Target</th>
+                <th aria-label="Acties"/>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map(event=>{
+                const expanded=expandedId===event.id;
+                return <Fragment key={event.id}>
+                  <tr>
+                    <td>{formatAdminDateTimePrecise(event.createdAt)}</td>
+                    <td><span className="admin-identity"><strong>{event.actorUsername}</strong></span></td>
+                    <td><span className="admin-code admin-code--table">{event.action}</span></td>
+                    <td>{event.targetType}</td>
+                    <td>{event.targetId?<span className="admin-code admin-code--table">{event.targetId}</span>:"—"}</td>
+                    <td className="admin-table__actions">
+                      <button
+                        className="admin-action-link admin-action-link--muted"
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={()=>setExpandedId(expanded?undefined:event.id)}
+                      >
+                        {expanded?"Verbergen":"Details"}
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded&&<tr className="admin-table__detail-row">
+                    <td colSpan={6}>
+                      <div className="admin-table__detail-panel">
+                        <strong>Technische context</strong>
+                        <dl className="admin-facts admin-facts--grid admin-system__audit-detail-facts">
+                          <div className="admin-fact"><dt>Audit event-ID</dt><dd className="admin-code">{event.id}</dd></div>
+                          <div className="admin-fact"><dt>Actor user-ID</dt><dd className="admin-code">{event.actorUserId}</dd></div>
+                          <div className="admin-fact"><dt>Target</dt><dd>{event.targetType}{event.targetId?<> · <span className="admin-code">{event.targetId}</span></>:null}</dd></div>
+                        </dl>
+                        <pre className="admin-code-block">{formatAdminJson(event.contextJson)}</pre>
+                      </div>
+                    </td>
+                  </tr>}
+                </Fragment>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
     )}
   </div>;
 }
