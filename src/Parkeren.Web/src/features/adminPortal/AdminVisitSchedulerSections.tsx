@@ -1,7 +1,8 @@
 import { Fragment,useState } from "react";
 import type {
-  AdminProviderOperationSummary,
+  AdminVisitEndTimeChangeSummary,
   AdminVisitSchedulerWorkSummary,
+  AdminVisitSummary,
   AdminVisitTimelineEvent
 } from "../../api/client";
 import {
@@ -14,157 +15,212 @@ import {
 } from "./adminFieldFormatters";
 import { timelineSourceHref } from "./visitTimeline";
 
-function timelineTitle(event:AdminVisitTimelineEvent){
-  const titles:Record<string,string>={
-    "visit.created":"Visit aangemaakt",
-    "visit.status_changed":"Visitstatus gewijzigd",
-    "visit.health_changed":"Visitgezondheid gewijzigd",
-    "visit.desired_end_change_requested":"Eindtijdwijziging aangevraagd",
-    "visit.desired_end_change_rejected":"Eindtijdwijziging afgewezen",
-    "visit.desired_end_change_applied":"Eindtijd gewijzigd",
-    "visit.desired_end_changed":"Eindtijd gewijzigd",
-    "scheduler_work.created":"Schedulerwerk aangemaakt",
-    "scheduler_work.claimed":"Schedulerwerk opgepakt",
-    "scheduler_work.deferred":"Schedulerwerk uitgesteld",
-    "scheduler_work.released":"Schedulerwerk opnieuw ingepland",
-    "scheduler_work.completed":"Schedulerwerk afgerond",
-    "scheduler_work.cancelled":"Schedulerwerk geannuleerd",
-    "provider_operation.created":"Provideroperatie aangemaakt",
-    "provider_operation.attempt_started":"Providerpoging gestart",
-    "provider_operation.outcome_unknown":"Provideruitkomst onbekend",
-    "provider_operation.reconciliation_started":"Reconciliatie gestart",
-    "provider_operation.succeeded":"Provideroperatie geslaagd",
-    "provider_operation.failed":"Provideroperatie mislukt",
-    "provider_operation.retry_ready":"Provideroperatie klaar voor retry",
-    "provider_action.created":"Provideractie aangemaakt",
-    "provider_action.state_changed":"Provideractiestatus gewijzigd",
-    "provider_action.health_changed":"Provideractiegezondheid gewijzigd",
-    "provider_action.history_changed":"Providerhistorie bijgewerkt",
-    "provider_action.timing_changed":"Provideractietijden gewijzigd"
-  };
-  return titles[event.eventType]??event.eventType;
-}
-
-type TimelineActivityKind=
-  |"start"
-  |"stop-planned"
-  |"stop"
-  |"continuation"
-  |"reconciliation"
-  |"end-time"
-  |"warning"
-  |"visit"
-  |"other";
-
-type TimelineActivity={
+type VisitTimelinePhase={
   key:string;
-  kind:TimelineActivityKind;
+  label:string;
+  occurredAt:string;
   events:AdminVisitTimelineEvent[];
 };
 
-function detailsText(event:AdminVisitTimelineEvent){
-  return `${event.reasonCode} ${event.detailsJson??""}`.toLowerCase();
+function eventDetails(event:AdminVisitTimelineEvent):Record<string,unknown>{
+  if(!event.detailsJson)return {};
+  try{
+    const value=JSON.parse(event.detailsJson) as unknown;
+    return value!==null&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:{};
+  }catch{
+    return {};
+  }
 }
 
-function activityKind(
-  event:AdminVisitTimelineEvent,
-  workById:Map<string,AdminVisitSchedulerWorkSummary>,
-  operationById:Map<string,AdminProviderOperationSummary>
-):TimelineActivityKind{
-  if(event.eventType.includes("desired_end"))return "end-time";
-  if(event.eventType==="provider_operation.reconciliation_started")return "reconciliation";
+function detailText(event:AdminVisitTimelineEvent,key:string){
+  const value=eventDetails(event)[key];
+  return typeof value==="string"?value:null;
+}
 
-  if(event.sourceType==="scheduler_work"){
-    const work=workById.get(event.sourceId);
-    switch(work?.type){
-      case "StopVisit":
-        return event.eventType==="scheduler_work.created"?"stop-planned":"stop";
-      case "ContinueProviderCoverage": return "continuation";
-      case "ReconcileProviderAction": return "reconciliation";
-      case "LongVisitWarning": return "warning";
-    }
+function providerActionStep(state:string|null){
+  switch(state?.toLowerCase()){
+    case "planned":
+    case "scheduled": return "Provideractie gepland";
+    case "starting": return "Provideractie starten";
+    case "active": return "Provideractie gestart";
+    case "stopping": return "Provideractie stoppen";
+    case "stopped":
+    case "completed": return "Provideractie gestopt";
+    case "failed": return "Provideractie mislukt";
+    case "cancelled": return "Provideractie geannuleerd";
+    default: return null;
+  }
+}
+
+function providerOperationStep(event:AdminVisitTimelineEvent){
+  const type=detailText(event,"type")?.toLowerCase();
+  const outcome=event.eventType.split(".").at(-1);
+
+  if(event.eventType==="provider_operation.reconciliation_started")return "Providerreconciliatie gestart";
+
+  if(type==="start"){
+    if(outcome==="created")return "Providerstart voorbereid";
+    if(outcome==="attempt_started")return "Provideractie starten";
+    if(outcome==="succeeded")return "Provideractie gestart";
+    if(outcome==="failed")return "Providerstart mislukt";
   }
 
-  if(event.sourceType==="provider_operation"){
-    const operation=operationById.get(event.sourceId);
-    switch(operation?.type){
-      case "Start": return "start";
-      case "ContinueStart":
-      case "Extend": return "continuation";
-      case "Stop": return "stop";
-    }
+  if(type==="stop"){
+    if(outcome==="created")return "Providerstop voorbereid";
+    if(outcome==="attempt_started")return "Provideractie stoppen";
+    if(outcome==="succeeded")return "Provideractie gestopt";
+    if(outcome==="failed")return "Providerstop mislukt";
   }
 
+  if(type==="continuestart"){
+    if(outcome==="created")return "Vervolgactie voorbereid";
+    if(outcome==="attempt_started")return "Vervolgactie starten";
+    if(outcome==="succeeded")return "Vervolgactie gestart";
+    if(outcome==="failed")return "Vervolgactie mislukt";
+  }
+
+  if(type==="extend"){
+    if(outcome==="created")return "Providerverlenging voorbereid";
+    if(outcome==="attempt_started")return "Provideractie verlengen";
+    if(outcome==="succeeded")return "Provideractie verlengd";
+    if(outcome==="failed")return "Providerverlenging mislukt";
+  }
+
+  if(outcome==="succeeded")return "Provideroperatie afgerond";
+  if(outcome==="failed")return "Provideroperatie mislukt";
+  if(outcome==="outcome_unknown")return "Provideruitkomst onbekend";
+  if(outcome==="retry_ready")return "Provideroperatie opnieuw klaarzetten";
+  if(outcome==="attempt_started")return "Provideroperatie uitvoeren";
+  return "Provideroperatie voorbereid";
+}
+
+function schedulerStep(event:AdminVisitTimelineEvent,workById:Map<string,AdminVisitSchedulerWorkSummary>){
+  const work=workById.get(event.sourceId);
+  const outcome=event.eventType.split(".").at(-1);
+
+  switch(work?.type){
+    case "StopVisit":
+      if(outcome==="created")return "Stop gepland";
+      if(outcome==="claimed")return "Stop uitvoeren";
+      if(outcome==="completed")return "Stop afgerond";
+      if(outcome==="cancelled")return "Stopplanning geannuleerd";
+      return "Stop opnieuw ingepland";
+    case "ContinueProviderCoverage":
+      if(outcome==="created")return "Vervolgactie gepland";
+      if(outcome==="claimed")return "Vervolgactie uitvoeren";
+      if(outcome==="completed")return "Vervolgactie afgerond";
+      if(outcome==="cancelled")return "Vervolgactie geannuleerd";
+      return "Vervolgactie opnieuw ingepland";
+    case "ReconcileProviderAction":
+      if(outcome==="created")return "Reconciliatie gepland";
+      if(outcome==="claimed")return "Reconciliatie uitvoeren";
+      if(outcome==="completed")return "Provider gereconcilieerd";
+      if(outcome==="cancelled")return "Reconciliatie geannuleerd";
+      return "Reconciliatie opnieuw ingepland";
+    case "LongVisitWarning":
+      return outcome==="completed"?"Long-Visit waarschuwing verwerkt":"Long-Visit waarschuwing gepland";
+    default:
+      return "Scheduleractie";
+  }
+}
+
+function functionalStepTitle(event:AdminVisitTimelineEvent,workById:Map<string,AdminVisitSchedulerWorkSummary>){
   if(event.sourceType==="provider_action"){
-    const details=detailsText(event);
-    if(details.includes("stopping")||details.includes("stopped")||details.includes("completed"))return "stop";
-    if(details.includes("starting")||details.includes("active"))return "start";
-    if(details.includes("scheduled")||details.includes("planned"))return "continuation";
+    if(event.eventType==="provider_action.state_changed")return providerActionStep(detailText(event,"state"))??"Provideractiestatus gewijzigd";
+    if(event.eventType==="provider_action.created")return providerActionStep(detailText(event,"state"))??"Provideractie gepland";
+    if(event.eventType==="provider_action.timing_changed")return "Provideractie planning bijgewerkt";
+    if(event.eventType==="provider_action.health_changed")return "Provideractie gezondheid bijgewerkt";
+    if(event.eventType==="provider_action.history_changed")return "Providerstatus bijgewerkt";
   }
 
-  if(event.sourceType==="visit"){
-    if(event.eventType==="visit.created")return "start";
-    const details=detailsText(event);
-    if(details.includes("completed")||details.includes("stopping")||details.includes("cancelled"))return "stop";
-    if(details.includes("starting")||details.includes("active"))return "start";
-    return "visit";
-  }
+  if(event.sourceType==="provider_operation")return providerOperationStep(event);
+  if(event.sourceType==="scheduler_work")return schedulerStep(event,workById);
 
-  return "other";
-}
-
-function activityTitle(activity:TimelineActivity){
-  const eventTypes=new Set(activity.events.map(event=>event.eventType));
-  switch(activity.kind){
-    case "start": return "Parkeerbezoek gestart";
-    case "stop-planned": return "Stop ingepland";
-    case "stop": return "Parkeerbezoek gestopt";
-    case "continuation":
-      return eventTypes.has("scheduler_work.created")?"Vervolgactie ingepland":"Providerdekking voortgezet";
-    case "reconciliation":
-      return activity.events.some(event=>event.eventType.endsWith(".completed")||event.eventType.endsWith(".succeeded"))
-        ?"Provider gereconcilieerd"
-        :"Providerreconciliatie";
-    case "end-time":
-      if(eventTypes.has("visit.desired_end_change_rejected"))return "Eindtijdwijziging afgewezen";
-      if(eventTypes.has("visit.desired_end_change_applied")||eventTypes.has("visit.desired_end_changed"))return "Eindtijd gewijzigd";
-      return "Eindtijdwijziging aangevraagd";
-    case "warning": return "Long-Visit waarschuwing";
-    case "visit": return "Visitstatus bijgewerkt";
-    case "other": return "Systeemgebeurtenissen";
+  switch(event.eventType){
+    case "visit.created": return "Visit aangemaakt";
+    case "visit.status_changed": return "Visitstatus gewijzigd";
+    case "visit.health_changed": return "Visitgezondheid gewijzigd";
+    case "visit.desired_end_change_requested": return "Nieuwe eindtijd aangevraagd";
+    case "visit.desired_end_change_rejected": return "Eindtijdwijziging afgewezen";
+    case "visit.desired_end_change_applied":
+    case "visit.desired_end_changed": return "Nieuwe eindtijd toegepast";
+    default: return event.reasonCode.replaceAll("_"," ");
   }
 }
 
-function buildTimelineActivities(
-  events:AdminVisitTimelineEvent[],
-  schedulerWork:AdminVisitSchedulerWorkSummary[],
-  providerOperations:AdminProviderOperationSummary[]
-){
-  const workById=new Map(schedulerWork.map(work=>[work.id,work]));
-  const operationById=new Map(providerOperations.map(operation=>[operation.id,operation]));
-  const chronological=[...events].sort((left,right)=>
+function sourceLabel(event:AdminVisitTimelineEvent){
+  switch(event.sourceType){
+    case "provider_action": return "Provideractie";
+    case "provider_operation": return "Provideroperatie";
+    case "scheduler_work": return "Scheduler";
+    case "visit": return "Visit";
+    case "visit_end_time_change": return "Eindtijdwijziging";
+    default: return event.sourceType;
+  }
+}
+
+function endTimeChangeLabel(change:AdminVisitEndTimeChangeSummary){
+  const previous=change.previousDesiredEndAt?new Date(change.previousDesiredEndAt).getTime():null;
+  const requested=change.requestedDesiredEndAt?new Date(change.requestedDesiredEndAt).getTime():null;
+  if(requested!==null&&previous!==null&&requested>previous)return "Visit verlengd";
+  if(requested!==null&&previous!==null&&requested<previous)return "Visit verkort";
+  if(requested===null)return "Open einde ingesteld";
+  return "Eindtijd gewijzigd";
+}
+
+function buildVisitTimeline(
+  visit:AdminVisitSummary,
+  endTimeChanges:AdminVisitEndTimeChangeSummary[],
+  events:AdminVisitTimelineEvent[]
+):VisitTimelinePhase[]{
+  const phases:VisitTimelinePhase[]=[{
+    key:"visit-start",
+    label:"Visit gestart",
+    occurredAt:visit.startAt,
+    events:[]
+  }];
+
+  for(const change of endTimeChanges.filter(change=>change.result==="Applied")){
+    phases.push({
+      key:`end-time-${change.id}`,
+      label:endTimeChangeLabel(change),
+      occurredAt:change.createdAt,
+      events:[]
+    });
+  }
+
+  if(visit.actualEndAt){
+    phases.push({
+      key:"visit-stop",
+      label:"Visit gestopt",
+      occurredAt:visit.actualEndAt,
+      events:[]
+    });
+  }
+
+  phases.sort((left,right)=>new Date(left.occurredAt).getTime()-new Date(right.occurredAt).getTime());
+
+  for(const event of [...events].sort((left,right)=>
     new Date(left.occurredAt).getTime()-new Date(right.occurredAt).getTime()||
     left.eventOrder-right.eventOrder||
     left.id.localeCompare(right.id)
-  );
-  const activities:TimelineActivity[]=[];
-  const maxGapMs=2*60*1000;
+  )){
+    const eventTime=new Date(event.occurredAt).getTime();
+    let target=phases[0];
+    let distance=Math.abs(eventTime-new Date(target.occurredAt).getTime());
 
-  for(const event of chronological){
-    const kind=activityKind(event,workById,operationById);
-    const current=activities.at(-1);
-    const previous=current?.events.at(-1);
-    const gap=previous?new Date(event.occurredAt).getTime()-new Date(previous.occurredAt).getTime():Number.POSITIVE_INFINITY;
-
-    if(current&&current.kind===kind&&gap<=maxGapMs){
-      current.events.push(event);
-      continue;
+    for(const phase of phases.slice(1)){
+      const candidateDistance=Math.abs(eventTime-new Date(phase.occurredAt).getTime());
+      if(candidateDistance<distance){
+        target=phase;
+        distance=candidateDistance;
+      }
     }
 
-    activities.push({key:`${kind}:${event.id}`,kind,events:[event]});
+    target.events.push(event);
   }
 
-  return activities;
+  return phases;
 }
 
 function toggleSet(current:Set<string>,key:string){
@@ -174,53 +230,70 @@ function toggleSet(current:Set<string>,key:string){
 }
 
 export function AdminVisitSchedulerSections({
+  visit,
+  endTimeChanges,
   timelineEvents,
-  schedulerWork,
-  providerOperations
+  schedulerWork
 }:{
+  visit:AdminVisitSummary;
+  endTimeChanges:AdminVisitEndTimeChangeSummary[];
   timelineEvents:AdminVisitTimelineEvent[];
   schedulerWork:AdminVisitSchedulerWorkSummary[];
-  providerOperations:AdminProviderOperationSummary[];
 }){
   const[openTimelineGroups,setOpenTimelineGroups]=useState<Set<string>>(()=>new Set());
+  const[openTechnicalEvents,setOpenTechnicalEvents]=useState<Set<string>>(()=>new Set());
   const[openWorkItems,setOpenWorkItems]=useState<Set<string>>(()=>new Set());
-  const activities=buildTimelineActivities(timelineEvents,schedulerWork,providerOperations);
+  const phases=buildVisitTimeline(visit,endTimeChanges,timelineEvents);
+  const workById=new Map(schedulerWork.map(work=>[work.id,work]));
 
   return <>
     <section className="admin-visits__panel admin-visit-detail__section">
-      <h2>Schedulerverloop</h2>
-      {activities.length===0
-        ? <p className="admin-visit-detail__muted">Geen schedulergebeurtenissen vastgelegd.</p>
-        : <div className="admin-table-wrap">
-            <table className="admin-table admin-table--fixed admin-visit-detail__timeline-table">
-              <thead><tr><th>Gebeurtenis</th><th>Tijdstip</th><th>Technische events</th><th aria-label="Details"/></tr></thead>
-              <tbody>
-                {activities.map(activity=>{
-                  const open=openTimelineGroups.has(activity.key);
-                  return <Fragment key={activity.key}>
-                    <tr>
-                      <td><strong>{activityTitle(activity)}</strong></td>
-                      <td>{formatAdminDateTime(activity.events[0].occurredAt)}</td>
-                      <td className="admin-number">{formatAdminNumber(activity.events.length)}</td>
-                      <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenTimelineGroups(current=>toggleSet(current,activity.key))}>{open?"Verbergen ▴":"Tonen ▾"}</button></td>
-                    </tr>
-                    {open&&<tr className="admin-table__detail-row"><td colSpan={4}><div className="admin-table__detail-panel admin-visit-detail__timeline-events">
-                      {activity.events.map(event=><article className="admin-visit-detail__timeline-event" key={event.id}>
-                        <div className="admin-visit-detail__timeline-event-head"><strong>{timelineTitle(event)}</strong><time>{formatAdminDateTime(event.occurredAt)}</time></div>
-                        <p>{event.reasonCode.replaceAll("_"," ")}</p>
-                        <dl className="admin-facts admin-facts--grid admin-visit-detail__technical-facts">
-                          <div className="admin-fact"><dt>Bron</dt><dd className="admin-code">{event.sourceType}</dd></div>
-                          <div className="admin-fact"><dt>Record-ID</dt><dd className="admin-code">{timelineSourceHref(event)?<a className="admin-action-link" href={timelineSourceHref(event)!}>{event.sourceId}</a>:event.sourceId}</dd></div>
-                          <div className="admin-fact"><dt>Event type</dt><dd className="admin-code">{event.eventType}</dd></div>
-                        </dl>
-                        {event.detailsJson&&<pre className="admin-code-block">{formatAdminJson(event.detailsJson)}</pre>}
-                      </article>)}
-                    </div></td></tr>}
-                  </Fragment>;
-                })}
-              </tbody>
-            </table>
-          </div>}
+      <h2>Visitverloop</h2>
+      <div className="admin-table-wrap">
+        <table className="admin-table admin-table--fixed admin-visit-detail__timeline-table">
+          <thead><tr><th>Gebeurtenis</th><th>Tijdstip</th><th>Stappen</th><th aria-label="Details"/></tr></thead>
+          <tbody>
+            {phases.map(phase=>{
+              const open=openTimelineGroups.has(phase.key);
+              return <Fragment key={phase.key}>
+                <tr>
+                  <td><strong>{phase.label}</strong></td>
+                  <td>{formatAdminDateTime(phase.occurredAt)}</td>
+                  <td className="admin-number">{formatAdminNumber(phase.events.length)}</td>
+                  <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenTimelineGroups(current=>toggleSet(current,phase.key))}>{open?"Verbergen ▴":"Tonen ▾"}</button></td>
+                </tr>
+                {open&&<tr className="admin-table__detail-row"><td colSpan={4}><div className="admin-table__detail-panel">
+                  {phase.events.length===0
+                    ? <p className="admin-visit-detail__muted">Geen technische stappen vastgelegd voor deze gebeurtenis.</p>
+                    : <table className="admin-table admin-table--fixed admin-visit-detail__timeline-steps-table">
+                        <thead><tr><th>Stap</th><th>Tijdstip</th><th>Bron</th><th aria-label="Technische details"/></tr></thead>
+                        <tbody>{phase.events.map(event=>{
+                          const technicalOpen=openTechnicalEvents.has(event.id);
+                          return <Fragment key={event.id}>
+                            <tr>
+                              <td><strong>{functionalStepTitle(event,workById)}</strong></td>
+                              <td>{formatAdminDateTime(event.occurredAt)}</td>
+                              <td>{sourceLabel(event)}</td>
+                              <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenTechnicalEvents(current=>toggleSet(current,event.id))}>{technicalOpen?"Verbergen ▴":"Techniek ▾"}</button></td>
+                            </tr>
+                            {technicalOpen&&<tr className="admin-table__detail-row"><td colSpan={4}><div className="admin-table__detail-panel">
+                              <dl className="admin-facts admin-facts--grid admin-visit-detail__technical-facts">
+                                <div className="admin-fact"><dt>Reden</dt><dd className="admin-code">{event.reasonCode}</dd></div>
+                                <div className="admin-fact"><dt>Bron</dt><dd className="admin-code">{event.sourceType}</dd></div>
+                                <div className="admin-fact"><dt>Record-ID</dt><dd className="admin-code">{timelineSourceHref(event)?<a className="admin-action-link" href={timelineSourceHref(event)!}>{event.sourceId}</a>:event.sourceId}</dd></div>
+                                <div className="admin-fact"><dt>Event type</dt><dd className="admin-code">{event.eventType}</dd></div>
+                              </dl>
+                              {event.detailsJson&&<pre className="admin-code-block">{formatAdminJson(event.detailsJson)}</pre>}
+                            </div></td></tr>}
+                          </Fragment>;
+                        })}</tbody>
+                      </table>}
+                </div></td></tr>}
+              </Fragment>;
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section className="admin-visits__panel admin-visit-detail__section">
