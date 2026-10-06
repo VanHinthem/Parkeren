@@ -152,6 +152,47 @@
   max-width:48rem;
 }
 
+.admin-metrics,
+.admin-dashboard__metrics{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:1rem;
+}
+
+.admin-metric,
+.admin-dashboard__metric{
+  padding:1.15rem 1.25rem;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-md);
+  background:var(--color-surface);
+  box-shadow:var(--shadow-card);
+}
+
+.admin-metric>span,
+.admin-dashboard__metric>span{
+  display:block;
+  color:var(--color-text-muted);
+  font-size:.82rem;
+  font-weight:650;
+}
+
+.admin-metric>strong,
+.admin-dashboard__metric>strong{
+  display:block;
+  margin-top:.3rem;
+  font-size:1.7rem;
+  letter-spacing:-.03em;
+}
+
+.admin-metric>small,
+.admin-dashboard__metric>small{
+  display:block;
+  margin-top:.3rem;
+  color:var(--color-text-muted);
+  font-size:.75rem;
+  line-height:1.35;
+}
+
 .admin-number,
 .admin-duration,
 .admin-money{
@@ -302,6 +343,13 @@
   line-height:1.4;
 }
 
+@media(max-width:1050px){
+  .admin-metrics,
+  .admin-dashboard__metrics{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
 @media(max-width:899px){
   .admin-portal{
     grid-template-columns:1fr;
@@ -337,6 +385,13 @@
   }
 
   .admin-portal__foundation{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:650px){
+  .admin-metrics,
+  .admin-dashboard__metrics{
     grid-template-columns:1fr;
   }
 }
