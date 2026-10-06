@@ -292,22 +292,25 @@ export function AdminParkingRulesPage(){
         <div className="admin-rules__subsection">
           <div className="admin-rules__subsection-head">
             <h3>Kalenderuitzonderingen</h3>
-            <Button variant="secondary" onClick={()=>setExceptions(rows=>[...rows,{key:nextKey++,date:"",isPaid:false}])}>Uitzondering toevoegen</Button>
+            <Button className="admin-action--compact" variant="secondary" onClick={()=>setExceptions(rows=>[...rows,{key:nextKey++,date:"",isPaid:false}])}>Uitzondering toevoegen</Button>
           </div>
-          {exceptions.length===0?<p className="admin-rules__empty">Geen expliciete kalenderuitzonderingen in deze versie.</p>:null}
-          <div className="admin-rules__rows">
-            {exceptions.map(row=><div className="admin-rules__row admin-rules__exception-row" key={row.key}>
-              <label className="admin-rules__field"><span>Datum</span><input type="date" value={row.date} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,date:event.target.value}:item))}/></label>
-              <label className="admin-rules__field">
-                <span>Gedrag</span>
-                <select value={row.isPaid?"paid":"free"} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,isPaid:event.target.value==="paid"}:item))}>
-                  <option value="free">Gratis</option>
-                  <option value="paid">Betaald</option>
-                </select>
-              </label>
-              <button className="admin-rules__remove" type="button" onClick={()=>setExceptions(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</button>
-            </div>)}
-          </div>
+          {exceptions.length===0
+            ? <p className="admin-rules__empty">Geen expliciete kalenderuitzonderingen in deze versie.</p>
+            : <div className="admin-table-wrap">
+                <table className="admin-table admin-table--fixed admin-rules__exception-table">
+                  <thead><tr><th>Datum</th><th>Gedrag</th><th aria-label="Acties"/></tr></thead>
+                  <tbody>
+                    {exceptions.map(row=><tr key={row.key}>
+                      <td><input className="admin-table__control" aria-label="Datum" type="date" value={row.date} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,date:event.target.value}:item))}/></td>
+                      <td><select className="admin-table__control" aria-label="Gedrag" value={row.isPaid?"paid":"free"} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,isPaid:event.target.value==="paid"}:item))}>
+                        <option value="free">Gratis</option>
+                        <option value="paid">Betaald</option>
+                      </select></td>
+                      <td className="admin-table__actions"><Button className="admin-action--compact" variant="danger" type="button" onClick={()=>setExceptions(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>}
         </div>
 
         <div className="admin-rules__actions">
