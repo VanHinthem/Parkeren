@@ -97,6 +97,10 @@
   padding-top:.3rem;
 }
 
+.admin-rules__subsection--windows{
+  gap:.45rem;
+}
+
 .admin-rules__subsection-head{
   display:flex;
   align-items:center;
@@ -114,11 +118,40 @@
   gap:.5rem;
 }
 
+.admin-rules__rows--windows{
+  gap:.35rem;
+}
+
 .admin-rules__row{
   display:grid;
   grid-template-columns:minmax(8rem,.85fr) minmax(7rem,.65fr) minmax(7rem,.65fr) auto;
   gap:.55rem;
   align-items:end;
+}
+
+.admin-rules__row--window{
+  grid-template-columns:minmax(10rem,1fr) minmax(8rem,.7fr) minmax(8rem,.7fr) auto;
+  gap:.45rem;
+  padding:.35rem 0;
+  border-bottom:1px solid var(--color-border);
+}
+
+.admin-rules__row--window:last-child{
+  border-bottom:0;
+}
+
+.admin-rules__row--window .admin-field{
+  gap:.22rem;
+}
+
+.admin-rules__row--window .admin-field input,
+.admin-rules__row--window .admin-field select{
+  min-height:2.35rem;
+}
+
+.admin-rules__remove-action{
+  align-self:end;
+  min-height:2.35rem;
 }
 
 .admin-rules__exception-row{
@@ -239,7 +272,8 @@
   }
 
   .admin-rules__row,
-  .admin-rules__exception-row{
+  .admin-rules__exception-row,
+  .admin-rules__row--window{
     grid-template-columns:1fr;
   }
 }
