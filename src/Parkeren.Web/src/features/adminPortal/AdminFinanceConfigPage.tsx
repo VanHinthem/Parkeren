@@ -17,6 +17,7 @@ import "./adminFieldPresentation.css";
 import "./AdminFinanceConfig.css";
 
 type Props={mode:"budgets"|"tariffs"};
+type FinancePeriod={validFrom:string;validUntil:string|null};
 
 function dateInput(date:Date){
   const pad=(value:number)=>String(value).padStart(2,"0");
@@ -36,7 +37,7 @@ function defaultBudgetDates(){
   };
 }
 
-function tariffStatus(item:AdminParkingTariff){
+function financePeriodStatus(item:FinancePeriod){
   const now=Date.now();
   const from=new Date(item.validFrom).getTime();
   const until=item.validUntil?new Date(item.validUntil).getTime():null;
@@ -240,13 +241,27 @@ export function AdminFinanceConfigPage({mode}:Props){
         </div>
       </section>
 
-      <div className="admin-finance__items">
-        {(budgets??[]).length===0?<section className="admin-finance__item"><p className="admin-finance__empty">Er zijn nog geen budgetperioden geconfigureerd.</p></section>:null}
-        {(budgets??[]).map(item=><article className="admin-finance__item" key={item.id}>
-          <div className="admin-finance__item-head"><div><h3>{formatAdminDate(item.validFrom)} → {formatAdminDate(item.validUntil,"doorlopend")}</h3><small>{item.id}</small></div></div>
-          <div className="admin-finance__facts"><span className="admin-finance__badge admin-duration">{formatAdminDuration(item.maximumPaidDurationMinutes)}</span></div>
-        </article>)}
-      </div>
+      <section className="admin-finance__panel">
+        <h2>Budgethistorie</h2>
+        {(budgets??[]).length===0
+          ? <p className="admin-finance__empty">Er zijn nog geen budgetperioden geconfigureerd.</p>
+          : <div className="admin-table-wrap">
+              <table className="admin-table admin-table--fixed admin-finance__budget-table">
+                <thead><tr><th>Vanaf</th><th>Tot</th><th className="admin-duration admin-duration--table">Max. betaalde tijd</th><th>Status</th></tr></thead>
+                <tbody>
+                  {(budgets??[]).map(item=>{
+                    const status=financePeriodStatus(item);
+                    return <tr key={item.id}>
+                      <td>{formatAdminDate(item.validFrom)}</td>
+                      <td>{formatAdminDate(item.validUntil,"Doorlopend")}</td>
+                      <td className="admin-duration admin-duration--table">{formatAdminDuration(item.maximumPaidDurationMinutes)}</td>
+                      <td><span className={`admin-status ${status==="Actief"?"admin-status--active":""}`}>{status}</span></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>}
+      </section>
     </>:<>
       <section className="admin-finance__panel">
         <h2>Tariefversie toevoegen</h2>
@@ -270,7 +285,7 @@ export function AdminFinanceConfigPage({mode}:Props){
                 <thead><tr><th>Geldig vanaf</th><th>Geldig tot</th><th className="admin-money admin-money--table">Tarief per uur</th><th>Status</th></tr></thead>
                 <tbody>
                   {(tariffs??[]).map(item=>{
-                    const status=tariffStatus(item);
+                    const status=financePeriodStatus(item);
                     return <tr key={item.id}>
                       <td>{formatAdminDateTime(item.validFrom)}</td>
                       <td>{formatAdminDateTime(item.validUntil,"Doorlopend")}</td>
