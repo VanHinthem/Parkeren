@@ -198,7 +198,6 @@ export function AdminFinanceConfigPage({mode}:Props){
 
   return <div className="admin-finance">
     <nav className="admin-subnav" aria-label="Parkeerconfiguratie">
-      <a className="admin-subnav__link" href="/beheer/provider">Providerproducten</a>
       <a className="admin-subnav__link" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
       <a className={`admin-subnav__link ${mode==="tariffs"?"active":""}`} href="/beheer/configuratie/tarieven">Tarieven</a>
       <a className={`admin-subnav__link ${mode==="budgets"?"active":""}`} href="/beheer/configuratie/budgetten">Budgetten</a>
