@@ -44,9 +44,10 @@ function nextVersionDate(latest:AdminParkingRuleSetVersion|undefined){
 }
 
 function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})
-    : "doorlopend";
+  if(value===null)return "doorlopend";
+  const date=new Date(value);
+  if(date.getTime()===0)return "Basisversie";
+  return date.toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"});
 }
 
 function formatDuration(minutes:number){
