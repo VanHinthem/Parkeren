@@ -126,7 +126,6 @@ export function AdminSystemAuditPage(){
                 <th>Actor</th>
                 <th>Actie</th>
                 <th>Targettype</th>
-                <th>Target</th>
                 <th aria-label="Acties"/>
               </tr>
             </thead>
@@ -139,7 +138,6 @@ export function AdminSystemAuditPage(){
                     <td><span className="admin-identity"><strong>{event.actorUsername}</strong></span></td>
                     <td><span className="admin-code admin-code--table">{event.action}</span></td>
                     <td>{event.targetType}</td>
-                    <td>{event.targetId?<span className="admin-code admin-code--table">{event.targetId}</span>:"—"}</td>
                     <td className="admin-table__actions">
                       <button
                         className="admin-action-link admin-action-link--muted"
@@ -147,12 +145,12 @@ export function AdminSystemAuditPage(){
                         aria-expanded={expanded}
                         onClick={()=>setExpandedId(expanded?undefined:event.id)}
                       >
-                        {expanded?"Verbergen":"Details"}
+                        {expanded?"Verbergen ▴":"Tonen ▾"}
                       </button>
                     </td>
                   </tr>
                   {expanded&&<tr className="admin-table__detail-row">
-                    <td colSpan={6}>
+                    <td colSpan={5}>
                       <div className="admin-table__detail-panel">
                         <strong>Technische context</strong>
                         <dl className="admin-facts admin-facts--grid admin-system__audit-detail-facts">
