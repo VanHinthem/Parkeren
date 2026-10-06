@@ -142,18 +142,19 @@
   padding:.5rem .58rem;
 }
 
-.admin-rules__exception-row{
-  grid-template-columns:minmax(10rem,1fr) minmax(8rem,.75fr) auto;
+.admin-rules__exception-table{
+  min-width:34rem;
 }
 
-.admin-rules__remove{
-  min-height:2.65rem;
-  padding:0 .7rem;
-  border:1px solid var(--color-border);
-  border-radius:var(--radius-sm);
-  background:transparent;
-  color:var(--color-text);
-  cursor:pointer;
+.admin-rules__exception-table th:nth-child(1),
+.admin-rules__exception-table td:nth-child(1){width:42%;}
+.admin-rules__exception-table th:nth-child(2),
+.admin-rules__exception-table td:nth-child(2){width:42%;}
+.admin-rules__exception-table th:nth-child(3),
+.admin-rules__exception-table td:nth-child(3){width:16%;}
+
+.admin-rules__exception-table td{
+  padding:.5rem .58rem;
 }
 
 .admin-rules__actions{
@@ -256,11 +257,6 @@
 @media(max-width:850px){
   .admin-rules__grid,
   .admin-rules__facts{
-    grid-template-columns:1fr;
-  }
-
-  .admin-rules__row,
-  .admin-rules__exception-row{
     grid-template-columns:1fr;
   }
 }
