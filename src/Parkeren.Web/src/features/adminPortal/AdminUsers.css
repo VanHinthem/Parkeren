@@ -56,6 +56,10 @@
   margin-bottom:1rem;
 }
 
+.admin-users__create-action{
+  min-width:9.5rem;
+}
+
 .admin-users__field{
   display:grid;
   gap:.35rem;
@@ -80,6 +84,7 @@
 
 .admin-users__table{
   width:100%;
+  table-layout:fixed;
   border-collapse:collapse;
   font-size:.84rem;
 }
@@ -105,11 +110,36 @@
   border-bottom:0;
 }
 
+.admin-users__table--users{
+  min-width:58rem;
+}
+
+.admin-users__table--users th:nth-child(1),
+.admin-users__table--users td:nth-child(1){width:13%;}
+.admin-users__table--users th:nth-child(2),
+.admin-users__table--users td:nth-child(2){width:12%;}
+.admin-users__table--users th:nth-child(3),
+.admin-users__table--users td:nth-child(3){width:12%;}
+.admin-users__table--users th:nth-child(4),
+.admin-users__table--users td:nth-child(4){width:15%;}
+.admin-users__table--users th:nth-child(5),
+.admin-users__table--users td:nth-child(5){width:48%;}
+
+.admin-users__table--vehicles{
+  min-width:48rem;
+}
+
+.admin-users__table--vehicles th:nth-child(1),
+.admin-users__table--vehicles td:nth-child(1){width:22%;}
+.admin-users__table--vehicles th:nth-child(2),
+.admin-users__table--vehicles td:nth-child(2){width:26%;}
+.admin-users__table--vehicles th:nth-child(3),
+.admin-users__table--vehicles td:nth-child(3){width:16%;}
+.admin-users__table--vehicles th:nth-child(4),
+.admin-users__table--vehicles td:nth-child(4){width:36%;}
+
 .admin-users__actions{
-  display:flex;
   flex-wrap:wrap;
-  justify-content:flex-end;
-  gap:.45rem;
 }
 
 .admin-users__link{
@@ -311,6 +341,10 @@
   .admin-user-detail__summary,
   .admin-user-detail__policy-row{
     grid-template-columns:1fr;
+  }
+
+  .admin-users__create-action{
+    width:100%;
   }
 
   .admin-user-detail__assign{
