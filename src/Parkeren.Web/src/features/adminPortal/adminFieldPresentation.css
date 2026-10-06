@@ -34,6 +34,7 @@
   font-size:.84rem;
   font-weight:650;
   cursor:pointer;
+  white-space:nowrap;
 }
 
 .admin-check input[type="checkbox"]{
@@ -55,7 +56,7 @@
 
 .admin-setting-row{
   display:grid;
-  grid-template-columns:minmax(12rem,1fr) minmax(10rem,.78fr);
+  grid-template-columns:minmax(11rem,.9fr) minmax(14rem,1fr);
   gap:.8rem;
   align-items:end;
 }
@@ -74,11 +75,19 @@
 }
 
 .admin-setting-controls{
-  display:grid;
-  grid-template-columns:10rem auto;
-  gap:.5rem;
-  align-items:end;
-  justify-content:start;
+  display:flex;
+  align-items:flex-end;
+  gap:.55rem;
+  min-width:0;
+}
+
+.admin-setting-controls>.admin-field{
+  flex:1 1 9rem;
+  min-width:7.5rem;
+}
+
+.admin-setting-controls>.admin-check{
+  flex:0 0 auto;
 }
 
 .admin-action-group.admin-action-group--start{
@@ -150,9 +159,12 @@
 }
 
 @media(max-width:650px){
-  .admin-setting-row,
-  .admin-setting-controls{
+  .admin-setting-row{
     grid-template-columns:1fr;
+  }
+
+  .admin-setting-controls{
+    flex-wrap:wrap;
   }
 }
 
