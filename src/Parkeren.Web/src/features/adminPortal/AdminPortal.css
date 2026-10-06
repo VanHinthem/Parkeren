@@ -209,6 +209,70 @@
   text-decoration:underline;
 }
 
+.admin-field,
+.admin-dashboard__field,
+.admin-visits__field{
+  display:grid;
+  gap:.35rem;
+  min-width:0;
+  font-size:.8rem;
+  font-weight:650;
+}
+
+.admin-field input,
+.admin-field select,
+.admin-dashboard__field input,
+.admin-dashboard__field select,
+.admin-visits__field input,
+.admin-visits__field select{
+  width:100%;
+  min-width:0;
+  min-height:2.65rem;
+  padding:0 .7rem;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-surface);
+  color:var(--color-text);
+}
+
+.admin-field input:disabled,
+.admin-field select:disabled,
+.admin-dashboard__field input:disabled,
+.admin-dashboard__field select:disabled,
+.admin-visits__field input:disabled,
+.admin-visits__field select:disabled{
+  background:var(--color-surface-muted);
+  color:var(--color-text-muted);
+  cursor:not-allowed;
+}
+
+.admin-field input::placeholder,
+.admin-dashboard__field input::placeholder,
+.admin-visits__field input::placeholder{
+  color:var(--color-text-muted);
+}
+
+.admin-field__control--number{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+.admin-field__help{
+  margin:0;
+  color:var(--color-text-muted);
+  font-size:.78rem;
+  font-weight:400;
+  line-height:1.4;
+}
+
+.admin-field__error{
+  margin:0;
+  color:var(--color-danger);
+  font-size:.78rem;
+  font-weight:600;
+  line-height:1.4;
+}
+
 @media(max-width:899px){
   .admin-portal{
     grid-template-columns:1fr;
