@@ -50,15 +50,14 @@
 
 .admin-settings-form{
   display:grid;
-  gap:.75rem;
+  gap:.6rem;
 }
 
 .admin-setting-row{
   display:grid;
   grid-template-columns:minmax(12rem,1fr) minmax(10rem,.78fr);
-  gap:1rem;
+  gap:.8rem;
   align-items:end;
-  padding:.15rem 0;
 }
 
 .admin-setting-copy strong{
@@ -68,20 +67,21 @@
 
 .admin-setting-copy small{
   display:block;
-  margin-top:.2rem;
+  margin-top:.16rem;
   color:var(--color-text-muted);
   font-size:.78rem;
-  line-height:1.4;
+  line-height:1.35;
 }
 
 .admin-setting-controls{
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:.55rem;
+  grid-template-columns:10rem auto;
+  gap:.5rem;
   align-items:end;
+  justify-content:start;
 }
 
-.admin-action-group--start{
+.admin-action-group.admin-action-group--start{
   justify-content:flex-start;
   flex-wrap:wrap;
 }
