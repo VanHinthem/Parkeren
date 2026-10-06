@@ -3,6 +3,7 @@ export type AdminRecordStatus="Active"|"Inactive"|"Archived";
 export type AdminProviderDiscrepancyStatus="Open"|"Resolved";
 export type AdminStatusTone="neutral"|"active"|"warning"|"danger";
 export type AdminProviderBalanceUnit="Unknown"|"Euro"|"Minute"|"Times";
+export type AdminHealthStatus="Healthy"|"Warning"|"Error";
 
 export function formatAdminDuration(value:number|null,unavailable="Niet beschikbaar"){
   if(value===null)return unavailable;
@@ -92,6 +93,22 @@ export function formatAdminRecordStatus(status:AdminRecordStatus){
     case "Active": return "Actief";
     case "Inactive": return "Inactief";
     case "Archived": return "Gearchiveerd";
+  }
+}
+
+export function formatAdminHealthStatus(status:AdminHealthStatus){
+  switch(status){
+    case "Healthy": return "Healthy";
+    case "Warning": return "Warning";
+    case "Error": return "Error";
+  }
+}
+
+export function adminHealthStatusTone(status:AdminHealthStatus):AdminStatusTone{
+  switch(status){
+    case "Healthy": return "active";
+    case "Warning": return "warning";
+    case "Error": return "danger";
   }
 }
 
