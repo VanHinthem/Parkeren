@@ -125,12 +125,11 @@
   margin:.8rem 0;
 }
 
-.admin-system__audit-table th:nth-child(1){width:16%;}
-.admin-system__audit-table th:nth-child(2){width:12%;}
-.admin-system__audit-table th:nth-child(3){width:20%;}
-.admin-system__audit-table th:nth-child(4){width:13%;}
-.admin-system__audit-table th:nth-child(5){width:31%;}
-.admin-system__audit-table th:nth-child(6){width:8%;}
+.admin-system__audit-table th:nth-child(1){width:18%;}
+.admin-system__audit-table th:nth-child(2){width:14%;}
+.admin-system__audit-table th:nth-child(3){width:32%;}
+.admin-system__audit-table th:nth-child(4){width:24%;}
+.admin-system__audit-table th:nth-child(5){width:12%;}
 
 .admin-system__audit-detail-facts{
   margin-top:.6rem;
