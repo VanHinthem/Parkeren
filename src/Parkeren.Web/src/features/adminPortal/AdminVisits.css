@@ -24,6 +24,7 @@
 
 .admin-visits__table{
   width:100%;
+  table-layout:fixed;
   border-collapse:collapse;
   font-size:.84rem;
 }
@@ -36,6 +37,21 @@
   vertical-align:middle;
   white-space:nowrap;
 }
+
+.admin-visits__table th:nth-child(1),
+.admin-visits__table td:nth-child(1){width:17%;}
+.admin-visits__table th:nth-child(2),
+.admin-visits__table td:nth-child(2){width:14%;}
+.admin-visits__table th:nth-child(3),
+.admin-visits__table td:nth-child(3){width:17%;}
+.admin-visits__table th:nth-child(4),
+.admin-visits__table td:nth-child(4){width:17%;}
+.admin-visits__table th:nth-child(5),
+.admin-visits__table td:nth-child(5){width:13%;}
+.admin-visits__table th:nth-child(6),
+.admin-visits__table td:nth-child(6){width:12%;}
+.admin-visits__table th:nth-child(7),
+.admin-visits__table td:nth-child(7){width:10%;}
 
 .admin-visits__table th{
   color:var(--color-text-muted);
@@ -246,6 +262,10 @@
 @media(max-width:800px){
   .admin-visits__filters{
     grid-template-columns:1fr 1fr;
+  }
+
+  .admin-visits__table{
+    min-width:58rem;
   }
 
   .admin-visit-detail__facts{
