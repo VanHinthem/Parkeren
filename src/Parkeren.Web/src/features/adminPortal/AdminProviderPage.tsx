@@ -165,8 +165,8 @@ export function AdminProviderPage(){
                 {products.map(product=><tr key={product.id}>
                   <td><strong>{product.name}</strong>{product.isDefault&&<span className="admin-tag admin-tag--active">Default</span>}</td>
                   <td>{product.categoryName??product.categoryId??"—"}</td>
-                  <td className="admin-code">{product.providerProductId}</td>
-                  <td className="admin-code">{product.location}</td>
+                  <td className="admin-code admin-code--table">{product.providerProductId}</td>
+                  <td className="admin-code admin-code--table">{product.location}</td>
                   <td><span className={adminStatusClass(product.isAvailable?"active":"neutral")}>{formatAdminAvailability(product.isAvailable)}</span></td>
                   <td>{formatAdminDateTime(product.lastSeenAt)}</td>
                   <td className="admin-table__actions">
@@ -213,11 +213,11 @@ export function AdminProviderPage(){
                 {status.actions.map(action=>{
                   const tone=adminProviderActionStatusTone(action.status);
                   return <tr key={action.providerActionId}>
-                    <td className="admin-code">{action.providerActionId}</td>
+                    <td className="admin-code admin-code--table">{action.providerActionId}</td>
                     <td><LicensePlate value={action.licensePlate}/></td>
                     <td>{formatAdminDateTime(action.start)}</td>
                     <td>{formatAdminDateTime(action.end)}</td>
-                    <td className="admin-code">{action.location}</td>
+                    <td className="admin-code admin-code--table">{action.location}</td>
                     <td><span className={adminStatusClass(tone)}>{formatAdminProviderActionStatus(action.status)}</span></td>
                   </tr>;
                 })}
