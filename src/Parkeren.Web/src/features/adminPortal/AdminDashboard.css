@@ -182,15 +182,6 @@
   border-bottom:0;
 }
 
-.admin-dashboard__visit-user{
-  display:grid;
-  gap:.15rem;
-}
-
-.admin-dashboard__visit-user small{
-  color:var(--color-text-muted);
-}
-
 .admin-dashboard__status{
   display:inline-flex;
   align-items:center;
