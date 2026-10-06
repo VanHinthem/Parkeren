@@ -100,6 +100,11 @@ export function AdminProviderPage(){
   const state=status?balanceState(status):null;
 
   return <div className="admin-provider">
+    <nav className="admin-subnav" aria-label="Provider & reconciliatie">
+      <a className="admin-subnav__link active" href="/beheer/provider">Provider</a>
+      <a className="admin-subnav__link" href="/beheer/provider/afwijkingen">Reconciliatie</a>
+    </nav>
+
     {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}
     {status?.balanceError&&<Alert tone={status.balance?"warning":"danger"}>
@@ -225,13 +230,5 @@ export function AdminProviderPage(){
             </table>
           </div>}
     </section>}
-
-    <section className="admin-provider__panel admin-provider__notice">
-      <h2>Afwijkingen & reconciliatie</h2>
-      <p>
-        2Park blijft leidend voor providerstatus en officieel saldo. Gedetecteerde verschillen worden persistent vastgelegd en blijven na oplossing traceerbaar.
-      </p>
-      <a className="admin-action-link" href="/beheer/provider/afwijkingen">Afwijkingen bekijken</a>
-    </section>
   </div>;
 }
