@@ -21,3 +21,20 @@
   display:block;
   margin-top:.12rem;
 }
+
+.admin-check{
+  display:flex;
+  align-items:center;
+  gap:.55rem;
+  min-height:2.65rem;
+  font-size:.84rem;
+  font-weight:650;
+  cursor:pointer;
+}
+
+.admin-check input[type="checkbox"]{
+  width:1rem;
+  height:1rem;
+  margin:0;
+  accent-color:var(--color-primary);
+}
