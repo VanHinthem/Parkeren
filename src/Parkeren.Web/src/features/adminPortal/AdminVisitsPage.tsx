@@ -23,7 +23,7 @@ type AdminVisitStatusFilter=AdminVisitStatus|"";
 
 function formatDateTime(value:string|null){
   return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
+    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"}).replace(",","")
     : "—";
 }
 
@@ -238,7 +238,7 @@ export function AdminVisitsPage(){
                     <td>{formatDateTime(visit.actualEndAt)}</td>
                     <td>{formatMinutes(visit.paidDurationMinutes)}</td>
                     <td><span className={visitStatusClass(visit)}>{statusLabel(visit.status)}</span></td>
-                    <td><a className="admin-visits__link" href={`/beheer/bezoeken/${visit.id}`}>Openen</a></td>
+                    <td><a className="admin-visits__link" href={`/beheer/bezoeken/${visit.id}`}>Details</a></td>
                   </tr>)}
                 </tbody>
               </table>
