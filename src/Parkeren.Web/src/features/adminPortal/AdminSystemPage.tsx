@@ -244,7 +244,7 @@ export function AdminSystemPage(){
             </div>
 
             <div className="admin-setting-row">
-              <div className="admin-setting-copy"><strong>Max. gelijktijdige Visits per gebruiker</strong><small>Default voor gebruikers zonder concurrency-override; maximaal de globale capaciteit.</small></div>
+              <div className="admin-setting-copy"><strong>Max. Visits per gebruiker</strong><small>Default voor gebruikers zonder concurrency-override; maximaal de globale capaciteit.</small></div>
               <label className="admin-field"><span>Aantal</span><input className="admin-field__control--number" type="number" min="1" max={settings.globalMaxConcurrentVisits} step="1" value={defaultConcurrency} onChange={event=>setDefaultConcurrency(event.target.value)}/></label>
             </div>
 
