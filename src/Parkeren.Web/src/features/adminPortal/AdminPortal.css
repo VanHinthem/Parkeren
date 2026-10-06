@@ -186,6 +186,29 @@
   font-size:.78rem;
 }
 
+.admin-status{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+}
+
+.admin-status::before{
+  content:"";
+  width:.46rem;
+  height:.46rem;
+  flex:none;
+  border-radius:50%;
+  background:var(--color-text-muted);
+}
+
+.admin-status--active::before{
+  background:var(--color-success);
+}
+
+.admin-status--warning::before{
+  background:var(--color-warning);
+}
+
 .admin-action-group{
   display:flex;
   align-items:center;
@@ -196,6 +219,12 @@
 .admin-action--compact{
   min-height:2.25rem;
   padding:.45rem .65rem;
+  border-radius:var(--radius-sm);
+}
+
+.admin-action--field{
+  min-height:2.65rem;
+  padding:.55rem .85rem;
   border-radius:var(--radius-sm);
 }
 
