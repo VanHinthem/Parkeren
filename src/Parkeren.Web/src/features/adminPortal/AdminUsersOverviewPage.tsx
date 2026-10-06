@@ -17,16 +17,8 @@ import { LicensePlate } from "../../components/LicensePlate";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import { formatAdminRecordStatus } from "./adminFieldFormatters";
 import "./AdminUsers.css";
-
-function statusClass(isActive:boolean,status:string){
-  if(status==="Archived")return "admin-status";
-  return isActive?"admin-status admin-status--active":"admin-status";
-}
-
-function statusLabel(isActive:boolean,status:string){
-  return status==="Archived"?"Gearchiveerd":isActive?"Actief":"Inactief";
-}
 
 export function AdminUsersOverviewPage({mode}:{mode:"users"|"vehicles"}){
   const[users,setUsers]=useState<UserSummary[]>([]);
@@ -194,7 +186,7 @@ export function AdminUsersOverviewPage({mode}:{mode:"users"|"vehicles"}){
                     {users.map(user=><tr key={user.id}>
                       <td><span className="admin-identity"><strong>{user.username}</strong></span></td>
                       <td>{user.role==="Admin"?"Beheerder":"Bezoeker"}</td>
-                      <td><span className={statusClass(user.isActive,user.status)}>{statusLabel(user.isActive,user.status)}</span></td>
+                      <td><span className={`admin-status ${user.isActive&&user.status!=="Archived"?"admin-status--active":""}`}>{formatAdminRecordStatus(user.status)}</span></td>
                       <td className={user.maxConcurrentVisits===null?undefined:"admin-number"}>{user.maxConcurrentVisits??"Standaard"}</td>
                       <td>
                         <div className="admin-action-group admin-users__actions">
@@ -232,7 +224,7 @@ export function AdminUsersOverviewPage({mode}:{mode:"users"|"vehicles"}){
                     {vehicles.map(vehicle=><tr key={vehicle.id}>
                       <td><LicensePlate value={vehicle.licensePlate}/></td>
                       <td>{vehicle.displayName??"—"}</td>
-                      <td><span className={statusClass(vehicle.isActive,vehicle.status)}>{statusLabel(vehicle.isActive,vehicle.status)}</span></td>
+                      <td><span className={`admin-status ${vehicle.isActive&&vehicle.status!=="Archived"?"admin-status--active":""}`}>{formatAdminRecordStatus(vehicle.status)}</span></td>
                       <td><div className="admin-action-group admin-users__actions">
                         {vehicle.status!=="Archived"&&<Button className="admin-action--compact" variant="secondary" onClick={()=>void toggleVehicle(vehicle)}>{vehicle.isActive?"Deactiveren":"Activeren"}</Button>}
                         {vehicle.status!=="Archived"&&<Button className="admin-action--compact" variant="secondary" onClick={()=>void archiveVehicleRecord(vehicle)}>Archiveren</Button>}
