@@ -41,6 +41,10 @@ export function formatAdminBoolean(value:boolean){
   return value?"Ja":"Nee";
 }
 
+export function formatAdminAvailability(value:boolean){
+  return value?"Beschikbaar":"Niet beschikbaar";
+}
+
 export function formatAdminProviderBalance(value:number|null,unit:AdminProviderBalanceUnit|null,unavailable="Niet beschikbaar"){
   if(value===null||unit===null)return unavailable;
   switch(unit){
@@ -48,6 +52,16 @@ export function formatAdminProviderBalance(value:number|null,unit:AdminProviderB
     case "Minute": return formatAdminDuration(value,unavailable);
     case "Times": return `${formatAdminNumber(value)} keer`;
     case "Unknown": return formatAdminNumber(value);
+  }
+}
+
+export function formatAdminProviderBalanceUnit(unit:AdminProviderBalanceUnit|null,unavailable="—"){
+  if(unit===null)return unavailable;
+  switch(unit){
+    case "Euro": return "Euro";
+    case "Minute": return "Minuten";
+    case "Times": return "Aantal";
+    case "Unknown": return "Onbekend";
   }
 }
 
