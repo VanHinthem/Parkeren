@@ -132,16 +132,16 @@ export function AdminUsagePage(){
   });
 
   return <div className="admin-usage">
-    <nav className="admin-usage__tabs" aria-label="Bezoeken">
-      <a className="admin-usage__tab" href="/beheer/bezoeken">Bezoeken</a>
-      <a className="admin-usage__tab active" href="/beheer/verbruik">Verbruik & kosten</a>
-      <a className="admin-usage__tab" href="/beheer/analyse">Analyse</a>
+    <nav className="admin-subnav" aria-label="Bezoeken">
+      <a className="admin-subnav__link" href="/beheer/bezoeken">Bezoeken</a>
+      <a className="admin-subnav__link active" href="/beheer/verbruik">Verbruik & kosten</a>
+      <a className="admin-subnav__link" href="/beheer/analyse">Analyse</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-usage__panel">
-      <h2>Budgetgebruik defaultproduct</h2>
+      <h2>Budgetgebruik</h2>
       <p>Lokale berekening telt alleen betaalde tijd van afgeronde Visits van het huidige defaultproduct. Het officiële 2Park-saldo wordt voor datzelfde product als aparte bron getoond.</p>
 
       {periods?.length
@@ -173,14 +173,14 @@ export function AdminUsagePage(){
       <div className="admin-usage__controls">
         <label className="admin-field"><span>Van</span><input type="date" value={fromDate} onChange={event=>setFromDate(event.target.value)}/></label>
         <label className="admin-field"><span>Tot en met</span><input type="date" value={toDate} onChange={event=>setToDate(event.target.value)}/></label>
-        <Button className="admin-action--field" onClick={()=>void loadCosts()} disabled={loadingCosts}>{loadingCosts?"Berekenen…":"Berekenen"}</Button>
+        <Button className="admin-action--field admin-usage__calculate" onClick={()=>void loadCosts()} disabled={loadingCosts}>{loadingCosts?"Berekenen…":"Berekenen"}</Button>
       </div>
 
       {report&&<div className="admin-metrics">
         <div className="admin-metric"><span>Betaalde tijd</span><strong className="admin-duration">{formatAdminDuration(report.totalPaidDurationMinutes)}</strong></div>
         <div className="admin-metric"><span>Totale kosten</span><strong className="admin-money">{formatAdminMoney(report.totalAmount,"Onvolledig")}</strong></div>
         <div className="admin-metric"><span>Visits</span><strong className="admin-number">{formatAdminNumber(report.visits.length)}</strong></div>
-        <div className="admin-metric"><span>Berekening</span><strong><span className={`admin-status ${report.isComplete?"admin-status--active":"admin-status--warning"}`}>{report.isComplete?"Compleet":"Onvolledig"}</span></strong><small>{report.isComplete?"Providerhistorie, betaalde segmenten en tarieven zijn beschikbaar.":"Minimaal één Visit mist volledige providerhistorie of historische configuratie."}</small></div>
+        <div className="admin-metric"><span>Berekening</span><strong className="admin-metric__status"><span className={`admin-status ${report.isComplete?"admin-status--active":"admin-status--warning"}`}>{report.isComplete?"Compleet":"Onvolledig"}</span></strong><small>{report.isComplete?"Providerhistorie, betaalde segmenten en tarieven zijn beschikbaar.":"Minimaal één Visit mist volledige providerhistorie of historische configuratie."}</small></div>
       </div>}
 
       {report&&!report.isComplete&&<Alert tone="warning">Totale kosten zijn niet beschikbaar zolang minstens één Visit incomplete providerhistorie of ontbrekende historische tariefconfiguratie heeft.</Alert>}
