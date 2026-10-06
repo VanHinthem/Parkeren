@@ -13,12 +13,12 @@
 
 .admin-system__column{
   display:grid;
-  gap:1rem;
+  gap:.8rem;
   align-content:start;
 }
 
 .admin-system__panel{
-  padding:1.15rem 1.25rem;
+  padding:1rem 1.1rem;
   border:1px solid var(--color-border);
   border-radius:var(--radius-md);
   background:var(--color-surface);
@@ -26,18 +26,18 @@
 }
 
 .admin-system__panel h2{
-  margin:0 0 .35rem;
+  margin:0 0 .3rem;
   font-size:1.05rem;
 }
 
 .admin-system__panel>p{
-  margin:.2rem 0 1rem;
+  margin:.15rem 0 .8rem;
   color:var(--color-text-muted);
-  line-height:1.5;
+  line-height:1.45;
 }
 
 .admin-system__meta{
-  margin-top:.8rem;
+  margin-top:.65rem;
 }
 
 .admin-system__conflict-list{
@@ -47,7 +47,7 @@
 
 .admin-system__thresholds{
   display:flex;
-  gap:.45rem;
+  gap:.4rem;
   flex-wrap:wrap;
 }
 
@@ -56,7 +56,7 @@
   align-items:center;
   justify-content:space-between;
   gap:.75rem;
-  margin-bottom:.35rem;
+  margin-bottom:.3rem;
 }
 
 .admin-system__panel-heading h2{
