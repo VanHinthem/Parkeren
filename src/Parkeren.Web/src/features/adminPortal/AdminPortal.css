@@ -152,6 +152,31 @@
   max-width:48rem;
 }
 
+.admin-subnav{
+  display:flex;
+  gap:.45rem;
+  flex-wrap:wrap;
+}
+
+.admin-subnav__link{
+  display:inline-flex;
+  align-items:center;
+  min-height:2.45rem;
+  padding:0 .8rem;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-surface);
+  color:var(--color-text);
+  font-size:.82rem;
+  font-weight:650;
+  text-decoration:none;
+}
+
+.admin-subnav__link.active{
+  border-color:var(--color-primary);
+  color:var(--color-primary);
+}
+
 .admin-metrics,
 .admin-dashboard__metrics{
   display:grid;
@@ -191,6 +216,11 @@
   color:var(--color-text-muted);
   font-size:.75rem;
   line-height:1.35;
+}
+
+.admin-metric__status{
+  font-size:1.05rem !important;
+  letter-spacing:0 !important;
 }
 
 .admin-number,
