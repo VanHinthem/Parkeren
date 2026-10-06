@@ -42,3 +42,8 @@
   margin:0;
   accent-color:var(--color-primary);
 }
+
+.admin-field__control--money{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
