@@ -172,7 +172,7 @@
 .admin-dashboard__table th:nth-child(4),
 .admin-dashboard__table td:nth-child(4){width:14%;white-space:normal;}
 .admin-dashboard__table th:nth-child(5),
-.admin-dashboard__table td:nth-child(5){width:12%;}
+.admin-dashboard__table td:nth-child(5){width:12%;text-align:right;font-variant-numeric:tabular-nums;}
 .admin-dashboard__table th:nth-child(6),
 .admin-dashboard__table td:nth-child(6){width:12%;}
 .admin-dashboard__table th:nth-child(7),
