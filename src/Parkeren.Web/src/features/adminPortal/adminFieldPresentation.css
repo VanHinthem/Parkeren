@@ -48,6 +48,27 @@
   font-variant-numeric:tabular-nums;
 }
 
+.admin-facts--grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  border-top:1px solid var(--color-border);
+}
+
+.admin-facts--grid .admin-fact{
+  display:block;
+  padding:.7rem .8rem;
+  border-right:1px solid var(--color-border);
+  border-bottom:1px solid var(--color-border);
+}
+
+.admin-facts--grid .admin-fact:nth-child(3n){
+  border-right:0;
+}
+
+.admin-facts--grid .admin-fact dd{
+  margin-top:.22rem;
+}
+
 /* Shared 2Park-product selector/context layout. Keep the editable control and
    readonly provider context aligned identically across configuration tabs. */
 .admin-rules .admin-rules__panel > .admin-rules__grid,
@@ -63,9 +84,33 @@
   align-self:end;
 }
 
+@media(max-width:900px){
+  .admin-facts--grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .admin-facts--grid .admin-fact:nth-child(3n){
+    border-right:1px solid var(--color-border);
+  }
+
+  .admin-facts--grid .admin-fact:nth-child(2n){
+    border-right:0;
+  }
+}
+
 @media(max-width:850px){
   .admin-rules .admin-rules__panel > .admin-rules__grid,
   .admin-finance .admin-finance__product-grid{
     grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:600px){
+  .admin-facts--grid{
+    grid-template-columns:1fr;
+  }
+
+  .admin-facts--grid .admin-fact{
+    border-right:0;
   }
 }
