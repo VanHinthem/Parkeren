@@ -78,38 +78,6 @@
   color:var(--color-text);
 }
 
-.admin-users__table-wrap{
-  overflow-x:auto;
-}
-
-.admin-users__table{
-  width:100%;
-  table-layout:fixed;
-  border-collapse:collapse;
-  font-size:.84rem;
-}
-
-.admin-users__table th,
-.admin-users__table td{
-  padding:.72rem .58rem;
-  border-bottom:1px solid var(--color-border);
-  text-align:left;
-  vertical-align:middle;
-  white-space:nowrap;
-}
-
-.admin-users__table th{
-  color:var(--color-text-muted);
-  font-size:.71rem;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.035em;
-}
-
-.admin-users__table tr:last-child td{
-  border-bottom:0;
-}
-
 .admin-users__table--users{
   min-width:58rem;
 }
