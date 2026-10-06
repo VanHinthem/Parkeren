@@ -7,15 +7,16 @@
 .admin-usage__controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:.7rem;align-items:end;margin-bottom:1rem}
 .admin-usage__calculate{min-width:9rem}
 .admin-usage__table-wrap{overflow-x:auto;margin-top:1rem}
-.admin-usage__table{width:100%;min-width:54rem;table-layout:fixed;border-collapse:collapse;font-size:.82rem}
+.admin-usage__table{width:100%;min-width:62rem;table-layout:fixed;border-collapse:collapse;font-size:.82rem}
 .admin-usage__table th,.admin-usage__table td{padding:.7rem .55rem;border-bottom:1px solid var(--color-border);text-align:left;vertical-align:middle;white-space:nowrap}
 .admin-usage__table th{color:var(--color-text-muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.03em}
-.admin-usage__table th:nth-child(1),.admin-usage__table td:nth-child(1){width:14%}
-.admin-usage__table th:nth-child(2),.admin-usage__table td:nth-child(2){width:18%}
-.admin-usage__table th:nth-child(3),.admin-usage__table td:nth-child(3){width:26%}
+.admin-usage__table th:nth-child(1),.admin-usage__table td:nth-child(1){width:12%}
+.admin-usage__table th:nth-child(2),.admin-usage__table td:nth-child(2){width:15%}
+.admin-usage__table th:nth-child(3),.admin-usage__table td:nth-child(3){width:18%}
 .admin-usage__table th:nth-child(4),.admin-usage__table td:nth-child(4){width:18%}
-.admin-usage__table th:nth-child(5),.admin-usage__table td:nth-child(5){width:12%}
-.admin-usage__table th:nth-child(6),.admin-usage__table td:nth-child(6){width:12%}
+.admin-usage__table th:nth-child(5),.admin-usage__table td:nth-child(5){width:15%}
+.admin-usage__table th:nth-child(6),.admin-usage__table td:nth-child(6){width:11%}
+.admin-usage__table th:nth-child(7),.admin-usage__table td:nth-child(7){width:11%}
 .admin-usage__warning{color:var(--color-warning);font-weight:650}
 .admin-usage__empty{margin:0;color:var(--color-text-muted)}
 @media(max-width:700px){.admin-usage__controls{grid-template-columns:1fr}.admin-usage__calculate{width:100%}}
