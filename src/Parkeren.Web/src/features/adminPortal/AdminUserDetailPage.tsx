@@ -17,12 +17,12 @@ import { LicensePlate } from "../../components/LicensePlate";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
-import { formatAdminDuration,formatAdminNumber,formatAdminRecordStatus } from "./adminFieldFormatters";
+import { formatAdminBoolean,formatAdminDuration,formatAdminNumber,formatAdminRecordStatus } from "./adminFieldFormatters";
+import "./adminFieldPresentation.css";
 import "./AdminUsers.css";
 
 type BooleanOverrideMode="default"|"true"|"false";
 
-function booleanText(value:boolean){return value?"Ja":"Nee";}
 function hoursValue(minutes:number|null,fallback:number){return String((minutes??fallback)/60);}
 function hoursToMinutes(value:string){
   const hours=Number(value);
@@ -243,27 +243,27 @@ export function AdminUserDetailPage({userId}:{userId:string}){
               <div className="admin-user-detail__policy-row">
                 <div className="admin-user-detail__policy-copy"><strong>Max. betaalde parkeertijd</strong><small>Standaard: {formatAdminDuration(detail.policy.defaults.maxPaidParkingDurationMinutes,"Onbeperkt")}</small></div>
                 <label className="admin-field"><span>Waarde</span><select value={paidMode} onChange={event=>setPaidMode(event.target.value as PolicyDurationOverrideMode)}><option value="Inherit">Standaard</option><option value="Value">Limiet</option><option value="Unlimited">Onbeperkt</option></select></label>
-                {paidMode==="Value"?<label className="admin-field"><span>Uren</span><input className="admin-field__control--number" type="number" min=".25" step=".25" value={paidHours} onChange={event=>setPaidHours(event.target.value)}/></label>:<div className="admin-user-detail__effective"><span>Effectief</span><strong className="admin-duration">{formatAdminDuration(detail.policy.effective.maxPaidParkingDurationMinutes,"Onbeperkt")}</strong></div>}
+                {paidMode==="Value"?<label className="admin-field"><span>Uren</span><input className="admin-field__control--number" type="number" min=".25" step=".25" value={paidHours} onChange={event=>setPaidHours(event.target.value)}/></label>:<div className="admin-readonly-value"><span>Effectief</span><strong className="admin-duration">{formatAdminDuration(detail.policy.effective.maxPaidParkingDurationMinutes,"Onbeperkt")}</strong></div>}
               </div>
               <div className="admin-user-detail__policy-row">
                 <div className="admin-user-detail__policy-copy"><strong>Max. totale Visitduur</strong><small>Standaard: {formatAdminDuration(detail.policy.defaults.maxVisitElapsedDurationMinutes,"Onbeperkt")}</small></div>
                 <label className="admin-field"><span>Waarde</span><select value={elapsedMode} onChange={event=>setElapsedMode(event.target.value as PolicyDurationOverrideMode)}><option value="Inherit">Standaard</option><option value="Value">Limiet</option><option value="Unlimited">Onbeperkt</option></select></label>
-                {elapsedMode==="Value"?<label className="admin-field"><span>Uren</span><input className="admin-field__control--number" type="number" min=".25" step=".25" value={elapsedHours} onChange={event=>setElapsedHours(event.target.value)}/></label>:<div className="admin-user-detail__effective"><span>Effectief</span><strong className="admin-duration">{formatAdminDuration(detail.policy.effective.maxVisitElapsedDurationMinutes,"Onbeperkt")}</strong></div>}
+                {elapsedMode==="Value"?<label className="admin-field"><span>Uren</span><input className="admin-field__control--number" type="number" min=".25" step=".25" value={elapsedHours} onChange={event=>setElapsedHours(event.target.value)}/></label>:<div className="admin-readonly-value"><span>Effectief</span><strong className="admin-duration">{formatAdminDuration(detail.policy.effective.maxVisitElapsedDurationMinutes,"Onbeperkt")}</strong></div>}
               </div>
               <div className="admin-user-detail__policy-row">
-                <div className="admin-user-detail__policy-copy"><strong>Visit verlengen</strong><small>Standaard: {booleanText(detail.policy.defaults.allowVisitExtension)}</small></div>
+                <div className="admin-user-detail__policy-copy"><strong>Visit verlengen</strong><small>Standaard: {formatAdminBoolean(detail.policy.defaults.allowVisitExtension)}</small></div>
                 <label className="admin-field"><span>Waarde</span><select value={extensionMode} onChange={event=>setExtensionMode(event.target.value as BooleanOverrideMode)}><option value="default">Standaard</option><option value="true">Ja</option><option value="false">Nee</option></select></label>
-                <div className="admin-user-detail__effective"><span>Effectief</span><strong>{booleanText(detail.policy.effective.allowVisitExtension)}</strong></div>
+                <div className="admin-readonly-value"><span>Effectief</span><strong>{formatAdminBoolean(detail.policy.effective.allowVisitExtension)}</strong></div>
               </div>
               <div className="admin-user-detail__policy-row">
-                <div className="admin-user-detail__policy-copy"><strong>Open einde toestaan</strong><small>Standaard: {booleanText(detail.policy.defaults.allowOpenEndedVisits)}</small></div>
+                <div className="admin-user-detail__policy-copy"><strong>Open einde toestaan</strong><small>Standaard: {formatAdminBoolean(detail.policy.defaults.allowOpenEndedVisits)}</small></div>
                 <label className="admin-field"><span>Waarde</span><select value={openEndedMode} onChange={event=>setOpenEndedMode(event.target.value as BooleanOverrideMode)}><option value="default">Standaard</option><option value="true">Ja</option><option value="false">Nee</option></select></label>
-                <div className="admin-user-detail__effective"><span>Effectief</span><strong>{booleanText(detail.policy.effective.allowOpenEndedVisits)}</strong></div>
+                <div className="admin-readonly-value"><span>Effectief</span><strong>{formatAdminBoolean(detail.policy.effective.allowOpenEndedVisits)}</strong></div>
               </div>
               <div className="admin-user-detail__policy-row">
                 <div className="admin-user-detail__policy-copy"><strong>Max. gelijktijdige Visits</strong><small>Standaard: {formatAdminNumber(detail.policy.defaults.maxConcurrentVisits)} · globaal maximum: {formatAdminNumber(detail.policy.globalMaxConcurrentVisits)}</small></div>
                 <label className="admin-field"><span>Bron</span><select value={concurrencyOverride?"override":"default"} onChange={event=>setConcurrencyOverride(event.target.value==="override")}><option value="default">Standaard</option><option value="override">Afwijkend</option></select></label>
-                {concurrencyOverride?<label className="admin-field"><span>Aantal</span><input className="admin-field__control--number" type="number" min="1" max={detail.policy.globalMaxConcurrentVisits} step="1" value={concurrency} onChange={event=>setConcurrency(event.target.value)}/></label>:<div className="admin-user-detail__effective"><span>Effectief</span><strong className="admin-number">{formatAdminNumber(detail.policy.effective.maxConcurrentVisits)}</strong></div>}
+                {concurrencyOverride?<label className="admin-field"><span>Aantal</span><input className="admin-field__control--number" type="number" min="1" max={detail.policy.globalMaxConcurrentVisits} step="1" value={concurrency} onChange={event=>setConcurrency(event.target.value)}/></label>:<div className="admin-readonly-value"><span>Effectief</span><strong className="admin-number">{formatAdminNumber(detail.policy.effective.maxConcurrentVisits)}</strong></div>}
               </div>
             </div>
             <p className="admin-user-detail__warning">Voor duurvelden kan de gebruiker de standaard volgen, een eigen limiet krijgen of expliciet onbeperkt worden ingesteld.</p>
