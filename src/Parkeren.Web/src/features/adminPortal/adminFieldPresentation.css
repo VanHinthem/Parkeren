@@ -56,7 +56,7 @@
 
 .admin-setting-row{
   display:grid;
-  grid-template-columns:minmax(11rem,.9fr) minmax(14rem,1fr);
+  grid-template-columns:minmax(12rem,1.08fr) minmax(13rem,.92fr);
   gap:.8rem;
   align-items:end;
 }
@@ -79,10 +79,11 @@
   align-items:flex-end;
   gap:.55rem;
   min-width:0;
+  max-width:19rem;
 }
 
 .admin-setting-controls>.admin-field{
-  flex:1 1 9rem;
+  flex:1 1 8.5rem;
   min-width:7.5rem;
 }
 
@@ -164,6 +165,7 @@
   }
 
   .admin-setting-controls{
+    max-width:none;
     flex-wrap:wrap;
   }
 }
