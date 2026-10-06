@@ -152,10 +152,12 @@
   max-width:48rem;
 }
 
+.admin-number,
 .admin-duration{
   font-variant-numeric:tabular-nums;
 }
 
+.admin-number--table,
 .admin-duration--table{
   text-align:right !important;
 }
