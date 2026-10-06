@@ -1,5 +1,6 @@
 export type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
 export type AdminRecordStatus="Active"|"Inactive"|"Archived";
+export type AdminProviderDiscrepancyStatus="Open"|"Resolved";
 export type AdminStatusTone="neutral"|"active"|"warning"|"danger";
 export type AdminProviderBalanceUnit="Unknown"|"Euro"|"Minute"|"Times";
 
@@ -81,6 +82,14 @@ export function formatAdminRecordStatus(status:AdminRecordStatus){
     case "Inactive": return "Inactief";
     case "Archived": return "Gearchiveerd";
   }
+}
+
+export function formatAdminProviderDiscrepancyStatus(status:AdminProviderDiscrepancyStatus){
+  return status==="Open"?"Open":"Opgelost";
+}
+
+export function adminProviderDiscrepancyStatusTone(status:AdminProviderDiscrepancyStatus):AdminStatusTone{
+  return status==="Open"?"danger":"active";
 }
 
 export function formatAdminProviderActionStatus(status:string){
