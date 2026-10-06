@@ -153,12 +153,14 @@
 }
 
 .admin-number,
-.admin-duration{
+.admin-duration,
+.admin-money{
   font-variant-numeric:tabular-nums;
 }
 
 .admin-number--table,
-.admin-duration--table{
+.admin-duration--table,
+.admin-money--table{
   text-align:right !important;
 }
 
