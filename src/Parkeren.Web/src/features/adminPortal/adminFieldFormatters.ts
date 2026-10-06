@@ -1,3 +1,5 @@
+export type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
+
 export function formatAdminDuration(value:number|null,unavailable="Niet beschikbaar"){
   if(value===null)return unavailable;
   if(value<60)return `${value} min`;
@@ -24,4 +26,14 @@ export function formatAdminMoney(value:number|null,unavailable="Niet beschikbaar
   return value===null
     ? unavailable
     : new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(value);
+}
+
+export function formatAdminVisitStatus(status:AdminVisitStatus){
+  switch(status){
+    case "Starting": return "Wordt gestart";
+    case "Active": return "Actief";
+    case "Stopping": return "Wordt gestopt";
+    case "Completed": return "Afgerond";
+    case "Cancelled": return "Geannuleerd";
+  }
 }
