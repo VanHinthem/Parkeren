@@ -5,6 +5,8 @@ export type AdminStatusTone="neutral"|"active"|"warning"|"danger";
 export type AdminProviderBalanceUnit="Unknown"|"Euro"|"Minute"|"Times";
 export type AdminHealthStatus="Healthy"|"Warning"|"Error";
 export type AdminOperationalHealth="Healthy"|"AttentionRequired"|"Reconciling"|"StopFailed"|"Unknown";
+export type AdminParkingContinuation="ExtendAction"|"StartNewAction";
+export type AdminChangeResult="Pending"|"Applied"|"Rejected";
 
 export function formatAdminDuration(value:number|null,unavailable="Niet beschikbaar"){
   if(value===null)return unavailable;
@@ -190,6 +192,29 @@ export function adminProcessStatusTone(status:string):AdminStatusTone{
     case "reconciling": return "warning";
     case "failed": return "danger";
     default: return "neutral";
+  }
+}
+
+export function formatAdminParkingContinuation(value:AdminParkingContinuation){
+  switch(value){
+    case "ExtendAction": return "Provideractie verlengen";
+    case "StartNewAction": return "Nieuwe aansluitende provideractie";
+  }
+}
+
+export function formatAdminChangeResult(value:AdminChangeResult){
+  switch(value){
+    case "Pending": return "In behandeling";
+    case "Applied": return "Toegepast";
+    case "Rejected": return "Afgewezen";
+  }
+}
+
+export function adminChangeResultTone(value:AdminChangeResult):AdminStatusTone{
+  switch(value){
+    case "Applied": return "active";
+    case "Pending": return "warning";
+    case "Rejected": return "danger";
   }
 }
 
