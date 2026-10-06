@@ -31,8 +31,10 @@ function formatDate(value:string|null){
 }
 
 function formatMinutes(value:number){
-  const hours=value/60;
-  return Number.isInteger(hours)?`${hours} uur`:`${hours.toFixed(2)} uur`;
+  if(value<60)return `${value} min`;
+  const hours=Math.floor(value/60);
+  const minutes=value%60;
+  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
 }
 
 function defaultBudgetDates(){
