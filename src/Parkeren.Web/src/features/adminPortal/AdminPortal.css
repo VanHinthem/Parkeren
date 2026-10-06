@@ -317,6 +317,63 @@ html{
   background:var(--color-warning);
 }
 
+.admin-status--danger::before{
+  background:var(--color-danger);
+}
+
+.admin-tag{
+  display:inline-flex;
+  align-items:center;
+  min-height:1.45rem;
+  padding:.15rem .45rem;
+  border-radius:999px;
+  background:var(--color-surface-muted);
+  color:var(--color-text-muted);
+  font-size:.68rem;
+  font-weight:700;
+}
+
+.admin-tag--active{
+  background:var(--color-success-soft);
+  color:var(--color-success);
+}
+
+.admin-facts{
+  display:grid;
+  gap:.65rem;
+  margin:0;
+}
+
+.admin-fact{
+  display:grid;
+  grid-template-columns:10rem minmax(0,1fr);
+  gap:1rem;
+  padding-bottom:.55rem;
+  border-bottom:1px solid var(--color-border);
+}
+
+.admin-fact:last-child{
+  padding-bottom:0;
+  border-bottom:0;
+}
+
+.admin-fact dt{
+  color:var(--color-text-muted);
+  font-size:.8rem;
+}
+
+.admin-fact dd{
+  margin:0;
+  font-weight:600;
+  overflow-wrap:anywhere;
+}
+
+.admin-code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  font-size:.78rem;
+  overflow-wrap:anywhere;
+}
+
 .admin-action-group{
   display:flex;
   align-items:center;
@@ -474,5 +531,10 @@ html{
 @media(max-width:520px){
   .admin-portal__nav{
     grid-template-columns:1fr;
+  }
+
+  .admin-fact{
+    grid-template-columns:1fr;
+    gap:.2rem;
   }
 }
