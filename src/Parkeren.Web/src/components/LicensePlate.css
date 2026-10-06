@@ -1,5 +1,7 @@
 .license-plate{
   display:inline-flex!important;
+  width:7.4rem;
+  box-sizing:border-box;
   align-items:stretch;
   overflow:hidden;
   border:1px solid rgb(25 25 25/55%);
@@ -10,8 +12,8 @@
 }
 .license-plate__nl{
   display:grid!important;
+  flex:0 0 1.3rem;
   place-items:center;
-  padding:0 .22rem;
   background:#1769aa;
   color:#fff;
   font-size:.48rem;
@@ -19,7 +21,10 @@
   letter-spacing:.02em;
 }
 .license-plate strong{
-  padding:.2rem .45rem;
+  flex:1;
+  min-width:0;
+  padding:.2rem .35rem;
+  text-align:center;
   font-size:.9rem;
   font-weight:800;
   letter-spacing:.055em;
