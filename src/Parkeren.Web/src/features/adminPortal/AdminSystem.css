@@ -3,11 +3,18 @@
   gap:1rem;
 }
 
-.admin-system__grid{
+.admin-system__grid,
+.admin-system__columns{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:1rem;
   align-items:start;
+}
+
+.admin-system__column{
+  display:grid;
+  gap:1rem;
+  align-content:start;
 }
 
 .admin-system__panel{
@@ -158,7 +165,8 @@
 }
 
 @media(max-width:950px){
-  .admin-system__grid{
+  .admin-system__grid,
+  .admin-system__columns{
     grid-template-columns:1fr;
   }
 }
