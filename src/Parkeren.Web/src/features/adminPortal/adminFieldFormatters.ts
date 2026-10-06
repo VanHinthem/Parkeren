@@ -19,3 +19,9 @@ export function formatAdminNumber(value:number){
 export function formatAdminCapacity(used:number,total:number){
   return `${formatAdminNumber(used)} van ${formatAdminNumber(total)}`;
 }
+
+export function formatAdminMoney(value:number|null,unavailable="Niet beschikbaar"){
+  return value===null
+    ? unavailable
+    : new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(value);
+}
