@@ -4,6 +4,7 @@ export type AdminProviderDiscrepancyStatus="Open"|"Resolved";
 export type AdminStatusTone="neutral"|"active"|"warning"|"danger";
 export type AdminProviderBalanceUnit="Unknown"|"Euro"|"Minute"|"Times";
 export type AdminHealthStatus="Healthy"|"Warning"|"Error";
+export type AdminOperationalHealth="Healthy"|"AttentionRequired"|"Reconciling"|"StopFailed"|"Unknown";
 
 export function formatAdminDuration(value:number|null,unavailable="Niet beschikbaar"){
   if(value===null)return unavailable;
@@ -109,6 +110,26 @@ export function adminHealthStatusTone(status:AdminHealthStatus):AdminStatusTone{
     case "Healthy": return "active";
     case "Warning": return "warning";
     case "Error": return "danger";
+  }
+}
+
+export function formatAdminOperationalHealth(status:AdminOperationalHealth){
+  switch(status){
+    case "Healthy": return "Healthy";
+    case "AttentionRequired": return "Aandacht vereist";
+    case "Reconciling": return "Reconciliatie";
+    case "StopFailed": return "Stop mislukt";
+    case "Unknown": return "Onbekend";
+  }
+}
+
+export function adminOperationalHealthTone(status:AdminOperationalHealth):AdminStatusTone{
+  switch(status){
+    case "Healthy": return "active";
+    case "AttentionRequired":
+    case "Reconciling": return "warning";
+    case "StopFailed": return "danger";
+    case "Unknown": return "neutral";
   }
 }
 
