@@ -77,7 +77,7 @@ export function AdminSystemDiagnosticsPage(){
 
     <div className="admin-system__diagnostics-toolbar">
       <span className="admin-meta">Geobserveerd: {formatAdminDateTime(diagnostics.observedAt)}</span>
-      <Button className="admin-action--compact" variant="secondary" onClick={()=>void load()}>Vernieuwen</Button>
+      <Button className="admin-action--compact" onClick={()=>void load()}>Vernieuwen</Button>
     </div>
 
     <div className="admin-system__columns">
