@@ -51,7 +51,7 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   if(!balance)return "Niet beschikbaar";
   switch(balance.unit){
     case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
-    case "Minute": return `${balance.remainingBalance} min`;
+    case "Minute": return formatPaidMinutes(balance.remainingBalance);
     case "Times": return `${balance.remainingBalance} keer`;
     default: return String(balance.remainingBalance);
   }
@@ -235,7 +235,7 @@ export function AdminDashboard(){
     <div className="admin-dashboard__metrics">
       <section className="admin-dashboard__metric">
         <span>Actieve bezoeken</span>
-        <strong>{dashboard?.used??0} / {dashboard?.total??0}</strong>
+        <strong>{dashboard?.used??0} van {dashboard?.total??0}</strong>
       </section>
       <section className="admin-dashboard__metric">
         <span>Aandacht vereist</span>
@@ -248,7 +248,7 @@ export function AdminDashboard(){
           {providerStatus?.balanceIsStale
             ?"Verouderde laatst bekende waarde"
             : providerStatus?.balance
-              ?"Actueel volgens provider"
+              ?"Saldo volgens 2Park"
               :"Niet beschikbaar"}
         </small>
       </section>
@@ -277,7 +277,7 @@ export function AdminDashboard(){
         </div>
 
         {users.length===0
-          ? <p className="admin-dashboard__empty">Er zijn geen actieve bezoekers beschikbaar.</p>
+          ? <p className="admin-dashboard__empty">Er zijn momenteel geen bezoekers beschikbaar om een parkeeractie voor te starten.</p>
           : <div className="admin-dashboard__form">
               <label className="admin-dashboard__field">
                 <span>Bezoeker</span>
