@@ -63,11 +63,19 @@
   margin:0;
 }
 
+.admin-system__diagnostics-navrow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+}
+
 .admin-system__diagnostics-toolbar{
   display:flex;
   align-items:center;
   justify-content:flex-end;
   gap:.75rem;
+  margin-left:auto;
 }
 
 .admin-system__diagnostics-toolbar .admin-meta{
@@ -144,6 +152,15 @@
 }
 
 @media(max-width:800px){
+  .admin-system__diagnostics-navrow{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .admin-system__diagnostics-toolbar{
+    margin-left:0;
+  }
+
   .admin-system__audit-filters{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
