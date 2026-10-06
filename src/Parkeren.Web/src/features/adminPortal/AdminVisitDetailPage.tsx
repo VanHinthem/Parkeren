@@ -1,4 +1,4 @@
-import { lazy,Suspense,useEffect,useState } from "react";
+import { Fragment,lazy,Suspense,useEffect,useState } from "react";
 import {
   getAdminVisit,
   stopVisit,
@@ -10,14 +10,19 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import {
+  adminChangeResultTone,
   adminOperationalHealthTone,
+  adminProcessStatusTone,
   adminProviderActionStatusTone,
   adminStatusClass,
   formatAdminBoolean,
+  formatAdminChangeResult,
   formatAdminDateTime,
   formatAdminDuration,
   formatAdminNumber,
   formatAdminOperationalHealth,
+  formatAdminParkingContinuation,
+  formatAdminProcessStatus,
   formatAdminProviderActionStatus,
   formatAdminVisitStatus,
   type AdminOperationalHealth
@@ -44,11 +49,18 @@ function dateRange(start:string|null,end:string|null,emptyStart="—",emptyEnd="
   </span>;
 }
 
+function toggleSet(current:Set<string>,key:string){
+  const next=new Set(current);
+  if(next.has(key))next.delete(key);else next.add(key);
+  return next;
+}
+
 export function AdminVisitDetailPage({visitId}:{visitId:string}){
   const[detail,setDetail]=useState<AdminVisitDetail|null|undefined>();
   const[error,setError]=useState<string>();
   const[message,setMessage]=useState<string>();
   const[stopping,setStopping]=useState(false);
+  const[openProviderOperations,setOpenProviderOperations]=useState<Set<string>>(()=>new Set());
 
   async function load(){
     setError(undefined);
@@ -153,43 +165,64 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
             <h2>Provideroperations</h2>
             {detail.providerOperations.length===0
               ? <p className="admin-visit-detail__muted">Geen provideroperations vastgelegd.</p>
-              : <div className="admin-visit-detail__list">
-                  {detail.providerOperations.map(operation=><div id={`provider-operation-${operation.id}`} className="admin-visit-detail__row" key={operation.id}>
-                    <div className="admin-visit-detail__row-head"><strong>{operation.type}</strong><span>{operation.status}</span></div>
-                    <div className="admin-visit-detail__row-meta">
-                      <span>Operation ID: {operation.operationId}</span>
-                      <span>Pogingen: {formatAdminNumber(operation.attemptCount)}</span>
-                      <span>Foutcode: {operation.lastErrorCode??"—"}</span>
-                      <span>Aangemaakt: {formatAdminDateTime(operation.createdAt)}</span>
-                      <span>Requested end: {formatAdminDateTime(operation.requestedEndAt)}</span>
-                      <span>Voltooid: {formatAdminDateTime(operation.completedAt)}</span>
-                    </div>
-                  </div>)}
-                </div>}
+              : <div className="admin-table-wrap"><table className="admin-table admin-table--fixed admin-visit-detail__provider-operations-table">
+                  <thead><tr><th>Type</th><th>Aangemaakt</th><th>Pogingen</th><th>Status</th><th>Voltooid</th><th aria-label="Details"/></tr></thead>
+                  <tbody>{detail.providerOperations.map(operation=>{
+                    const open=openProviderOperations.has(operation.id);
+                    return <Fragment key={operation.id}>
+                      <tr id={`provider-operation-${operation.id}`}>
+                        <td><strong>{operation.type}</strong></td>
+                        <td>{formatAdminDateTime(operation.createdAt)}</td>
+                        <td className="admin-number admin-number--table">{formatAdminNumber(operation.attemptCount)}</td>
+                        <td><span className={adminStatusClass(adminProcessStatusTone(operation.status))}>{formatAdminProcessStatus(operation.status)}</span></td>
+                        <td>{formatAdminDateTime(operation.completedAt)}</td>
+                        <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenProviderOperations(current=>toggleSet(current,operation.id))}>{open?"Verbergen ▴":"Tonen ▾"}</button></td>
+                      </tr>
+                      {open&&<tr className="admin-table__detail-row"><td colSpan={6}><div className="admin-table__detail-panel">
+                        <dl className="admin-facts admin-facts--grid admin-visit-detail__technical-facts">
+                          <div className="admin-fact"><dt>Operation-ID</dt><dd className="admin-code">{operation.operationId}</dd></div>
+                          <div className="admin-fact"><dt>Provideractie</dt><dd>{operation.providerParkingActionId?<a className="admin-action-link admin-code" href={`#provider-action-${operation.providerParkingActionId}`}>Gekoppelde provideractie</a>:"—"}</dd></div>
+                          <div className="admin-fact"><dt>Parent operation</dt><dd className="admin-code">{operation.parentOperationId??"—"}</dd></div>
+                          <div className="admin-fact"><dt>Poging gestart</dt><dd>{formatAdminDateTime(operation.attemptStartedAt)}</dd></div>
+                          <div className="admin-fact"><dt>Aangevraagd einde</dt><dd>{formatAdminDateTime(operation.requestedEndAt)}</dd></div>
+                          <div className="admin-fact"><dt>Foutcode</dt><dd className="admin-code">{operation.lastErrorCode??"—"}</dd></div>
+                        </dl>
+                      </div></td></tr>}
+                    </Fragment>;
+                  })}</tbody>
+                </table></div>}
           </section>
 
           <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Eindtijdwijzigingen</h2>
             {detail.endTimeChanges.length===0
               ? <p className="admin-visit-detail__muted">Geen eindtijdwijzigingen vastgelegd.</p>
-              : <div className="admin-visit-detail__list">
-                  {detail.endTimeChanges.map(change=><div className="admin-visit-detail__row" key={change.id}>
-                    <div className="admin-visit-detail__row-head"><strong>{change.actorUsername}</strong><span>{change.result}</span></div>
-                    <div className="admin-visit-detail__row-meta"><span>Van: {formatAdminDateTime(change.previousDesiredEndAt)}</span><span>Naar: {formatAdminDateTime(change.requestedDesiredEndAt)}</span><span>{formatAdminDateTime(change.createdAt)}</span></div>
-                  </div>)}
-                </div>}
+              : <div className="admin-table-wrap"><table className="admin-table admin-table--fixed admin-visit-detail__end-time-table">
+                  <thead><tr><th>Tijdstip</th><th>Actor</th><th>Van</th><th>Naar</th><th>Resultaat</th></tr></thead>
+                  <tbody>{detail.endTimeChanges.map(change=><tr key={change.id}>
+                    <td>{formatAdminDateTime(change.createdAt)}</td>
+                    <td><span className="admin-identity"><strong>{change.actorUsername}</strong></span></td>
+                    <td>{formatAdminDateTime(change.previousDesiredEndAt,"Open einde")}</td>
+                    <td>{formatAdminDateTime(change.requestedDesiredEndAt,"Open einde")}</td>
+                    <td><span className={adminStatusClass(adminChangeResultTone(change.result))}>{formatAdminChangeResult(change.result)}</span></td>
+                  </tr>)}</tbody>
+                </table></div>}
           </section>
 
           <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Relevante parkeerregelversies</h2>
             {detail.relevantRuleSets.length===0
               ? <p className="admin-visit-detail__muted">Geen parkeerregelversie gevonden voor deze periode.</p>
-              : <div className="admin-visit-detail__list">
-                  {detail.relevantRuleSets.map(rule=><div className="admin-visit-detail__row" key={rule.id}>
-                    <div className="admin-visit-detail__row-head"><strong>{rule.id}</strong><span>{rule.continuation}</span></div>
-                    <div className="admin-visit-detail__row-meta"><span>Geldig: {formatAdminDateTime(rule.validFrom)} – {formatAdminDateTime(rule.validUntil)}</span><span className="admin-duration">Max. provideractie: {formatAdminDuration(rule.maxProviderActionDurationMinutes)}</span><span>Feestdagen gratis: {formatAdminBoolean(rule.publicHolidaysAreFree)}</span></div>
-                  </div>)}
-                </div>}
+              : <div className="admin-table-wrap"><table className="admin-table admin-table--fixed admin-visit-detail__rule-sets-table">
+                  <thead><tr><th>Geldig vanaf</th><th>Geldig tot</th><th>Max. provideractie</th><th>Continuation</th><th>Feestdagen</th></tr></thead>
+                  <tbody>{detail.relevantRuleSets.map(rule=><tr key={rule.id}>
+                    <td>{formatAdminDateTime(rule.validFrom)}</td>
+                    <td>{formatAdminDateTime(rule.validUntil,"Doorlopend")}</td>
+                    <td className="admin-duration">{formatAdminDuration(rule.maxProviderActionDurationMinutes)}</td>
+                    <td>{formatAdminParkingContinuation(rule.continuation)}</td>
+                    <td>{formatAdminBoolean(rule.publicHolidaysAreFree)}</td>
+                  </tr>)}</tbody>
+                </table></div>}
           </section>
         </>}
   </div>;
