@@ -49,6 +49,21 @@
   font-variant-numeric:tabular-nums;
 }
 
+.admin-code-block{
+  margin:0;
+  padding:.7rem .8rem;
+  overflow:auto;
+  border-radius:var(--radius-sm);
+  background:var(--color-surface-muted);
+  color:var(--color-text);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  text-align:left;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size:.78rem;
+  line-height:1.45;
+}
+
 .admin-settings-form{
   display:grid;
   gap:.6rem;
