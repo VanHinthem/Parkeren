@@ -1,4 +1,4 @@
-import { useEffect,useState } from "react";
+import { lazy,Suspense,useEffect,useState } from "react";
 import {
   getAdminVisit,
   stopVisit,
@@ -22,8 +22,11 @@ import {
   formatAdminVisitStatus,
   type AdminOperationalHealth
 } from "./adminFieldFormatters";
-import { AdminVisitSchedulerSections } from "./AdminVisitSchedulerSections";
 import "./AdminVisits.css";
+
+const AdminVisitSchedulerSections=lazy(()=>
+  import("./AdminVisitSchedulerSections").then(module=>({default:module.AdminVisitSchedulerSections}))
+);
 
 function providerProductLabel(name:string|null,id:string|null){
   if(name&&id)return `${name} (${id})`;
@@ -137,12 +140,14 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                 </table></div>}
           </section>
 
-          <AdminVisitSchedulerSections
-            visit={detail.visit}
-            endTimeChanges={detail.endTimeChanges}
-            timelineEvents={detail.timelineEvents}
-            schedulerWork={detail.schedulerWork}
-          />
+          <Suspense fallback={<Loading label="Visitverloop laden"/>}>
+            <AdminVisitSchedulerSections
+              visit={detail.visit}
+              endTimeChanges={detail.endTimeChanges}
+              timelineEvents={detail.timelineEvents}
+              schedulerWork={detail.schedulerWork}
+            />
+          </Suspense>
 
           <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Provideroperations</h2>
