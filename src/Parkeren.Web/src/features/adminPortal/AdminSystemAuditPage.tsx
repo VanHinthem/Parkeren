@@ -71,11 +71,22 @@ export function AdminSystemAuditPage(){
 
   if(!events&&!error)return <Loading label="Auditlog laden"/>;
   if(!events)return <div className="admin-system">
+    <nav className="admin-subnav" aria-label="Systeem">
+      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+      <a className="admin-subnav__link active" href="/beheer/systeem/audit">Audit</a>
+      <a className="admin-subnav__link" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+    </nav>
     <Alert tone="danger">{error??"Auditlog kon niet worden geladen."}</Alert>
     <div className="admin-system__actions"><Button onClick={()=>void load()}>Opnieuw proberen</Button></div>
   </div>;
 
   return <div className="admin-system">
+    <nav className="admin-subnav" aria-label="Systeem">
+      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+      <a className="admin-subnav__link active" href="/beheer/systeem/audit">Audit</a>
+      <a className="admin-subnav__link" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+    </nav>
+
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-system__panel">
