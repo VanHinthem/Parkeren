@@ -212,7 +212,6 @@ export function AdminParkingRulesPage(){
 
   return <div className="admin-rules">
     <nav className="admin-subnav" aria-label="Parkeerconfiguratie">
-      <a className="admin-subnav__link" href="/beheer/provider">Providerproducten</a>
       <a className="admin-subnav__link active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
       <a className="admin-subnav__link" href="/beheer/configuratie/tarieven">Tarieven</a>
       <a className="admin-subnav__link" href="/beheer/configuratie/budgetten">Budgetten</a>
