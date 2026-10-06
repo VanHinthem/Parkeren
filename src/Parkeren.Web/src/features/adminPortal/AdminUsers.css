@@ -115,28 +115,28 @@
 }
 
 .admin-users__table--users th:nth-child(1),
-.admin-users__table--users td:nth-child(1){width:13%;}
+.admin-users__table--users td:nth-child(1){width:20%;}
 .admin-users__table--users th:nth-child(2),
-.admin-users__table--users td:nth-child(2){width:12%;}
+.admin-users__table--users td:nth-child(2){width:14%;}
 .admin-users__table--users th:nth-child(3),
-.admin-users__table--users td:nth-child(3){width:12%;}
+.admin-users__table--users td:nth-child(3){width:14%;}
 .admin-users__table--users th:nth-child(4),
-.admin-users__table--users td:nth-child(4){width:15%;}
+.admin-users__table--users td:nth-child(4){width:12%;}
 .admin-users__table--users th:nth-child(5),
-.admin-users__table--users td:nth-child(5){width:48%;}
+.admin-users__table--users td:nth-child(5){width:40%;}
 
 .admin-users__table--vehicles{
   min-width:48rem;
 }
 
 .admin-users__table--vehicles th:nth-child(1),
-.admin-users__table--vehicles td:nth-child(1){width:22%;}
+.admin-users__table--vehicles td:nth-child(1){width:24%;}
 .admin-users__table--vehicles th:nth-child(2),
-.admin-users__table--vehicles td:nth-child(2){width:26%;}
+.admin-users__table--vehicles td:nth-child(2){width:32%;}
 .admin-users__table--vehicles th:nth-child(3),
-.admin-users__table--vehicles td:nth-child(3){width:16%;}
+.admin-users__table--vehicles td:nth-child(3){width:14%;}
 .admin-users__table--vehicles th:nth-child(4),
-.admin-users__table--vehicles td:nth-child(4){width:36%;}
+.admin-users__table--vehicles td:nth-child(4){width:30%;}
 
 .admin-users__actions{
   flex-wrap:wrap;
