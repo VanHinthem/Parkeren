@@ -88,15 +88,6 @@
   border-bottom:0;
 }
 
-.admin-visits__identity{
-  display:grid;
-  gap:.12rem;
-}
-
-.admin-visits__identity small{
-  color:var(--color-text-muted);
-}
-
 .admin-visits__link{
   color:var(--color-primary);
   font-weight:650;
