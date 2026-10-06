@@ -45,6 +45,83 @@
   color:var(--color-text-muted);
 }
 
+.admin-provider__toolbar{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:1rem;
+  margin-bottom:.8rem;
+}
+
+.admin-provider__toolbar h2{
+  margin:0;
+}
+
+.admin-provider__toolbar p{
+  margin:.25rem 0 0;
+  color:var(--color-text-muted);
+  font-size:.84rem;
+}
+
+.admin-provider__products-table{
+  min-width:62rem;
+}
+
+.admin-provider__products-table th:nth-child(1),
+.admin-provider__products-table td:nth-child(1){width:22%;}
+.admin-provider__products-table th:nth-child(2),
+.admin-provider__products-table td:nth-child(2){width:12%;}
+.admin-provider__products-table th:nth-child(3),
+.admin-provider__products-table td:nth-child(3){width:14%;}
+.admin-provider__products-table th:nth-child(4),
+.admin-provider__products-table td:nth-child(4){width:10%;}
+.admin-provider__products-table th:nth-child(5),
+.admin-provider__products-table td:nth-child(5){width:14%;}
+.admin-provider__products-table th:nth-child(6),
+.admin-provider__products-table td:nth-child(6){width:16%;}
+.admin-provider__products-table th:nth-child(7),
+.admin-provider__products-table td:nth-child(7){width:12%;}
+
+.admin-provider__actions-table{
+  min-width:58rem;
+}
+
+.admin-provider__actions-table th:nth-child(1),
+.admin-provider__actions-table td:nth-child(1){width:29%;}
+.admin-provider__actions-table th:nth-child(2),
+.admin-provider__actions-table td:nth-child(2){width:13%;}
+.admin-provider__actions-table th:nth-child(3),
+.admin-provider__actions-table td:nth-child(3){width:17%;}
+.admin-provider__actions-table th:nth-child(4),
+.admin-provider__actions-table td:nth-child(4){width:17%;}
+.admin-provider__actions-table th:nth-child(5),
+.admin-provider__actions-table td:nth-child(5){width:10%;}
+.admin-provider__actions-table th:nth-child(6),
+.admin-provider__actions-table td:nth-child(6){width:14%;}
+
+.admin-provider__products-table .admin-tag{
+  margin-left:.45rem;
+  vertical-align:middle;
+}
+
+.admin-provider__notice{
+  display:grid;
+  gap:.4rem;
+}
+
+.admin-provider__notice p{
+  margin:0;
+  color:var(--color-text-muted);
+  line-height:1.5;
+}
+
+@media(max-width:850px){
+  .admin-provider__grid{
+    grid-template-columns:1fr;
+  }
+}
+
+/* Legacy discrepancy presentation; migrated separately with that page. */
 .admin-provider__state{
   display:inline-flex;
   align-items:center;
@@ -97,55 +174,6 @@
   overflow-wrap:anywhere;
 }
 
-.admin-provider__toolbar{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:1rem;
-  margin-bottom:.8rem;
-}
-
-.admin-provider__toolbar h2{
-  margin:0;
-}
-
-.admin-provider__toolbar p{
-  margin:.25rem 0 0;
-  color:var(--color-text-muted);
-  font-size:.84rem;
-}
-
-.admin-provider__table-wrap{
-  overflow-x:auto;
-}
-
-.admin-provider__table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:.84rem;
-}
-
-.admin-provider__table th,
-.admin-provider__table td{
-  padding:.72rem .58rem;
-  border-bottom:1px solid var(--color-border);
-  text-align:left;
-  vertical-align:middle;
-  white-space:nowrap;
-}
-
-.admin-provider__table th{
-  color:var(--color-text-muted);
-  font-size:.71rem;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.035em;
-}
-
-.admin-provider__table tr:last-child td{
-  border-bottom:0;
-}
-
 .admin-provider__link{
   color:var(--color-primary);
   font-weight:650;
@@ -156,42 +184,12 @@
   text-decoration:underline;
 }
 
-.admin-provider__notice{
-  display:grid;
-  gap:.4rem;
-}
-
-.admin-provider__notice p{
-  margin:0;
-  color:var(--color-text-muted);
-  line-height:1.5;
-}
-
-@media(max-width:850px){
-  .admin-provider__grid{
-    grid-template-columns:1fr;
-  }
-}
-
 @media(max-width:520px){
   .admin-provider__fact{
     grid-template-columns:1fr;
     gap:.2rem;
   }
 }
-
-.admin-provider__product-default{
-  display:inline-flex;
-  margin-left:.45rem;
-  padding:.16rem .42rem;
-  border-radius:999px;
-  background:var(--color-success-soft);
-  color:var(--color-success);
-  font-size:.68rem;
-  font-weight:700;
-  vertical-align:middle;
-}
-
 
 .admin-provider__discrepancy-summary{
   display:flex;
