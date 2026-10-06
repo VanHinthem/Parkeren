@@ -1,4 +1,4 @@
-import { Fragment,useEffect,useState } from "react";
+import { Fragment,useEffect,useMemo,useState } from "react";
 import { getAdminAuditEvents,type AdminAuditEvent,type AdminAuditQuery } from "../../api/adminAudit";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
@@ -15,8 +15,13 @@ function toIso(value:string,endOfMinute=false){
   return date.toISOString();
 }
 
+function hasAuditFilters(query:AdminAuditQuery){
+  return Boolean(query.actorUserId||query.action||query.targetType||query.targetId||query.from||query.to);
+}
+
 export function AdminSystemAuditPage(){
   const[events,setEvents]=useState<AdminAuditEvent[]>();
+  const[filterSource,setFilterSource]=useState<AdminAuditEvent[]>([]);
   const[error,setError]=useState<string>();
   const[actorUserId,setActorUserId]=useState("");
   const[action,setAction]=useState("");
@@ -24,19 +29,44 @@ export function AdminSystemAuditPage(){
   const[targetId,setTargetId]=useState("");
   const[from,setFrom]=useState("");
   const[to,setTo]=useState("");
+  const[showAdvanced,setShowAdvanced]=useState(false);
   const[expandedId,setExpandedId]=useState<string>();
   const[appliedQuery,setAppliedQuery]=useState<AdminAuditQuery>({limit:100});
 
-  async function load(query:AdminAuditQuery=appliedQuery){
+  const actorOptions=useMemo(()=>{
+    const actors=new Map<string,string>();
+    for(const event of filterSource){
+      if(event.actorUserId)actors.set(event.actorUserId,event.actorUsername||event.actorUserId);
+    }
+    return [...actors.entries()]
+      .map(([id,name])=>({id,name}))
+      .sort((left,right)=>left.name.localeCompare(right.name,"nl"));
+  },[filterSource]);
+
+  const actionOptions=useMemo(
+    ()=>[...new Set(filterSource.map(event=>event.action).filter(Boolean))].sort((left,right)=>left.localeCompare(right,"nl")),
+    [filterSource]
+  );
+
+  const targetTypeOptions=useMemo(
+    ()=>[...new Set(filterSource.map(event=>event.targetType).filter(Boolean))].sort((left,right)=>left.localeCompare(right,"nl")),
+    [filterSource]
+  );
+
+  async function load(query:AdminAuditQuery=appliedQuery,refreshFilterSource=false){
     setError(undefined);
     try{
-      setEvents(await getAdminAuditEvents(query));
+      const result=await getAdminAuditEvents(query);
+      setEvents(result);
+      if(refreshFilterSource){
+        setFilterSource(hasAuditFilters(query)?await getAdminAuditEvents({limit:100}):result);
+      }
     }catch(e){
       setError(e instanceof Error?e.message:"Auditlog kon niet worden geladen.");
     }
   }
 
-  useEffect(()=>{void load({limit:100});},[]);
+  useEffect(()=>{void load({limit:100},true);},[]);
 
   function applyFilters(){
     if(from&&to&&new Date(from)>new Date(to)){
@@ -44,9 +74,9 @@ export function AdminSystemAuditPage(){
       return;
     }
     const query:AdminAuditQuery={
-      actorUserId:actorUserId.trim()||undefined,
-      action:action.trim()||undefined,
-      targetType:targetType.trim()||undefined,
+      actorUserId:actorUserId||undefined,
+      action:action||undefined,
+      targetType:targetType||undefined,
       targetId:targetId.trim()||undefined,
       from:toIso(from),
       to:toIso(to,true),
@@ -64,10 +94,11 @@ export function AdminSystemAuditPage(){
     setTargetId("");
     setFrom("");
     setTo("");
+    setShowAdvanced(false);
     setExpandedId(undefined);
     const query={limit:100};
     setAppliedQuery(query);
-    void load(query);
+    void load(query,true);
   }
 
   const subnav=<nav className="admin-subnav" aria-label="Systeem">
@@ -81,7 +112,7 @@ export function AdminSystemAuditPage(){
     {subnav}
     <Alert tone="danger">{error??"Auditlog kon niet worden geladen."}</Alert>
     <div className="admin-action-group admin-action-group--start">
-      <Button className="admin-action--compact" onClick={()=>void load()}>Opnieuw proberen</Button>
+      <Button className="admin-action--compact" onClick={()=>void load(undefined,true)}>Opnieuw proberen</Button>
     </div>
   </div>;
 
@@ -89,7 +120,7 @@ export function AdminSystemAuditPage(){
     {subnav}
     {error&&<Alert tone="danger">{error}</Alert>}
 
-    <section className="admin-system__panel">
+    <section className="admin-system__panel admin-system__audit-filter-panel">
       <div className="admin-system__panel-heading">
         <div>
           <h2>Auditlog filteren</h2>
@@ -97,17 +128,47 @@ export function AdminSystemAuditPage(){
         </div>
       </div>
       <div className="admin-system__audit-filters">
-        <label className="admin-field"><span>Actor user-id</span><input value={actorUserId} onChange={event=>setActorUserId(event.target.value)} placeholder="GUID"/></label>
-        <label className="admin-field"><span>Actie</span><input value={action} onChange={event=>setAction(event.target.value)} placeholder="bijv. UserPolicyChanged"/></label>
-        <label className="admin-field"><span>Targettype</span><input value={targetType} onChange={event=>setTargetType(event.target.value)} placeholder="bijv. User"/></label>
-        <label className="admin-field"><span>Target-id</span><input value={targetId} onChange={event=>setTargetId(event.target.value)} placeholder="GUID of externe sleutel"/></label>
+        <label className="admin-field">
+          <span>Actor</span>
+          <select value={actorUserId} onChange={event=>setActorUserId(event.target.value)}>
+            <option value="">Alle</option>
+            {actorOptions.map(actor=><option key={actor.id} value={actor.id}>{actor.name}</option>)}
+          </select>
+        </label>
+        <label className="admin-field">
+          <span>Actie</span>
+          <select value={action} onChange={event=>setAction(event.target.value)}>
+            <option value="">Alle</option>
+            {actionOptions.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
+        <label className="admin-field">
+          <span>Targettype</span>
+          <select value={targetType} onChange={event=>setTargetType(event.target.value)}>
+            <option value="">Alle</option>
+            {targetTypeOptions.map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
         <label className="admin-field"><span>Vanaf</span><input type="datetime-local" value={from} onChange={event=>setFrom(event.target.value)}/></label>
         <label className="admin-field"><span>Tot en met</span><input type="datetime-local" value={to} onChange={event=>setTo(event.target.value)}/></label>
       </div>
-      <div className="admin-action-group admin-action-group--start">
-        <Button className="admin-action--compact" onClick={applyFilters}>Filters toepassen</Button>
-        <Button className="admin-action--compact" variant="secondary" onClick={clearFilters}>Wissen</Button>
-        <Button className="admin-action--compact" variant="secondary" onClick={()=>void load()}>Vernieuwen</Button>
+      {showAdvanced&&<div className="admin-system__audit-advanced">
+        <label className="admin-field"><span>Target-id</span><input value={targetId} onChange={event=>setTargetId(event.target.value)} placeholder="GUID of externe sleutel"/></label>
+      </div>}
+      <div className="admin-system__audit-filter-actions">
+        <div className="admin-action-group admin-action-group--start">
+          <Button className="admin-action--compact" onClick={applyFilters}>Filters toepassen</Button>
+          <Button className="admin-action--compact" variant="secondary" onClick={clearFilters}>Wissen</Button>
+          <Button className="admin-action--compact" variant="secondary" onClick={()=>void load(appliedQuery,true)}>Vernieuwen</Button>
+        </div>
+        <button
+          className="admin-action-link admin-action-link--muted"
+          type="button"
+          aria-expanded={showAdvanced}
+          onClick={()=>setShowAdvanced(value=>!value)}
+        >
+          {showAdvanced?"Minder filters ▴":"Meer filters ▾"}
+        </button>
       </div>
     </section>
 
