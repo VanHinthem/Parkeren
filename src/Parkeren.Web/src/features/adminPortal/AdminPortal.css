@@ -374,6 +374,12 @@ html{
   overflow-wrap:anywhere;
 }
 
+.admin-code--table{
+  color:var(--color-text-muted);
+  font-size:.74rem;
+  font-weight:500;
+}
+
 .admin-action-group{
   display:flex;
   align-items:center;
@@ -381,7 +387,8 @@ html{
   gap:.4rem;
 }
 
-.admin-action--compact{
+.admin-action--compact,
+.button.admin-action--compact{
   min-height:2.25rem;
   padding:.45rem .65rem;
   border-radius:var(--radius-sm);
