@@ -72,13 +72,15 @@ export function AdminSystemDiagnosticsPage(){
   const pushStatus=pushHealth(diagnostics);
 
   return <div className="admin-system">
-    {subnav}
-    {error&&<Alert tone="danger">{error}</Alert>}
-
-    <div className="admin-system__diagnostics-toolbar">
-      <span className="admin-meta">Geobserveerd: {formatAdminDateTime(diagnostics.observedAt)}</span>
-      <Button className="admin-action--compact" onClick={()=>void load()}>Vernieuwen</Button>
+    <div className="admin-system__diagnostics-navrow">
+      {subnav}
+      <div className="admin-system__diagnostics-toolbar">
+        <span className="admin-meta">Geobserveerd: {formatAdminDateTime(diagnostics.observedAt)}</span>
+        <Button className="admin-action--compact" onClick={()=>void load()}>Vernieuwen</Button>
+      </div>
     </div>
+
+    {error&&<Alert tone="danger">{error}</Alert>}
 
     <div className="admin-system__columns">
       <div className="admin-system__column">
