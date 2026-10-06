@@ -3,7 +3,8 @@ import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
 import { AdminProviderPage } from "./AdminProviderPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
-import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
+import { AdminUserDetailPage } from "./AdminUsersPage";
+import { AdminUsersOverviewPage } from "./AdminUsersOverviewPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminSystemDiagnosticsPage } from "./AdminSystemDiagnosticsPage";
 import { AdminSystemAuditPage } from "./AdminSystemAuditPage";
@@ -145,11 +146,11 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             )
           ) : section.path === "/beheer/gebruikers" ? (
             currentPath === "/beheer/voertuigen" ? (
-              <AdminUsersPage mode="vehicles" />
+              <AdminUsersOverviewPage mode="vehicles" />
             ) : currentPath.startsWith("/beheer/gebruikers/") ? (
               <AdminUserDetailPage userId={currentPath.slice("/beheer/gebruikers/".length)} />
             ) : (
-              <AdminUsersPage mode="users" />
+              <AdminUsersOverviewPage mode="users" />
             )
           ) : section.path === "/beheer/configuratie" ? (
             currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
