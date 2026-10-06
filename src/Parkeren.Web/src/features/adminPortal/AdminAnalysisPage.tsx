@@ -118,7 +118,7 @@ export function AdminAnalysisPage(){
                       <td className={`${group.paidDurationMinutes===null?"admin-analysis__warning ":""}admin-duration admin-duration--table`}>{formatAdminDuration(group.paidDurationMinutes,"Onvolledig")}</td>
                       <td className={`${group.amount===null?"admin-analysis__warning ":""}admin-money admin-money--table`}>{formatAdminMoney(group.amount,"Onvolledig")}</td>
                       <td><span className={`admin-status ${group.isComplete?"admin-status--active":"admin-status--warning"}`}>{group.isComplete?"Compleet":"Onvolledig"}</span></td>
-                      <td><button className="admin-analysis__expand" type="button" aria-expanded={expanded===group.key} onClick={()=>toggle(group)}>{expanded===group.key?"Verbergen":"Tonen"}</button></td>
+                      <td><button className="admin-analysis__expand admin-action-link admin-action-link--muted" type="button" aria-expanded={expanded===group.key} onClick={()=>toggle(group)}>{expanded===group.key?"Verbergen ▴":"Tonen ▾"}</button></td>
                     </tr>
                     {expanded===group.key&&<tr className="admin-analysis__details">
                       <td colSpan={6}>
