@@ -89,3 +89,13 @@
   font-size:.82rem;
   font-weight:600;
 }
+
+.admin-table__detail-row>td{
+  padding:0!important;
+  white-space:normal!important;
+  background:var(--color-surface-muted);
+}
+
+.admin-table__detail-panel{
+  padding:.85rem .9rem;
+}
