@@ -342,6 +342,14 @@
   text-decoration:underline;
 }
 
+.admin-action-link--muted{
+  color:var(--color-text-muted);
+}
+
+.admin-action-link--muted:hover{
+  color:var(--color-text);
+}
+
 .admin-field,
 .admin-dashboard__field,
 .admin-visits__field{
