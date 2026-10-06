@@ -272,20 +272,26 @@ export function AdminParkingRulesPage(){
             <h3>Betaalvensters</h3>
             <Button className="admin-action--compact" variant="secondary" onClick={()=>setWindows(rows=>[...rows,{key:nextKey++,day:"Monday",start:"09:00",end:"20:00"}])}>Venster toevoegen</Button>
           </div>
-          {windows.length===0?<p className="admin-rules__empty">Geen betaalvensters: alle reguliere tijden zijn gratis.</p>:null}
-          <div className="admin-rules__rows admin-rules__rows--windows">
-            {windows.map(row=><div className="admin-rules__row admin-rules__row--window" key={row.key}>
-              <label className="admin-field">
-                <span>Dag</span>
-                <select value={row.day} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,day:event.target.value as DayOfWeekName}:item))}>
-                  {days.map(day=><option key={day} value={day}>{dayLabels[day]}</option>)}
-                </select>
-              </label>
-              <label className="admin-field"><span>Start</span><input type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></label>
-              <label className="admin-field"><span>Einde</span><input type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></label>
-              <Button className="admin-action--compact admin-rules__remove-action" variant="danger" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button>
-            </div>)}
-          </div>
+          {windows.length===0
+            ? <p className="admin-rules__empty">Geen betaalvensters: alle reguliere tijden zijn gratis.</p>
+            : <div className="admin-rules__window-grid" role="table" aria-label="Betaalvensters">
+                <div className="admin-rules__window-grid-head" role="row">
+                  <span role="columnheader">Dag</span>
+                  <span role="columnheader">Start</span>
+                  <span role="columnheader">Einde</span>
+                  <span role="columnheader" aria-label="Acties"/>
+                </div>
+                {windows.map(row=><div className="admin-rules__window-grid-row" role="row" key={row.key}>
+                  <div role="cell">
+                    <select aria-label="Dag" value={row.day} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,day:event.target.value as DayOfWeekName}:item))}>
+                      {days.map(day=><option key={day} value={day}>{dayLabels[day]}</option>)}
+                    </select>
+                  </div>
+                  <div role="cell"><input aria-label="Start" type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></div>
+                  <div role="cell"><input aria-label="Einde" type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></div>
+                  <div className="admin-rules__window-grid-action" role="cell"><Button className="admin-action--compact" variant="danger" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button></div>
+                </div>)}
+              </div>}
         </div>
 
         <div className="admin-rules__subsection">
