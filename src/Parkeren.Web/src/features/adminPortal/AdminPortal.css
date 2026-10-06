@@ -152,6 +152,14 @@
   max-width:48rem;
 }
 
+.admin-duration{
+  font-variant-numeric:tabular-nums;
+}
+
+.admin-duration--table{
+  text-align:right !important;
+}
+
 @media(max-width:899px){
   .admin-portal{
     grid-template-columns:1fr;
