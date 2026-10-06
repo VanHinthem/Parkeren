@@ -10,6 +10,7 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import "./adminFieldPresentation.css";
 import "./AdminParkingRules.css";
 
 type WindowRow={key:number;day:DayOfWeekName;start:string;end:string};
@@ -209,11 +210,11 @@ export function AdminParkingRulesPage(){
   </div>;
 
   return <div className="admin-rules">
-    <nav className="admin-rules__tabs" aria-label="Parkeerconfiguratie">
-      <a className="admin-rules__tab" href="/beheer/provider">Providerproducten</a>
-      <a className="admin-rules__tab active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
-      <a className="admin-rules__tab" href="/beheer/configuratie/tarieven">Tarieven</a>
-      <a className="admin-rules__tab" href="/beheer/configuratie/budgetten">Budgetten</a>
+    <nav className="admin-subnav" aria-label="Parkeerconfiguratie">
+      <a className="admin-subnav__link" href="/beheer/provider">Providerproducten</a>
+      <a className="admin-subnav__link active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
+      <a className="admin-subnav__link" href="/beheer/configuratie/tarieven">Tarieven</a>
+      <a className="admin-subnav__link" href="/beheer/configuratie/budgetten">Budgetten</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
@@ -224,7 +225,7 @@ export function AdminParkingRulesPage(){
       {products.length===0
         ? <p>Er zijn nog geen providerproducten gesynchroniseerd. Synchroniseer ze eerst onder <a href="/beheer/provider">Provider & reconciliatie</a>.</p>
         : <div className="admin-rules__grid">
-            <label className="admin-rules__field">
+            <label className="admin-field">
               <span>Configuratie voor</span>
               <select value={selectedProductId??""} onChange={event=>setSelectedProductId(event.target.value)}>
                 {products.map(product=><option key={product.id} value={product.id}>
@@ -232,7 +233,7 @@ export function AdminParkingRulesPage(){
                 </option>)}
               </select>
             </label>
-            {selectedProductId&&<div className="admin-rules__fact">
+            {selectedProductId&&<div className="admin-readonly-value admin-readonly-value--field">
               <span>Providercontext</span>
               <strong>{products.find(product=>product.id===selectedProductId)?.location??"—"}</strong>
             </div>}
@@ -245,24 +246,24 @@ export function AdminParkingRulesPage(){
 
       <div className="admin-rules__form">
         <div className="admin-rules__grid">
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Geldig vanaf</span>
             <input type="datetime-local" value={validFrom} onChange={event=>setValidFrom(event.target.value)}/>
           </label>
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Max. provider-actieduur (uren)</span>
-            <input type="number" min=".25" step=".25" value={maxActionHours} onChange={event=>setMaxActionHours(event.target.value)}/>
+            <input className="admin-field__control--number" type="number" min=".25" step=".25" value={maxActionHours} onChange={event=>setMaxActionHours(event.target.value)}/>
           </label>
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Continuation</span>
             <select value={continuation} onChange={event=>setContinuation(event.target.value as "ExtendAction"|"StartNewAction")}>
               <option value="StartNewAction">Nieuwe aansluitende provideractie</option>
               <option value="ExtendAction">Bestaande provideractie verlengen</option>
             </select>
           </label>
-          <label className="admin-rules__check">
+          <label className="admin-check">
             <input type="checkbox" checked={publicHolidaysFree} onChange={event=>setPublicHolidaysFree(event.target.checked)}/>
-            Nederlandse feestdagen gratis
+            <span>Nederlandse feestdagen gratis</span>
           </label>
         </div>
 
