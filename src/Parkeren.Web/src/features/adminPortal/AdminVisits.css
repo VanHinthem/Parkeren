@@ -13,7 +13,7 @@
 
 .admin-visits__filters{
   display:grid;
-  grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns:1.2fr .8fr 1fr 1fr 1fr auto;
   gap:.7rem;
   align-items:end;
 }
@@ -39,6 +39,16 @@
 .admin-visits__filter-actions{
   display:flex;
   gap:.45rem;
+}
+
+.admin-visits__filter-actions .button{
+  min-height:2.65rem;
+  padding:.55rem .85rem;
+  border-radius:var(--radius-sm);
+}
+
+.admin-visits__filter-actions .button--secondary{
+  background:transparent;
 }
 
 .admin-visits__table-wrap{
