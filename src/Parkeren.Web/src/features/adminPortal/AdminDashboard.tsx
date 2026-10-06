@@ -21,7 +21,7 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminDashboard.css";
-import { formatAdminDateTime,formatAdminDuration } from "./adminFieldFormatters";
+import { formatAdminCapacity,formatAdminDateTime,formatAdminDuration,formatAdminNumber } from "./adminFieldFormatters";
 
 function statusLabel(status:AdminDashboardSummary["activeVisits"][number]["status"]){
   switch(status){
@@ -39,7 +39,7 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   switch(balance.unit){
     case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
     case "Minute": return formatAdminDuration(balance.remainingBalance);
-    case "Times": return `${balance.remainingBalance} keer`;
+    case "Times": return `${formatAdminNumber(balance.remainingBalance)} keer`;
     default: return String(balance.remainingBalance);
   }
 }
@@ -222,11 +222,11 @@ export function AdminDashboard(){
     <div className="admin-dashboard__metrics">
       <section className="admin-dashboard__metric">
         <span>Actieve bezoeken</span>
-        <strong>{dashboard?.used??0} van {dashboard?.total??0}</strong>
+        <strong className="admin-number">{formatAdminCapacity(dashboard?.used??0,dashboard?.total??0)}</strong>
       </section>
       <section className="admin-dashboard__metric">
         <span>Aandacht vereist</span>
-        <strong>{attentionCount}</strong>
+        <strong className="admin-number">{formatAdminNumber(attentionCount)}</strong>
       </section>
       <section className="admin-dashboard__metric">
         <span>Officieel 2Park-saldo</span>
