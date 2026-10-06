@@ -53,6 +53,11 @@ export function AdminSystemDiagnosticsPage(){
   if(!diagnostics&&!error)return <Loading label="Systeemdiagnostiek laden"/>;
 
   if(!diagnostics)return <div className="admin-system">
+    <nav className="admin-subnav" aria-label="Systeem">
+      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+      <a className="admin-subnav__link" href="/beheer/systeem/audit">Audit</a>
+      <a className="admin-subnav__link active" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+    </nav>
     <Alert tone="danger">{error??"Systeemdiagnostiek kon niet worden geladen."}</Alert>
     <div className="admin-system__actions">
       <Button onClick={()=>void load()}>Opnieuw proberen</Button>
@@ -63,6 +68,12 @@ export function AdminSystemDiagnosticsPage(){
   const pushHealth=pushTone(diagnostics);
 
   return <div className="admin-system">
+    <nav className="admin-subnav" aria-label="Systeem">
+      <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+      <a className="admin-subnav__link" href="/beheer/systeem/audit">Audit</a>
+      <a className="admin-subnav__link active" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+    </nav>
+
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <div className="admin-system__actions">
