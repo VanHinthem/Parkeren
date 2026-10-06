@@ -145,6 +145,37 @@
 .admin-visit-detail__timeline-table th:nth-child(4),
 .admin-visit-detail__timeline-table td:nth-child(4){width:16%;}
 
+.admin-visit-detail__timeline-events-table{
+  width:100%;
+  table-layout:fixed;
+}
+
+.admin-visit-detail__timeline-events-table th:nth-child(1),
+.admin-visit-detail__timeline-events-table td:nth-child(1){width:32%;}
+.admin-visit-detail__timeline-events-table th:nth-child(2),
+.admin-visit-detail__timeline-events-table td:nth-child(2){width:28%;}
+.admin-visit-detail__timeline-events-table th:nth-child(3),
+.admin-visit-detail__timeline-events-table td:nth-child(3){width:20%;}
+.admin-visit-detail__timeline-events-table th:nth-child(4),
+.admin-visit-detail__timeline-events-table td:nth-child(4){width:12%;}
+.admin-visit-detail__timeline-events-table th:nth-child(5),
+.admin-visit-detail__timeline-events-table td:nth-child(5){width:8%;}
+
+.admin-visit-detail__timeline-events-table td{
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+.admin-visit-detail__timeline-events-table .admin-code{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+.admin-visit-detail__timeline-events-table .admin-table__actions{
+  white-space:nowrap;
+}
+
 .admin-visit-detail__scheduler-work-table th:nth-child(1),
 .admin-visit-detail__scheduler-work-table td:nth-child(1){width:23%;}
 .admin-visit-detail__scheduler-work-table th:nth-child(2),
@@ -267,6 +298,10 @@
   .admin-visit-detail__timeline-table,
   .admin-visit-detail__scheduler-work-table{
     min-width:58rem;
+  }
+
+  .admin-visit-detail__timeline-events-table{
+    min-width:46rem;
   }
 
   .admin-visit-detail__facts{
