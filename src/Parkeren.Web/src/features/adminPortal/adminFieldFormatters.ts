@@ -18,6 +18,12 @@ export function formatAdminDateTime(value:string|null,unavailable="—"){
     : unavailable;
 }
 
+export function formatAdminDateTimePrecise(value:string|null,unavailable="—"){
+  return value
+    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"medium"}).replace(",","")
+    : unavailable;
+}
+
 export function formatAdminDate(value:string|null,unavailable="—"){
   return value
     ? new Date(value).toLocaleDateString("nl-NL",{dateStyle:"medium"})
@@ -44,6 +50,11 @@ export function formatAdminBoolean(value:boolean){
 
 export function formatAdminAvailability(value:boolean){
   return value?"Beschikbaar":"Niet beschikbaar";
+}
+
+export function formatAdminJson(value:string|null,unavailable="—"){
+  if(!value)return unavailable;
+  try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}
 }
 
 export function formatAdminProviderBalance(value:number|null,unit:AdminProviderBalanceUnit|null,unavailable="Niet beschikbaar"){
