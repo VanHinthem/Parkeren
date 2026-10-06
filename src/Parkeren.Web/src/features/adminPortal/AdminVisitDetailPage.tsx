@@ -1,5 +1,9 @@
 import { useEffect,useState } from "react";
-import { getAdminVisit,stopVisit,type AdminVisitDetail } from "../../api/client";
+import {
+  getAdminVisit,
+  stopVisit,
+  type AdminVisitDetail
+} from "../../api/client";
 import { LicensePlate } from "../../components/LicensePlate";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
@@ -31,7 +35,10 @@ function operationalHealth(value:AdminOperationalHealth){
 }
 
 function dateRange(start:string|null,end:string|null,emptyStart="—",emptyEnd="—"){
-  return <span className="admin-visit-detail__time-range"><span>{formatAdminDateTime(start,emptyStart)}</span><span>{formatAdminDateTime(end,emptyEnd)}</span></span>;
+  return <span className="admin-visit-detail__time-range">
+    <span>{formatAdminDateTime(start,emptyStart)}</span>
+    <span>{formatAdminDateTime(end,emptyEnd)}</span>
+  </span>;
 }
 
 export function AdminVisitDetailPage({visitId}:{visitId:string}){
@@ -42,23 +49,34 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
 
   async function load(){
     setError(undefined);
-    try{setDetail(await getAdminVisit(visitId));}
-    catch(e){setError(e instanceof Error?e.message:"Visit-detail kon niet worden geladen.");setDetail(null);}
+    try{
+      setDetail(await getAdminVisit(visitId));
+    }catch(e){
+      setError(e instanceof Error?e.message:"Visit-detail kon niet worden geladen.");
+      setDetail(null);
+    }
   }
 
   useEffect(()=>{void load();},[visitId]);
 
   async function handleStop(){
     if(!detail||detail.visit.status!=="Active"||stopping)return;
-    setStopping(true);setError(undefined);setMessage(undefined);
+    setStopping(true);
+    setError(undefined);
+    setMessage(undefined);
     const operationId=getOrCreatePendingOperation("stop",detail.visit.id);
     try{
       const result=await stopVisit(detail.visit.id,operationId);
       if(!result.reconciliationRequired)clearPendingOperation("stop",detail.visit.id);
-      setMessage(result.reconciliationRequired?"Stoppen is aangevraagd; de providerbevestiging loopt nog.":"Parkeerbezoek is gestopt.");
+      setMessage(result.reconciliationRequired
+        ?"Stoppen is aangevraagd; de providerbevestiging loopt nog."
+        :"Parkeerbezoek is gestopt.");
       await load();
-    }catch(e){setError(e instanceof Error?e.message:"Parkeerbezoek kon niet worden gestopt.");}
-    finally{setStopping(false);}
+    }catch(e){
+      setError(e instanceof Error?e.message:"Parkeerbezoek kon niet worden gestopt.");
+    }finally{
+      setStopping(false);
+    }
   }
 
   if(detail===undefined)return <Loading label="Visit-detail laden"/>;
@@ -66,7 +84,10 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
   return <div className="admin-visit-detail">
     <div className="admin-visit-detail__toolbar">
       <a className="admin-action-link admin-action-link--muted admin-visit-detail__back" href="/beheer/bezoeken">← Terug naar bezoeken</a>
-      {detail?.visit.status==="Active"&&<Button className="admin-action--compact" variant="secondary" onClick={()=>void handleStop()} disabled={stopping}>{stopping?"Stoppen…":"Visit stoppen"}</Button>}
+      {detail?.visit.status==="Active"&&
+        <Button className="admin-action--compact" variant="secondary" onClick={()=>void handleStop()} disabled={stopping}>
+          {stopping?"Stoppen…":"Visit stoppen"}
+        </Button>}
     </div>
 
     {error&&<Alert tone="danger">{error}</Alert>}
@@ -116,7 +137,11 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                 </table></div>}
           </section>
 
-          <AdminVisitSchedulerSections timelineEvents={detail.timelineEvents} schedulerWork={detail.schedulerWork}/>
+          <AdminVisitSchedulerSections
+            timelineEvents={detail.timelineEvents}
+            schedulerWork={detail.schedulerWork}
+            providerOperations={detail.providerOperations}
+          />
 
           <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Provideroperations</h2>
