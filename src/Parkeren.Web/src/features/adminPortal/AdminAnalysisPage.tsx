@@ -73,32 +73,32 @@ export function AdminAnalysisPage(){
   }
 
   return <div className="admin-analysis">
-    <nav className="admin-analysis__tabs" aria-label="Bezoeken">
-      <a className="admin-analysis__tab" href="/beheer/bezoeken">Bezoeken</a>
-      <a className="admin-analysis__tab" href="/beheer/verbruik">Verbruik & kosten</a>
-      <a className="admin-analysis__tab active" href="/beheer/analyse">Analyse</a>
+    <nav className="admin-subnav" aria-label="Bezoeken">
+      <a className="admin-subnav__link" href="/beheer/bezoeken">Bezoeken</a>
+      <a className="admin-subnav__link" href="/beheer/verbruik">Verbruik & kosten</a>
+      <a className="admin-subnav__link active" href="/beheer/analyse">Analyse</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
 
     <section className="admin-analysis__panel">
       <div className="admin-analysis__controls">
-        <label className="admin-analysis__field">
+        <label className="admin-field">
           <span>Van</span>
           <input type="date" value={fromDate} onChange={event=>setFromDate(event.target.value)}/>
         </label>
-        <label className="admin-analysis__field">
+        <label className="admin-field">
           <span>Tot en met</span>
           <input type="date" value={toDate} onChange={event=>setToDate(event.target.value)}/>
         </label>
-        <Button onClick={()=>void load()} disabled={loading}>{loading?"Analyseren…":"Analyseren"}</Button>
+        <Button className="admin-action--field admin-analysis__run" onClick={()=>void load()} disabled={loading}>{loading?"Analyseren…":"Analyseren"}</Button>
       </div>
     </section>
 
-    <section className="admin-analysis__panel">
-      <div className="admin-analysis__switch">
-        <Button variant={mode==="user"?"primary":"secondary"} onClick={()=>setMode("user")}>Per bezoeker</Button>
-        <Button variant={mode==="plate"?"primary":"secondary"} onClick={()=>setMode("plate")}>Per kenteken</Button>
+    <section className="admin-analysis__panel admin-analysis__mode-panel">
+      <div className="admin-segmented" role="group" aria-label="Analyseweergave">
+        <button className={`admin-segmented__option ${mode==="user"?"active":""}`} type="button" aria-pressed={mode==="user"} onClick={()=>setMode("user")}>Per bezoeker</button>
+        <button className={`admin-segmented__option ${mode==="plate"?"active":""}`} type="button" aria-pressed={mode==="plate"} onClick={()=>setMode("plate")}>Per kenteken</button>
       </div>
     </section>
 
