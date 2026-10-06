@@ -179,8 +179,8 @@ export function AdminUsersOverviewPage({mode}:{mode:"users"|"vehicles"}){
 
           {loading
             ? <Loading label="Gebruikers laden"/>
-            : <div className="admin-users__table-wrap">
-                <table className="admin-users__table admin-users__table--users">
+            : <div className="admin-table-wrap">
+                <table className="admin-table admin-table--fixed admin-users__table admin-users__table--users">
                   <thead><tr><th>Gebruiker</th><th>Rol</th><th>Status</th><th>Max. gelijktijdig</th><th aria-label="Acties"/></tr></thead>
                   <tbody>
                     {users.map(user=><tr key={user.id}>
@@ -217,8 +217,8 @@ export function AdminUsersOverviewPage({mode}:{mode:"users"|"vehicles"}){
 
           {loading
             ? <Loading label="Voertuigen laden"/>
-            : <div className="admin-users__table-wrap">
-                <table className="admin-users__table admin-users__table--vehicles">
+            : <div className="admin-table-wrap">
+                <table className="admin-table admin-table--fixed admin-users__table admin-users__table--vehicles">
                   <thead><tr><th>Kenteken</th><th>Omschrijving</th><th>Status</th><th aria-label="Acties"/></tr></thead>
                   <tbody>
                     {vehicles.map(vehicle=><tr key={vehicle.id}>
