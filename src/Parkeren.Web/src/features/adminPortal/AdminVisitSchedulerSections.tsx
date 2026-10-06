@@ -376,6 +376,48 @@ function buildFunctionalSteps(
   return steps;
 }
 
+function technicalEventLabel(event:AdminVisitTimelineEvent){
+  const labels:Record<string,string>={
+    "visit.created":"Visit aangemaakt",
+    "visit.status_changed":"Visitstatus gewijzigd",
+    "visit.health_changed":"Visitgezondheid gewijzigd",
+    "visit.desired_end_change_requested":"Eindtijdwijziging aangevraagd",
+    "visit.desired_end_change_rejected":"Eindtijdwijziging afgewezen",
+    "visit.desired_end_change_applied":"Eindtijdwijziging toegepast",
+    "visit.desired_end_changed":"Eindtijd gewijzigd",
+    "scheduler_work.created":"Schedulerwerk aangemaakt",
+    "scheduler_work.claimed":"Schedulerwerk opgepakt",
+    "scheduler_work.deferred":"Schedulerwerk uitgesteld",
+    "scheduler_work.released":"Schedulerwerk opnieuw ingepland",
+    "scheduler_work.completed":"Schedulerwerk afgerond",
+    "scheduler_work.cancelled":"Schedulerwerk geannuleerd",
+    "provider_operation.created":"Provideroperatie aangemaakt",
+    "provider_operation.attempt_started":"Providerpoging gestart",
+    "provider_operation.outcome_unknown":"Provideruitkomst onbekend",
+    "provider_operation.reconciliation_started":"Providerreconciliatie gestart",
+    "provider_operation.succeeded":"Provideroperatie geslaagd",
+    "provider_operation.failed":"Provideroperatie mislukt",
+    "provider_operation.retry_ready":"Provideroperatie klaar voor retry",
+    "provider_action.created":"Provideractie aangemaakt",
+    "provider_action.state_changed":"Provideractiestatus gewijzigd",
+    "provider_action.health_changed":"Provideractiegezondheid gewijzigd",
+    "provider_action.history_changed":"Providerhistorie bijgewerkt",
+    "provider_action.timing_changed":"Provideractietijden gewijzigd"
+  };
+  return labels[event.eventType]??event.eventType;
+}
+
+function sourceLabel(event:AdminVisitTimelineEvent){
+  switch(event.sourceType){
+    case "provider_action": return "Provideractie";
+    case "provider_operation": return "Provideroperatie";
+    case "scheduler_work": return "Scheduler";
+    case "visit": return "Visit";
+    case "visit_end_time_change": return "Eindtijdwijziging";
+    default: return event.sourceType;
+  }
+}
+
 function toggleSet(current:Set<string>,key:string){
   const next=new Set(current);
   if(next.has(key))next.delete(key);else next.add(key);
@@ -394,7 +436,8 @@ export function AdminVisitSchedulerSections({
   schedulerWork:AdminVisitSchedulerWorkSummary[];
 }){
   const[openTimelineGroups,setOpenTimelineGroups]=useState<Set<string>>(()=>new Set());
-  const[openTechnicalSteps,setOpenTechnicalSteps]=useState<Set<string>>(()=>new Set());
+  const[openFunctionalSteps,setOpenFunctionalSteps]=useState<Set<string>>(()=>new Set());
+  const[openTechnicalEvents,setOpenTechnicalEvents]=useState<Set<string>>(()=>new Set());
   const[openWorkItems,setOpenWorkItems]=useState<Set<string>>(()=>new Set());
   const phases=buildVisitTimeline(visit,endTimeChanges,timelineEvents);
   const workById=new Map(schedulerWork.map(work=>[work.id,work]));
@@ -420,27 +463,41 @@ export function AdminVisitSchedulerSections({
                   {steps.length===0
                     ? <p className="admin-visit-detail__muted">Geen stappen vastgelegd voor deze gebeurtenis.</p>
                     : <table className="admin-table admin-table--fixed admin-visit-detail__timeline-steps-table">
-                        <thead><tr><th>Stap</th><th>Reden</th><th>Tijdstip</th><th aria-label="Technische details"/></tr></thead>
+                        <thead><tr><th>Stap</th><th>Reden</th><th>Tijdstip</th><th aria-label="Details"/></tr></thead>
                         <tbody>{steps.map(step=>{
-                          const technicalOpen=openTechnicalSteps.has(step.key);
+                          const stepOpen=openFunctionalSteps.has(step.key);
                           return <Fragment key={step.key}>
                             <tr>
                               <td><strong>{step.label}</strong></td>
                               <td>{step.reason}</td>
                               <td>{formatAdminDateTime(step.occurredAt)}</td>
-                              <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenTechnicalSteps(current=>toggleSet(current,step.key))}>{technicalOpen?"Verbergen ▴":"Techniek ▾"}</button></td>
+                              <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenFunctionalSteps(current=>toggleSet(current,step.key))}>{stepOpen?"Verbergen ▴":"Tonen ▾"}</button></td>
                             </tr>
-                            {technicalOpen&&<tr className="admin-table__detail-row"><td colSpan={4}><div className="admin-table__detail-panel admin-visit-detail__timeline-events">
-                              {step.events.map(event=><article className="admin-visit-detail__timeline-event" key={event.id}>
-                                <div className="admin-visit-detail__timeline-event-head"><strong className="admin-code">{event.eventType}</strong><time>{formatAdminDateTime(event.occurredAt)}</time></div>
-                                <dl className="admin-facts admin-facts--grid admin-visit-detail__technical-facts">
-                                  <div className="admin-fact"><dt>Reden</dt><dd className="admin-code">{event.reasonCode}</dd></div>
-                                  <div className="admin-fact"><dt>Bron</dt><dd className="admin-code">{event.sourceType}</dd></div>
-                                  <div className="admin-fact"><dt>Record-ID</dt><dd className="admin-code">{timelineSourceHref(event)?<a className="admin-action-link" href={timelineSourceHref(event)!}>{event.sourceId}</a>:event.sourceId}</dd></div>
-                                  <div className="admin-fact"><dt>Groep</dt><dd className="admin-code">{event.groupKey}</dd></div>
-                                </dl>
-                                {event.detailsJson&&<pre className="admin-code-block">{formatAdminJson(event.detailsJson)}</pre>}
-                              </article>)}
+                            {stepOpen&&<tr className="admin-table__detail-row"><td colSpan={4}><div className="admin-table__detail-panel">
+                              <table className="admin-table admin-table--fixed admin-visit-detail__timeline-events-table">
+                                <thead><tr><th>Event</th><th>Reden</th><th>Tijdstip</th><th>Bron</th><th aria-label="Details"/></tr></thead>
+                                <tbody>{step.events.map(event=>{
+                                  const eventOpen=openTechnicalEvents.has(event.id);
+                                  return <Fragment key={event.id}>
+                                    <tr>
+                                      <td><strong>{technicalEventLabel(event)}</strong></td>
+                                      <td className="admin-code">{event.reasonCode}</td>
+                                      <td>{formatAdminDateTime(event.occurredAt)}</td>
+                                      <td>{sourceLabel(event)}</td>
+                                      <td className="admin-table__actions"><button type="button" className="admin-action-link admin-action-link--muted" onClick={()=>setOpenTechnicalEvents(current=>toggleSet(current,event.id))}>{eventOpen?"Verbergen ▴":"Details ▾"}</button></td>
+                                    </tr>
+                                    {eventOpen&&<tr className="admin-table__detail-row"><td colSpan={5}><div className="admin-table__detail-panel">
+                                      <dl className="admin-facts admin-facts--grid admin-visit-detail__technical-facts">
+                                        <div className="admin-fact"><dt>Event type</dt><dd className="admin-code">{event.eventType}</dd></div>
+                                        <div className="admin-fact"><dt>Bron</dt><dd className="admin-code">{event.sourceType}</dd></div>
+                                        <div className="admin-fact"><dt>Record-ID</dt><dd className="admin-code">{timelineSourceHref(event)?<a className="admin-action-link" href={timelineSourceHref(event)!}>{event.sourceId}</a>:event.sourceId}</dd></div>
+                                        <div className="admin-fact"><dt>Groep</dt><dd className="admin-code">{event.groupKey}</dd></div>
+                                      </dl>
+                                      {event.detailsJson&&<pre className="admin-code-block">{formatAdminJson(event.detailsJson)}</pre>}
+                                    </div></td></tr>}
+                                  </Fragment>;
+                                })}</tbody>
+                              </table>
                             </div></td></tr>}
                           </Fragment>;
                         })}</tbody>
