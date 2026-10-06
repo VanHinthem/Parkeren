@@ -401,9 +401,14 @@ html{
 }
 
 .admin-action-link{
+  padding:0;
+  border:0;
+  background:none;
   color:var(--color-primary);
+  font:inherit;
   font-weight:650;
   text-decoration:none;
+  cursor:pointer;
 }
 
 .admin-action-link:hover{
