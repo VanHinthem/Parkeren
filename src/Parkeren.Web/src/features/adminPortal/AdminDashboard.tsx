@@ -21,20 +21,7 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminDashboard.css";
-
-function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
-    : "Tot handmatig stoppen";
-}
-
-function formatPaidMinutes(value:number|null){
-  if(value===null)return "Niet beschikbaar";
-  if(value<60)return `${value} min`;
-  const hours=Math.floor(value/60);
-  const minutes=value%60;
-  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
-}
+import { formatAdminDateTime,formatAdminDuration } from "./adminFieldFormatters";
 
 function statusLabel(status:AdminDashboardSummary["activeVisits"][number]["status"]){
   switch(status){
@@ -51,7 +38,7 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   if(!balance)return "Niet beschikbaar";
   switch(balance.unit){
     case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
-    case "Minute": return formatPaidMinutes(balance.remainingBalance);
+    case "Minute": return formatAdminDuration(balance.remainingBalance);
     case "Times": return `${balance.remainingBalance} keer`;
     default: return String(balance.remainingBalance);
   }
@@ -255,12 +242,12 @@ export function AdminDashboard(){
       <section className="admin-dashboard__metric">
         <span>Lokaal jaarbudget</span>
         <strong>{budgetUsage?.isComplete
-          ? formatPaidMinutes(budgetUsage.remainingPaidDurationMinutes)
+          ? formatAdminDuration(budgetUsage.remainingPaidDurationMinutes)
           : budgetUsage==null
             ?"Niet ingesteld"
             :"Onvolledig"}</strong>
         <small>{budgetUsage?.isComplete
-          ? `${formatPaidMinutes(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatPaidMinutes(budgetUsage.period.maximumPaidDurationMinutes)}`
+          ? `${formatAdminDuration(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatAdminDuration(budgetUsage.period.maximumPaidDurationMinutes)}`
           : budgetUsage==null
             ?"Configureer een budgetperiode"
             :"Historische parkeerregels dekken de periode niet volledig"}</small>
@@ -305,7 +292,7 @@ export function AdminDashboard(){
                       disabled={starting}
                     />
                   : <select value={durationMinutes} onChange={event=>setDurationMinutes(Number(event.target.value))} disabled={starting||durations.length===0}>
-                      {durations.map(minutes=><option key={minutes} value={minutes}>{formatPaidMinutes(minutes)}</option>)}
+                      {durations.map(minutes=><option key={minutes} value={minutes}>{formatAdminDuration(minutes)}</option>)}
                     </select>}
               </label>
 
@@ -337,7 +324,7 @@ export function AdminDashboard(){
                     <th>Kenteken</th>
                     <th>Gestart</th>
                     <th>Gepland tot</th>
-                    <th>Betaalde tijd</th>
+                    <th className="admin-duration admin-duration--table">Betaalde tijd</th>
                     <th>Status</th>
                     <th aria-label="Acties"/>
                   </tr>
@@ -351,9 +338,9 @@ export function AdminDashboard(){
                       </span>
                     </td>
                     <td><LicensePlate value={visit.licensePlate}/></td>
-                    <td>{formatDateTime(visit.startAt)}</td>
-                    <td>{formatDateTime(visit.desiredEndAt)}</td>
-                    <td>{formatPaidMinutes(visit.paidDurationMinutes)}</td>
+                    <td>{formatAdminDateTime(visit.startAt)}</td>
+                    <td>{formatAdminDateTime(visit.desiredEndAt,"Tot handmatig stoppen")}</td>
+                    <td className="admin-duration admin-duration--table">{formatAdminDuration(visit.paidDurationMinutes)}</td>
                     <td>
                       <span className={"admin-dashboard__status "+(visit.health!=="Healthy"?"admin-dashboard__status--warning":"")}>
                         {statusLabel(visit.status)}
