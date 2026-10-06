@@ -188,11 +188,12 @@ export function AdminUsagePage(){
       {report&&report.visits.length===0?<p className="admin-usage__empty">Geen afgeronde Visits in deze periode.</p>:null}
       {report&&report.visits.length>0?<div className="admin-usage__table-wrap">
         <table className="admin-usage__table">
-          <thead><tr><th>Bezoeker</th><th>Kenteken</th><th>Gestart</th><th className="admin-duration admin-duration--table">Betaalde tijd</th><th className="admin-money admin-money--table">Kosten</th><th/></tr></thead>
+          <thead><tr><th>Bezoeker</th><th>Kenteken</th><th>Gestart</th><th>Geëindigd</th><th className="admin-duration admin-duration--table">Betaalde tijd</th><th className="admin-money admin-money--table">Kosten</th><th/></tr></thead>
           <tbody>{report.visits.map(visit=><tr key={visit.visitId}>
             <td><span className="admin-identity"><strong>{visit.username}</strong></span></td>
             <td><LicensePlate value={visit.licensePlate}/></td>
             <td>{formatAdminDateTime(visit.startAt)}</td>
+            <td>{formatAdminDateTime(visit.actualEndAt)}</td>
             <td className="admin-duration admin-duration--table">{formatAdminDuration(visit.paidDurationMinutes)}</td>
             <td className={`${!visit.isComplete?"admin-usage__warning ":""}admin-money admin-money--table`}>{formatAdminMoney(visit.amount,"Onvolledig")}</td>
             <td><a className="admin-action-link" href={"/beheer/bezoeken/"+visit.visitId}>Details</a></td>
