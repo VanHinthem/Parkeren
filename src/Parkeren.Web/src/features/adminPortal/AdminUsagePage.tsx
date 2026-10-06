@@ -142,7 +142,7 @@ export function AdminUsagePage(){
 
     <section className="admin-usage__panel">
       <h2>Budgetgebruik</h2>
-      <p>Lokale berekening telt alleen betaalde tijd van afgeronde Visits van het huidige defaultproduct. Het officiële 2Park-saldo wordt voor datzelfde product als aparte bron getoond.</p>
+      <p>Lokale berekening telt alleen betaalde tijd van afgeronde Visits van het huidige parkeerproduct. Het officiële 2Park-saldo wordt voor datzelfde product als aparte bron getoond.</p>
 
       {periods?.length
         ? <label className="admin-field admin-usage__budget-period">
