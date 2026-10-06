@@ -39,7 +39,7 @@ const sections: AdminSection[] = [
     path: "/beheer/bezoeken",
     label: "Bezoeken",
     title: "Bezoeken",
-    subtitle: "Actieve en afgeronde Visits, planning en operationele details."
+    subtitle: "Actieve bezoeken, historie, details, verbruik en kosten."
   },
   {
     path: "/beheer/gebruikers",
@@ -57,80 +57,149 @@ const sections: AdminSection[] = [
     path: "/beheer/provider",
     label: "Provider & reconciliatie",
     title: "Provider & reconciliatie",
-    subtitle: "2Park-producten, provideracties, afwijkingen en recoverycontext."
+    subtitle: "2Park-status, provideracties, operations, discrepancies en herstelcontext."
   },
   {
     path: "/beheer/systeem",
     label: "Systeem",
     title: "Systeem",
-    subtitle: "Diagnostiek, audit en technische beheerinformatie."
+    subtitle: "Algemene instellingen, notificaties, diagnostiek, scheduler en audit."
   }
 ];
 
-function sectionForPath(path:string){
-  if(path.startsWith("/beheer/gebruikers/")||path==="/beheer/voertuigen")return sections.find(section=>section.path==="/beheer/gebruikers")!;
-  if(path.startsWith("/beheer/bezoeken/"))return sections.find(section=>section.path==="/beheer/bezoeken")!;
-  if(path.startsWith("/beheer/configuratie"))return sections.find(section=>section.path==="/beheer/configuratie")!;
-  if(path.startsWith("/beheer/provider"))return sections.find(section=>section.path==="/beheer/provider")!;
-  if(path.startsWith("/beheer/systeem"))return sections.find(section=>section.path==="/beheer/systeem")!;
-  return sections.find(section=>section.path===path)??sections[0];
+function resolveSection(path: string): AdminSection {
+  if (path === "/beheer" || path === "/beheer/") return sections[0];
+  if (path === "/beheer/verbruik" || path === "/beheer/analyse" || path === "/beheer/historie") return sections[1];
+  if (path === "/beheer/voertuigen" || path.startsWith("/beheer/voertuigen/")) return sections[2];
+  return sections.find(section => section.path !== "/beheer" && path.startsWith(section.path)) ?? sections[0];
 }
 
-export function AdminPortal({currentPath,username,onNavigate}:Props){
-  const section=sectionForPath(currentPath);
+export function AdminPortal({ currentPath, username, onNavigate }: Props) {
+  const section = resolveSection(currentPath);
 
-  function interceptNavigation(event:MouseEvent<HTMLElement>){
-    const target=event.target as HTMLElement;
-    const anchor=target.closest("a");
-    if(!anchor)return;
-    const href=anchor.getAttribute("href");
-    if(!href||!href.startsWith("/"))return;
+  function handleNavigation(event: MouseEvent<HTMLElement>) {
+    const anchor = (event.target as HTMLElement).closest("a");
+    if (!anchor) return;
+
+    const url = new URL(anchor.href, window.location.origin);
+    if (url.origin !== window.location.origin) return;
+
     event.preventDefault();
-    onNavigate(href);
+    if (url.pathname === currentPath) return;
+
+    history.pushState({}, "", url.pathname);
+    onNavigate(url.pathname);
   }
 
-  let content;
-  if(currentPath==="/beheer")content=<AdminDashboard/>;
-  else if(currentPath==="/beheer/bezoeken")content=<AdminVisitsPage/>;
-  else if(currentPath.startsWith("/beheer/bezoeken/"))content=<AdminVisitDetailPage visitId={decodeURIComponent(currentPath.slice("/beheer/bezoeken/".length))}/>;
-  else if(currentPath==="/beheer/gebruikers")content=<AdminUsersOverviewPage mode="users"/>;
-  else if(currentPath==="/beheer/voertuigen")content=<AdminUsersOverviewPage mode="vehicles"/>;
-  else if(currentPath.startsWith("/beheer/gebruikers/"))content=<AdminUserDetailPage userId={decodeURIComponent(currentPath.slice("/beheer/gebruikers/".length))}/>;
-  else if(currentPath==="/beheer/provider")content=<AdminProviderPage/>;
-  else if(currentPath==="/beheer/provider/reconciliatie")content=<AdminProviderDiscrepanciesPage/>;
-  else if(currentPath==="/beheer/configuratie"||currentPath==="/beheer/configuratie/parkeerregels")content=<AdminParkingRulesPage/>;
-  else if(currentPath==="/beheer/configuratie/tarieven")content=<AdminFinanceConfigPage mode="tariffs"/>;
-  else if(currentPath==="/beheer/configuratie/budgetten")content=<AdminFinanceConfigPage mode="budgets"/>;
-  else if(currentPath==="/beheer/verbruik")content=<AdminUsagePage/>;
-  else if(currentPath==="/beheer/analyse")content=<AdminAnalysisPage/>;
-  else if(currentPath==="/beheer/systeem")content=<AdminSystemPage/>;
-  else if(currentPath==="/beheer/systeem/diagnostiek")content=<AdminSystemDiagnosticsPage/>;
-  else if(currentPath==="/beheer/systeem/audit")content=<AdminSystemAuditPage/>;
-  else content=<p>Deze beheerpagina is nog niet beschikbaar.</p>;
+  return (
+    <div className="admin-portal" onClick={handleNavigation}>
+      <aside className="admin-portal__sidebar">
+        <a className="admin-portal__brand" href="/beheer">
+          <img src="/pwa-192x192.png" alt="" />
+          <span className="admin-portal__brand-copy">
+            <strong>Parkeren</strong>
+            <small>Beheerportaal</small>
+          </span>
+        </a>
 
-  return <div className="admin-portal" onClick={interceptNavigation}>
-    <aside className="admin-portal__sidebar">
-      <a className="admin-portal__brand" href="/beheer">
-        <img src="/icons/icon-192.png" alt=""/>
-        <span className="admin-portal__brand-copy"><strong>Parkeren</strong><small>Beheerportal</small></span>
-      </a>
-      <nav className="admin-portal__nav" aria-label="Beheer">
-        {sections.map(item=><a className={section.path===item.path?"active":""} href={item.path} key={item.path}>{item.label}</a>)}
-      </nav>
-      <div className="admin-portal__sidebar-footer">
-        <div className="admin-portal__user"><strong>{username}</strong><small>Beheerder</small></div>
-        <div className="admin-portal__quick-links"><a href="/">PWA openen</a><a href="/beheer/snelbeheer">Snelbeheer</a></div>
-      </div>
-    </aside>
+        <nav className="admin-portal__nav" aria-label="Beheernavigatie">
+          {sections.map(item => (
+            <a
+              key={item.path}
+              href={item.path}
+              className={section.path === item.path ? "active" : ""}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
 
-    <main className="admin-portal__main">
-      <div className="admin-portal__content">
-        <header className="admin-portal__heading">
-          <h1>{section.title}</h1>
-          <p>{section.subtitle}</p>
-        </header>
-        {content}
-      </div>
-    </main>
-  </div>;
+        <footer className="admin-portal__sidebar-footer">
+          <div className="admin-portal__user">
+            <strong>{username}</strong>
+            <small>Beheerder</small>
+          </div>
+          <div className="admin-portal__quick-links">
+            <a href="/">PWA openen</a>
+            <a href="/snelbeheer">Snelbeheer</a>
+          </div>
+        </footer>
+      </aside>
+
+      <main className="admin-portal__main">
+        <div className="admin-portal__content">
+          <header className="admin-portal__heading">
+            <h1>{section.title}</h1>
+            <p>{section.subtitle}</p>
+          </header>
+
+          {section.path === "/beheer" ? (
+            <AdminDashboard />
+          ) : section.path === "/beheer/bezoeken" ? (
+            currentPath === "/beheer/verbruik" ? (
+              <AdminUsagePage />
+            ) : currentPath === "/beheer/analyse" ? (
+              <AdminAnalysisPage />
+            ) : currentPath.startsWith("/beheer/bezoeken/") ? (
+              <AdminVisitDetailPage visitId={currentPath.slice("/beheer/bezoeken/".length)} />
+            ) : (
+              <AdminVisitsPage />
+            )
+          ) : section.path === "/beheer/gebruikers" ? (
+            currentPath === "/beheer/voertuigen" ? (
+              <AdminUsersOverviewPage mode="vehicles" />
+            ) : currentPath.startsWith("/beheer/gebruikers/") ? (
+              <AdminUserDetailPage userId={currentPath.slice("/beheer/gebruikers/".length)} />
+            ) : (
+              <AdminUsersOverviewPage mode="users" />
+            )
+          ) : section.path === "/beheer/configuratie" ? (
+            currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
+              <AdminParkingRulesPage />
+            ) : currentPath === "/beheer/configuratie/tarieven" ? (
+              <AdminFinanceConfigPage mode="tariffs" />
+            ) : currentPath === "/beheer/configuratie/budgetten" ? (
+              <AdminFinanceConfigPage mode="budgets" />
+            ) : (
+              <section className="admin-portal__panel admin-portal__placeholder">
+                <h2>{section.title}</h2>
+                <p>Deze configuratiefunctie wordt in een volgende verticale slice toegevoegd.</p>
+              </section>
+            )
+          ) : section.path === "/beheer/provider" ? (
+            currentPath === "/beheer/provider/afwijkingen" ? (
+              <AdminProviderDiscrepanciesPage />
+            ) : (
+              <AdminProviderPage />
+            )
+          ) : section.path === "/beheer/systeem" ? (
+            currentPath === "/beheer/systeem" ? (
+              <>
+                <section className="admin-portal__panel admin-portal__placeholder">
+                  <h2>Beheeraudit</h2>
+                  <p>Bekijk recente administratieve mutaties met actor, target en veilige context.</p>
+                  <p><a href="/beheer/systeem/audit">Auditlog openen</a></p>
+                </section>
+                <AdminSystemPage />
+              </>
+            ) : currentPath === "/beheer/systeem/diagnostiek" ? (
+              <AdminSystemDiagnosticsPage />
+            ) : currentPath === "/beheer/systeem/audit" ? (
+              <AdminSystemAuditPage />
+            ) : (
+              <section className="admin-portal__panel admin-portal__placeholder">
+                <h2>{section.title}</h2>
+                <p>Deze systeemfunctie wordt in een volgende verticale slice toegevoegd.</p>
+              </section>
+            )
+          ) : (
+            <section className="admin-portal__panel admin-portal__placeholder">
+              <h2>{section.title}</h2>
+              <p>Deze beheerfunctie wordt in een volgende verticale slice toegevoegd.</p>
+            </section>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 }
