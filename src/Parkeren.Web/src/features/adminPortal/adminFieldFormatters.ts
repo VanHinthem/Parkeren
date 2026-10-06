@@ -14,6 +14,12 @@ export function formatAdminDateTime(value:string|null,unavailable="—"){
     : unavailable;
 }
 
+export function formatAdminDate(value:string|null,unavailable="—"){
+  return value
+    ? new Date(value).toLocaleDateString("nl-NL",{dateStyle:"medium"})
+    : unavailable;
+}
+
 export function formatAdminNumber(value:number){
   return new Intl.NumberFormat("nl-NL").format(value);
 }
