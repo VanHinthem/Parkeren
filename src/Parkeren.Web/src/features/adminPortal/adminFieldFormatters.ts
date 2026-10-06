@@ -35,6 +35,10 @@ export function formatAdminMoney(value:number|null,unavailable="Niet beschikbaar
     : new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(value);
 }
 
+export function formatAdminBoolean(value:boolean){
+  return value?"Ja":"Nee";
+}
+
 export function formatAdminVisitStatus(status:AdminVisitStatus){
   switch(status){
     case "Starting": return "Wordt gestart";
