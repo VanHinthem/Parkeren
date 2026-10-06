@@ -12,13 +12,13 @@
 }
 .license-plate__nl{
   display:grid!important;
-  flex:0 0 1.3rem;
+  flex:0 0 .75rem;
   place-items:center;
   background:#1769aa;
   color:#fff;
-  font-size:.48rem;
+  font-size:.42rem;
   font-weight:750;
-  letter-spacing:.02em;
+  letter-spacing:.01em;
 }
 .license-plate strong{
   flex:1;
