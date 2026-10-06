@@ -47,3 +47,25 @@
   text-align:right;
   font-variant-numeric:tabular-nums;
 }
+
+/* Shared 2Park-product selector/context layout. Keep the editable control and
+   readonly provider context aligned identically across configuration tabs. */
+.admin-rules .admin-rules__panel > .admin-rules__grid,
+.admin-finance .admin-finance__product-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:1rem;
+  align-items:end;
+}
+
+.admin-rules .admin-rules__panel > .admin-rules__grid > .admin-readonly-value,
+.admin-finance .admin-finance__product-grid > .admin-readonly-value{
+  align-self:end;
+}
+
+@media(max-width:850px){
+  .admin-rules .admin-rules__panel > .admin-rules__grid,
+  .admin-finance .admin-finance__product-grid{
+    grid-template-columns:1fr;
+  }
+}
