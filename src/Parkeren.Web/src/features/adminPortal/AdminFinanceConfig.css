@@ -78,18 +78,27 @@
   font-weight:700;
 }
 
-.admin-finance__tariff-table{
+.admin-finance__tariff-table,
+.admin-finance__budget-table{
   min-width:46rem;
 }
 
 .admin-finance__tariff-table th:nth-child(1),
-.admin-finance__tariff-table td:nth-child(1){width:30%;}
+.admin-finance__tariff-table td:nth-child(1),
+.admin-finance__budget-table th:nth-child(1),
+.admin-finance__budget-table td:nth-child(1){width:30%;}
 .admin-finance__tariff-table th:nth-child(2),
-.admin-finance__tariff-table td:nth-child(2){width:30%;}
+.admin-finance__tariff-table td:nth-child(2),
+.admin-finance__budget-table th:nth-child(2),
+.admin-finance__budget-table td:nth-child(2){width:30%;}
 .admin-finance__tariff-table th:nth-child(3),
-.admin-finance__tariff-table td:nth-child(3){width:22%;}
+.admin-finance__tariff-table td:nth-child(3),
+.admin-finance__budget-table th:nth-child(3),
+.admin-finance__budget-table td:nth-child(3){width:22%;}
 .admin-finance__tariff-table th:nth-child(4),
-.admin-finance__tariff-table td:nth-child(4){width:18%;}
+.admin-finance__tariff-table td:nth-child(4),
+.admin-finance__budget-table th:nth-child(4),
+.admin-finance__budget-table td:nth-child(4){width:18%;}
 
 .admin-finance__empty{
   margin:0;
