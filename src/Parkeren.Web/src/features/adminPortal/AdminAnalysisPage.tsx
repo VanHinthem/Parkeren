@@ -1,8 +1,10 @@
 import { Fragment,useEffect,useMemo,useState } from "react";
 import { getAdminUsageAnalysis,type AdminUsageAnalysis,type AdminUsageAnalysisGroup } from "../../api/client";
+import { LicensePlate } from "../../components/LicensePlate";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import { formatAdminDateTime,formatAdminDuration,formatAdminMoney,formatAdminNumber } from "./adminFieldFormatters";
 import "./AdminAnalysisPage.css";
 
 type Mode="user"|"plate";
@@ -10,22 +12,6 @@ type Mode="user"|"plate";
 function dateInput(date:Date){
   const pad=(value:number)=>String(value).padStart(2,"0");
   return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
-}
-
-function formatMinutes(value:number|null){
-  if(value===null)return "Onvolledig";
-  if(value<60)return `${value} min`;
-  const hours=Math.floor(value/60);
-  const minutes=value%60;
-  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
-}
-
-function formatMoney(value:number|null){
-  return value===null?"Onvolledig":new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(value);
-}
-
-function formatDateTime(value:string){
-  return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"});
 }
 
 export function AdminAnalysisPage(){
@@ -112,36 +98,42 @@ export function AdminAnalysisPage(){
                 <thead>
                   <tr>
                     <th>{mode==="user"?"Bezoeker":"Kenteken"}</th>
-                    <th>Visits</th>
-                    <th>Betaalde tijd</th>
-                    <th>Kosten</th>
-                    <th>Compleet</th>
-                    <th/>
+                    <th className="admin-number admin-number--table">Visits</th>
+                    <th className="admin-duration admin-duration--table">Betaalde tijd</th>
+                    <th className="admin-money admin-money--table">Kosten</th>
+                    <th>Berekening</th>
+                    <th aria-label="Details"/>
                   </tr>
                 </thead>
                 <tbody>
                   {groups.map(group=><Fragment key={group.key}>
-                    <tr key={group.key}>
+                    <tr>
                       <td>
                         <span className="admin-analysis__label">
-                          <strong>{group.label}</strong>
+                          {mode==="plate"?<LicensePlate value={group.label}/>:<strong>{group.label}</strong>}
                           {group.isArchived&&<span className="admin-analysis__archived">Gearchiveerd</span>}
                         </span>
                       </td>
-                      <td>{group.visitCount}</td>
-                      <td className={group.paidDurationMinutes===null?"admin-analysis__warning":undefined}>{formatMinutes(group.paidDurationMinutes)}</td>
-                      <td className={group.amount===null?"admin-analysis__warning":undefined}>{formatMoney(group.amount)}</td>
-                      <td>{group.isComplete?"Ja":"Nee"}</td>
-                      <td><button className="admin-analysis__expand" type="button" onClick={()=>toggle(group)}>{expanded===group.key?"Verbergen":"Bekijk Visits"}</button></td>
+                      <td className="admin-number admin-number--table">{formatAdminNumber(group.visitCount)}</td>
+                      <td className={`${group.paidDurationMinutes===null?"admin-analysis__warning ":""}admin-duration admin-duration--table`}>{formatAdminDuration(group.paidDurationMinutes,"Onvolledig")}</td>
+                      <td className={`${group.amount===null?"admin-analysis__warning ":""}admin-money admin-money--table`}>{formatAdminMoney(group.amount,"Onvolledig")}</td>
+                      <td><span className={`admin-status ${group.isComplete?"admin-status--active":"admin-status--warning"}`}>{group.isComplete?"Compleet":"Onvolledig"}</span></td>
+                      <td><button className="admin-analysis__expand" type="button" aria-expanded={expanded===group.key} onClick={()=>toggle(group)}>{expanded===group.key?"Verbergen":"Tonen"}</button></td>
                     </tr>
-                    {expanded===group.key&&<tr className="admin-analysis__details" key={group.key+"-details"}>
+                    {expanded===group.key&&<tr className="admin-analysis__details">
                       <td colSpan={6}>
                         <div className="admin-analysis__visit-list">
+                          <div className="admin-analysis__visit admin-analysis__visit--header" aria-hidden="true">
+                            <span>Bezoeker</span><span>Kenteken</span><span>Gestart</span><span>Geëindigd</span><span>Betaalde tijd</span><span>Kosten</span><span/>
+                          </div>
                           {group.visits.map(visit=><div className="admin-analysis__visit" key={visit.visitId}>
-                            <div><strong>{visit.username}</strong><small> · {visit.licensePlate}</small></div>
-                            <div><small>{formatDateTime(visit.startAt)}</small></div>
-                            <div><small>{formatMinutes(visit.paidDurationMinutes)} · {formatMoney(visit.amount)}</small></div>
-                            <a href={"/beheer/bezoeken/"+visit.visitId}>Visit openen</a>
+                            <span className="admin-identity"><strong>{visit.username}</strong></span>
+                            <span><LicensePlate value={visit.licensePlate}/></span>
+                            <span>{formatAdminDateTime(visit.startAt)}</span>
+                            <span>{formatAdminDateTime(visit.actualEndAt)}</span>
+                            <span className="admin-duration admin-duration--table">{formatAdminDuration(visit.paidDurationMinutes,"Onvolledig")}</span>
+                            <span className="admin-money admin-money--table">{formatAdminMoney(visit.amount,"Onvolledig")}</span>
+                            <a className="admin-action-link" href={"/beheer/bezoeken/"+visit.visitId}>Details</a>
                           </div>)}
                         </div>
                       </td>
