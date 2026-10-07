@@ -156,8 +156,11 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
             Assert.Equal(WebPushSendResult.RetryRequired, result);
             Assert.Contains(
-                $"Web Push delivery failed for subscription {subscriptionId} and user {user.Id}.",
-                logger.Entries);
+                logger.Entries,
+                entry => entry.Contains(
+                    $"Web Push delivery failed for subscription {subscriptionId} and user {user.Id}.",
+                    StringComparison.Ordinal)
+                    && entry.Contains("Failure type:", StringComparison.Ordinal));
             Assert.All(logger.Exceptions, exception => Assert.Null(exception));
             Assert.DoesNotContain(sensitiveDetails, string.Join(Environment.NewLine, logger.Entries), StringComparison.Ordinal);
         }
