@@ -248,7 +248,9 @@ export function VisitDetailPage({
         onStop={stopManagedVisit}
         onExtend={extendManagedVisit}
       />
-      <Button variant="secondary" onClick={onBack}>← {backLabel}</Button>
+      <Button className="visit-detail__back" variant="secondary" onClick={onBack}>
+        ← {backLabel}
+      </Button>
     </div>;
   }
 
