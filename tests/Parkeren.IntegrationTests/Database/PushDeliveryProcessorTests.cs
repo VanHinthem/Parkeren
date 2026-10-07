@@ -168,7 +168,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         {
             await using var cleanup = fixture.CreateDbContext();
             await cleanup.PushSubscriptions.Where(x => x.Id == subscriptionId).ExecuteDeleteAsync(cancellationToken);
-            await cleanup.Users.Where(x => x.Id == user.Id || x.Id == admin.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
         }
     }
 
@@ -277,7 +277,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
         await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
-        await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Users.Where(x => x.Id == user.Id || x.Id == admin.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
 
