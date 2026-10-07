@@ -13,6 +13,9 @@ type Props={
   disabledMessage?:string;
   maxDurationMinutes?:number|null;
   allowOpenEnded?:boolean;
+  ownerUserId?:string;
+  embedded?: boolean;
+  hideHeading?: boolean;
 };
 
 function formatMinutes(minutes:number|null){
@@ -48,7 +51,10 @@ export function StartVisitCard({
   disabled=false,
   disabledMessage,
   maxDurationMinutes=240,
-  allowOpenEnded=false
+  allowOpenEnded=false,
+  ownerUserId,
+  embedded = false,
+  hideHeading = false
 }:Props){
   const[selectedVehicleId,setSelectedVehicleId]=useState(vehicles[0]?.id??"");
   const[startAt]=useState(()=>new Date());
@@ -89,7 +95,7 @@ export function StartVisitCard({
     setPreviewing(true);
     setPreviewFailure(null);
     const timer=window.setTimeout(()=>{
-      previewVisitStart(selectedVehicleId,desiredEndAt)
+      previewVisitStart(selectedVehicleId,desiredEndAt,ownerUserId)
         .then(result=>{
           if(cancelled)return;
           setPreview(result);
@@ -108,19 +114,24 @@ export function StartVisitCard({
       cancelled=true;
       window.clearTimeout(timer);
     };
-  },[desiredEndAt,disabled,selectedVehicleId]);
+  },[desiredEndAt,disabled,ownerUserId,selectedVehicleId]);
 
   const vehicle=vehicles.find(item=>item.id===selectedVehicleId)??vehicles[0];
   const validEndAt=isVisitEndAtAllowed(startAt,desiredEndAt,allowOpenEnded,maxDurationMinutes);
   const policyError=previewError(preview);
   const canStart=Boolean(vehicle)&&validEndAt&&!previewing&&!previewFailure&&preview?.isAllowed===true;
 
-  return <Card>
-    <div className="start-visit">
-      <div>
-        <h2>Parkeren starten</h2>
-        <p>{vehicle?"Kies de auto waarvoor je wilt parkeren.":"Er is geen auto aan je account toegewezen."}</p>
-      </div>
+  const content=<div className="start-visit">
+      {!hideHeading ? (
+        <div>
+          <h2>Parkeren starten</h2>
+          <p>
+            {vehicle
+              ? "Kies de auto waarvoor je wilt parkeren."
+              : "Er is geen auto aan je account toegewezen."}
+          </p>
+        </div>
+      ) : null}
 
       {vehicles.length>1
         ? <label className="start-visit__field">
@@ -162,8 +173,9 @@ export function StartVisitCard({
           void onStart(vehicle.id,desiredEndAt);
         }}
       >
-        {starting?"Starten…":"Start parkeren"}
+        {starting ? "Starten…" : "Start parkeren"}
       </button>
-    </div>
-  </Card>;
+    </div>;
+
+  return embedded?content:<Card>{content}</Card>;
 }

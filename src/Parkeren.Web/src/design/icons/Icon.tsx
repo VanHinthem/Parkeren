@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-export type IconName = "parking" | "home" | "clock" | "car" | "settings" | "bell" | "users" | "trash";
+export type IconName = "parking" | "home" | "clock" | "car" | "settings" | "bell" | "users" | "trash" | "plus";
 
 const paths: Record<IconName, React.ReactNode> = {
   parking: <><path d="M5 20v-9l2-5h10l2 5v9"/><path d="M7 14h10M8 18h.01M16 18h.01M8 6l1-2h6l1 2"/></>,
@@ -10,7 +10,8 @@ const paths: Record<IconName, React.ReactNode> = {
   settings: <><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.25 0) scale(.8)"/></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,
   users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
-  trash: <><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></>
+  trash: <><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></>,
+  plus: <><path d="M12 5v14"/><path d="M5 12h14"/></>
 };
 
 export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
