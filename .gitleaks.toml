@@ -1,0 +1,11 @@
+title = "Parkeren gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret browser localStorage key used for pending operation ids"
+regexTarget = "match"
+regexes = [
+  '''parkeren\.pending-operations\.v1'''
+]
