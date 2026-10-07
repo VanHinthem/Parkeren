@@ -207,12 +207,10 @@ export function VisitDetailPage({
     };
 
     return <div className="visit-live-detail">
-      <Card>
-        <div className="visit-detail__owner">
-          <span>Parkeeractie van</span>
-          <strong>{adminSummary.username}</strong>
-        </div>
-      </Card>
+      <div className="visit-live-detail__heading">
+        <h2>Lopende parkeeractie</h2>
+        <p>Parkeeractie van <strong>{adminSummary.username}</strong></p>
+      </div>
       <ActiveVisitCard
         vehicle={adminSummary.licensePlate}
         elapsed={elapsedSince(visit.startAt,now)}
