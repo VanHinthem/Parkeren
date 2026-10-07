@@ -6,19 +6,17 @@ import {
   getAdminUserParkingPolicy,
   getAssignedVehicles,
   getUsers,
-  previewVisitStart,
   startVisit,
   stopVisit,
   type AdminBudgetUsage,
   type AdminDashboardSummary,
   type AdminParkingPolicySummary,
   type AdminProviderStatus,
-  type StartVisitPreview,
   type UserSummary,
   type VehicleSummary
 } from "../../api/client";
 import { LicensePlate } from "../../components/LicensePlate";
-import { createDefaultVisitEndAt,isVisitEndAtAllowed,VisitEndTimeField } from "../../components/VisitEndTimeField";
+import { StartVisitCard } from "../../components/StartVisitCard";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
@@ -47,26 +45,6 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   }
 }
 
-function formatPreviewMinutes(minutes:number|null){
-  if(minutes===null)return null;
-  const hours=Math.floor(minutes/60);
-  const rest=minutes%60;
-  if(hours===0)return `${rest} min`;
-  if(rest===0)return `${hours} uur`;
-  return `${hours} uur ${rest} min`;
-}
-
-function previewValidationMessage(preview:StartVisitPreview|null){
-  if(!preview||preview.isAllowed)return undefined;
-  switch(preview.rejectionReason){
-    case "OpenEndedNotAllowed": return "Open einde is niet toegestaan volgens het parkeerbeleid van deze bezoeker.";
-    case "MaxVisitElapsedDurationExceeded": return "Deze eindtijd overschrijdt de maximale duur van het parkeerbezoek.";
-    case "MaxPaidParkingDurationExceeded": return "Deze eindtijd overschrijdt de maximale betaalde parkeertijd van deze bezoeker.";
-    case "EndNotAfterStart": return "De eindtijd moet na de starttijd liggen.";
-    default: return "Deze eindtijd is niet toegestaan volgens het parkeerbeleid van deze bezoeker.";
-  }
-}
-
 export function AdminDashboard(){
   const[dashboard,setDashboard]=useState<AdminDashboardSummary>();
   const[providerStatus,setProviderStatus]=useState<AdminProviderStatus>();
@@ -74,13 +52,7 @@ export function AdminDashboard(){
   const[users,setUsers]=useState<UserSummary[]>([]);
   const[selectedUserId,setSelectedUserId]=useState("");
   const[vehicles,setVehicles]=useState<VehicleSummary[]>();
-  const[selectedVehicleId,setSelectedVehicleId]=useState("");
   const[policy,setPolicy]=useState<AdminParkingPolicySummary|null>();
-  const[startAt]=useState(()=>new Date());
-  const[desiredEndAt,setDesiredEndAt]=useState<string|null>(()=>createDefaultVisitEndAt(startAt,240));
-  const[startPreview,setStartPreview]=useState<StartVisitPreview|null>(null);
-  const[previewing,setPreviewing]=useState(false);
-  const[previewError,setPreviewError]=useState<string>();
   const[loading,setLoading]=useState(true);
   const[error,setError]=useState<string>();
   const[message,setMessage]=useState<string>();
@@ -122,7 +94,6 @@ export function AdminDashboard(){
     if(!selectedUserId){
       setVehicles([]);
       setPolicy(null);
-      setSelectedVehicleId("");
       return;
     }
 
@@ -134,111 +105,38 @@ export function AdminDashboard(){
       getAdminUserParkingPolicy(selectedUserId)
     ]).then(([assigned,parkingPolicy])=>{
       if(cancelled)return;
-      const activeVehicles=assigned.filter(vehicle=>vehicle.isActive);
-      setVehicles(activeVehicles);
+      setVehicles(assigned.filter(vehicle=>vehicle.isActive));
       setPolicy(parkingPolicy);
-      if(parkingPolicy){
-        setDesiredEndAt(parkingPolicy.allowOpenEndedVisits
-          ? null
-          : createDefaultVisitEndAt(
-              startAt,
-              parkingPolicy.maxVisitElapsedDurationMinutes
-            ));
-      }
-      setSelectedVehicleId(current=>activeVehicles.some(vehicle=>vehicle.id===current)?current:(activeVehicles[0]?.id??""));
     }).catch(e=>{
       if(cancelled)return;
       setVehicles([]);
       setPolicy(null);
-      setSelectedVehicleId("");
       setError(e instanceof Error?e.message:"Startgegevens voor de bezoeker konden niet worden geladen.");
     });
 
     return()=>{cancelled=true;};
   },[selectedUserId]);
 
-  const maxDuration=policy?.maxVisitElapsedDurationMinutes??null;
-
-  useEffect(()=>{
-    if(policy===undefined||policy===null)return;
-    if(desiredEndAt===null){
-      if(!policy.allowOpenEndedVisits)
-        setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDuration));
-      return;
-    }
-    if(!isVisitEndAtAllowed(startAt,desiredEndAt,policy.allowOpenEndedVisits,maxDuration))
-      setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDuration));
-  },[desiredEndAt,maxDuration,policy,startAt]);
-
-  useEffect(()=>{
-    if(!selectedUserId||!selectedVehicleId||policy===undefined||policy===null){
-      setStartPreview(null);
-      setPreviewError(undefined);
-      setPreviewing(false);
-      return;
-    }
-
-    let cancelled=false;
-    setPreviewing(true);
-    setPreviewError(undefined);
-    const timer=window.setTimeout(()=>{
-      previewVisitStart(selectedVehicleId,desiredEndAt,selectedUserId)
-        .then(result=>{
-          if(cancelled)return;
-          setStartPreview(result);
-        })
-        .catch(e=>{
-          if(cancelled)return;
-          setStartPreview(null);
-          setPreviewError(e instanceof Error?e.message:"Parkeeractie kon niet worden gecontroleerd.");
-        })
-        .finally(()=>{
-          if(!cancelled)setPreviewing(false);
-        });
-    },250);
-
-    return()=>{
-      cancelled=true;
-      window.clearTimeout(timer);
-    };
-  },[desiredEndAt,policy,selectedUserId,selectedVehicleId]);
-
   const attentionCount=dashboard?.activeVisits.filter(visit=>visit.health!=="Healthy").length??0;
   const selectedUserActiveCount=dashboard?.activeVisits.filter(visit=>visit.userId===selectedUserId).length??0;
   const capacityFull=dashboard!==undefined&&dashboard.used>=dashboard.total;
   const userLimitReached=policy!==undefined&&policy!==null&&selectedUserActiveCount>=policy.maxConcurrentVisits;
-  const startDisabled=
-    starting||
-    !selectedUserId||
-    !selectedVehicleId||
-    policy===undefined||
-    policy===null||
-    vehicles===undefined||
-    vehicles.length===0||
-    !isVisitEndAtAllowed(startAt,desiredEndAt,policy?.allowOpenEndedVisits===true,maxDuration)||
-    previewing||
-    previewError!==undefined||
-    startPreview?.isAllowed!==true||
-    capacityFull||
-    userLimitReached;
 
   let startDisabledMessage:string|undefined;
   if(capacityFull)startDisabledMessage=`Alle ${dashboard?.total??0} parkeerplaatsen zijn in gebruik.`;
   else if(userLimitReached)startDisabledMessage=`Deze bezoeker heeft het maximum van ${policy?.maxConcurrentVisits??0} actieve parkeeractie(s) bereikt.`;
-  else if(policy===null)startDisabledMessage="Het parkeerbeleid voor deze bezoeker is niet beschikbaar.";
-  else if(vehicles!==undefined&&vehicles.length===0)startDisabledMessage="Deze bezoeker heeft geen actief toegewezen voertuig.";
 
-  async function handleStart(){
-    if(startDisabled||!selectedUserId||!selectedVehicleId)return;
+  async function handleStart(vehicleId:string,desiredEndAt:string|null){
+    if(starting||!selectedUserId||capacityFull||userLimitReached)return;
     setStarting(true);
     setError(undefined);
     setMessage(undefined);
 
-    const logicalKey=`${selectedUserId}:${selectedVehicleId}:${desiredEndAt??"open"}`;
+    const logicalKey=`${selectedUserId}:${vehicleId}:${desiredEndAt??"open"}`;
     const operationId=getOrCreatePendingOperation("start",logicalKey);
 
     try{
-      const result=await startVisit(selectedVehicleId,desiredEndAt,operationId,selectedUserId);
+      const result=await startVisit(vehicleId,desiredEndAt,operationId,selectedUserId);
       if(!result.reconciliationRequired)clearPendingOperation("start",logicalKey);
       setMessage(result.reconciliationRequired
         ?"Parkeren is aangevraagd; de providerbevestiging loopt nog."
@@ -331,39 +229,24 @@ export function AdminDashboard(){
                 </select>
               </label>
 
-              <label className="admin-dashboard__field">
-                <span>Voertuig</span>
-                <select value={selectedVehicleId} onChange={event=>setSelectedVehicleId(event.target.value)} disabled={starting||vehicles===undefined||vehicles.length===0}>
-                  {(vehicles??[]).map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}
-                </select>
-              </label>
-
-              {policy
-                ? <VisitEndTimeField
-                    startAt={startAt}
-                    value={desiredEndAt}
-                    onChange={setDesiredEndAt}
-                    allowOpenEnded={policy.allowOpenEndedVisits}
-                    maxDurationMinutes={policy.maxVisitElapsedDurationMinutes}
-                    disabled={starting}
-                  />
-                : null}
-
-              {previewing&&<p className="admin-dashboard__hint">Parkeerduur controleren…</p>}
-              {!previewing&&startPreview?.isAllowed&&startPreview.paidDurationMinutes!==null
-                ? <p className="admin-dashboard__hint">
-                    Betaalde parkeertijd: <strong>{formatPreviewMinutes(startPreview.paidDurationMinutes)}</strong>
-                    {startPreview.elapsedDurationMinutes!==null
-                      ? <> · Totale duur: <strong>{formatPreviewMinutes(startPreview.elapsedDurationMinutes)}</strong></>
-                      : null}
-                  </p>
-                : null}
-              {previewValidationMessage(startPreview)&&<p className="admin-dashboard__hint admin-dashboard__hint--error">{previewValidationMessage(startPreview)}</p>}
-              {previewError&&<p className="admin-dashboard__hint admin-dashboard__hint--error">{previewError}</p>}
-              {startDisabledMessage&&<p className="admin-dashboard__hint">{startDisabledMessage}</p>}
-              <Button onClick={()=>void handleStart()} disabled={startDisabled}>
-                {starting?"Starten…":"Parkeren starten"}
-              </Button>
+              {vehicles===undefined||policy===undefined
+                ? <p className="admin-dashboard__hint">Startgegevens laden…</p>
+                : policy===null
+                  ? <p className="admin-dashboard__hint admin-dashboard__hint--error">Het parkeerbeleid voor deze bezoeker is niet beschikbaar.</p>
+                  : vehicles.length===0
+                    ? <p className="admin-dashboard__hint admin-dashboard__hint--error">Deze bezoeker heeft geen actief toegewezen voertuig.</p>
+                    : <StartVisitCard
+                        vehicles={vehicles}
+                        starting={starting}
+                        disabled={capacityFull||userLimitReached}
+                        disabledMessage={startDisabledMessage}
+                        maxDurationMinutes={policy.maxVisitElapsedDurationMinutes}
+                        allowOpenEnded={policy.allowOpenEndedVisits}
+                        ownerUserId={selectedUserId}
+                        embedded
+                        hideHeading
+                        onStart={handleStart}
+                      />}
             </div>}
       </section>
 
