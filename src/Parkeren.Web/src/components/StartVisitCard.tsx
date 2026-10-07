@@ -52,7 +52,8 @@ export function StartVisitCard({
 }:Props){
   const[selectedVehicleId,setSelectedVehicleId]=useState(vehicles[0]?.id??"");
   const[startAt]=useState(()=>new Date());
-  const[desiredEndAt,setDesiredEndAt]=useState<string|null>(()=>createDefaultVisitEndAt(startAt,maxDurationMinutes));
+  const[desiredEndAt,setDesiredEndAt]=useState<string|null>(()=>allowOpenEnded?null:createDefaultVisitEndAt(startAt,maxDurationMinutes));
+  const[previousAllowOpenEnded,setPreviousAllowOpenEnded]=useState(allowOpenEnded);
   const[preview,setPreview]=useState<StartVisitPreview|null>(null);
   const[previewing,setPreviewing]=useState(false);
   const[previewFailure,setPreviewFailure]=useState<string|null>(null);
@@ -63,13 +64,18 @@ export function StartVisitCard({
   },[vehicles,selectedVehicleId]);
 
   useEffect(()=>{
+    if(allowOpenEnded!==previousAllowOpenEnded){
+      setPreviousAllowOpenEnded(allowOpenEnded);
+      setDesiredEndAt(allowOpenEnded?null:createDefaultVisitEndAt(startAt,maxDurationMinutes));
+      return;
+    }
     if(desiredEndAt===null){
       if(!allowOpenEnded)setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDurationMinutes));
       return;
     }
     if(!isVisitEndAtAllowed(startAt,desiredEndAt,allowOpenEnded,maxDurationMinutes))
       setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDurationMinutes));
-  },[allowOpenEnded,desiredEndAt,maxDurationMinutes,startAt]);
+  },[allowOpenEnded,desiredEndAt,maxDurationMinutes,previousAllowOpenEnded,startAt]);
 
   useEffect(()=>{
     if(!selectedVehicleId||disabled){
