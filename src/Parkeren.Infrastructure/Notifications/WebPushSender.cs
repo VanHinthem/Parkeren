@@ -50,7 +50,19 @@ public sealed class WebPushSender(
             return WebPushSendResult.NoSubscriptions;
 
         var client = new WebPushClient();
-        var vapid = new VapidDetails(subject, publicKey, privateKey);
+        VapidDetails vapid;
+        try
+        {
+            vapid = new VapidDetails(subject, publicKey, privateKey);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                "Web Push VAPID configuration is invalid. Failure type: {FailureType}.",
+                exception.GetType().Name);
+            return WebPushSendResult.NotConfigured;
+        }
+
         var delivered = false;
         var retryRequired = false;
 
@@ -71,10 +83,24 @@ public sealed class WebPushSender(
             {
                 throw;
             }
-            catch (Exception)
+            catch (WebPushException exception)
             {
                 retryRequired = true;
-                logger.LogWarning("Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}.", stored.Id, recipientUserId);
+                logger.LogWarning(
+                    "Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}. Status code: {StatusCode}; failure type: {FailureType}.",
+                    stored.Id,
+                    recipientUserId,
+                    exception.StatusCode,
+                    exception.GetType().Name);
+            }
+            catch (Exception exception)
+            {
+                retryRequired = true;
+                logger.LogWarning(
+                    "Web Push delivery failed for subscription {PushSubscriptionId} and user {UserId}. Failure type: {FailureType}.",
+                    stored.Id,
+                    recipientUserId,
+                    exception.GetType().Name);
             }
         }
 
