@@ -208,8 +208,7 @@ export function VisitDetailPage({
 
     return <div className="visit-live-detail">
       <div className="visit-live-detail__heading">
-        <h2>Lopende parkeeractie</h2>
-        <p>Parkeeractie van <strong>{adminSummary.username}</strong></p>
+        <h2>Lopende parkeeractie van <strong>{adminSummary.username}</strong></h2>
       </div>
       <ActiveVisitCard
         vehicle={adminSummary.licensePlate}
