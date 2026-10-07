@@ -18,7 +18,7 @@ function elapsed(startAt:string,now:number){
 
 export function OtherActiveVisits({visits,now}:{visits:AdminActiveVisitSummary[];now:number}){
   return <div className="recent other-active-visits">
-    {visits.map(visit=><div className="recent__row" key={visit.id}>
+    {visits.map(visit=><a className="recent__row recent__row--link" href={`/acties/${visit.id}`} data-return-to="/acties" key={visit.id}>
       <span className="recent__icon recent__icon--active"><Icon name="car"/></span>
       <span className="recent__details">
         <span className="other-active-visits__identity">
@@ -31,7 +31,7 @@ export function OtherActiveVisits({visits,now}:{visits:AdminActiveVisitSummary[]
           {visit.desiredEndAt?`tot ${time(visit.desiredEndAt)}`:"Open einde"}
         </small>
       </span>
-      <span className="recent__meta"><strong>{elapsed(visit.startAt,now)}</strong></span>
-    </div>)}
+      <span className="recent__meta"><strong>{elapsed(visit.startAt,now)}</strong><span className="recent__chevron" aria-hidden="true">›</span></span>
+    </a>)}
   </div>;
 }
