@@ -14,6 +14,7 @@ type Props={
   manualStopDisabledMessage?:string;
   allowExtension?:boolean;
   extensionDisabledMessage?:string;
+  showExtension?:boolean;
 };
 
 export function VisitActions({
@@ -26,7 +27,8 @@ export function VisitActions({
   allowManualStop=true,
   manualStopDisabledMessage,
   allowExtension=true,
-  extensionDisabledMessage
+  extensionDisabledMessage,
+  showExtension=true
 }:Props){
   const[confirmStop,setConfirmStop]=useState(false);
   const[extendHours,setExtendHours]=useState("1");
@@ -63,17 +65,17 @@ export function VisitActions({
         <span className="stop-icon">■</span>
         <strong>{stopping?"Stoppen…":"Stoppen"}</strong>
       </button>
-      <button className="visit-action visit-action--extend" onClick={()=>setShowExtend(true)} disabled={extending||stopping||!allowExtension}>
+      {showExtension?<button className="visit-action visit-action--extend" onClick={()=>setShowExtend(true)} disabled={extending||stopping||!allowExtension}>
         <Icon name="clock"/>
         <span><strong>{extending?"Verlengen…":"Verlengen"}</strong><small>Eindtijd wijzigen</small></span>
-      </button>
+      </button>:null}
     </div>
 
     {!allowManualStop&&manualStopDisabledMessage?<p className="visit-actions__error" role="status">{manualStopDisabledMessage}</p>:null}
-    {!allowExtension&&extensionDisabledMessage?<p className="visit-actions__error" role="status">{extensionDisabledMessage}</p>:null}
+    {showExtension&&!allowExtension&&extensionDisabledMessage?<p className="visit-actions__error" role="status">{extensionDisabledMessage}</p>:null}
     {error?<p className="visit-actions__error" role="alert">{error}</p>:null}
 
-    <Dialog
+    {showExtension?<Dialog
       open={showExtend}
       title="Parkeeractie verlengen"
       onClose={()=>{if(!extending)setShowExtend(false);}}
@@ -100,7 +102,7 @@ export function VisitActions({
           </button>
         </div>
       </div>
-    </Dialog>
+    </Dialog>:null}
 
     <Dialog
       open={confirmStop}
