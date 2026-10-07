@@ -28,13 +28,14 @@ const pwaDevEnabled = process.env.PARKEREN_PWA_DEV === "true";
 const appName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
 const appIcon192 = appVariant === "dev" ? "/pwa-192x192-dev.png" : "/pwa-192x192.png";
 const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512.png";
+const notificationBadge = "/notification-badge.png";
 
 export default defineConfig({
   define: {
     __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId()),
     __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion()),
     __PARKEREN_NOTIFICATION_ICON__: JSON.stringify(appIcon192),
-    __PARKEREN_NOTIFICATION_BADGE__: JSON.stringify(appIcon192)
+    __PARKEREN_NOTIFICATION_BADGE__: JSON.stringify(notificationBadge)
   },
   plugins: [
     react(),
