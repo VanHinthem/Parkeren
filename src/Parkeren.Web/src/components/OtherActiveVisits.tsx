@@ -20,12 +20,10 @@ export function OtherActiveVisits({visits,now}:{visits:AdminActiveVisitSummary[]
   return <div className="recent other-active-visits">
     {visits.map(visit=><div className="recent__row" key={visit.id}>
       <span className="recent__icon recent__icon--active"><Icon name="car"/></span>
-      <span className="recent__details">
-        <span className="other-active-visits__identity">
-          <strong>{visit.username}</strong>
-          <LicensePlate value={visit.licensePlate}/>
-        </span>
-        <small>
+      <span className="other-active-visits__content">
+        <strong className="other-active-visits__user">{visit.username}</strong>
+        <span className="other-active-visits__plate"><LicensePlate value={visit.licensePlate}/></span>
+        <small className="other-active-visits__schedule">
           Gestart {time(visit.startAt)}
           {" · "}
           {visit.desiredEndAt?`tot ${time(visit.desiredEndAt)}`:"Open einde"}
