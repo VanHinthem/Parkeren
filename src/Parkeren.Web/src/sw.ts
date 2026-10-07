@@ -15,6 +15,7 @@ const serviceWorker = globalThis as unknown as ServiceWorkerGlobalScope;
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision?: string | null }> };
 declare const __PARKEREN_NOTIFICATION_ICON__: string;
+declare const __PARKEREN_NOTIFICATION_BADGE__: string;
 
 precacheAndRoute(self.__WB_MANIFEST,{cleanURLs:false});
 cleanupOutdatedCaches();
@@ -29,6 +30,7 @@ serviceWorker.addEventListener("push",(event:PushEvent)=>{
   event.waitUntil(serviceWorker.registration.showNotification(payload.title??"Parkeren",{
     body:payload.body??"Je hebt een nieuwe parkeermelding.",
     icon:__PARKEREN_NOTIFICATION_ICON__,
+    badge:__PARKEREN_NOTIFICATION_BADGE__,
     data:{
       url:payload.url??"/meldingen",
       notificationId:payload.notificationId

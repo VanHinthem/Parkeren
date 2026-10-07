@@ -33,7 +33,8 @@ export default defineConfig({
   define: {
     __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId()),
     __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion()),
-    __PARKEREN_NOTIFICATION_ICON__: JSON.stringify(appIcon192)
+    __PARKEREN_NOTIFICATION_ICON__: JSON.stringify(appIcon192),
+    __PARKEREN_NOTIFICATION_BADGE__: JSON.stringify(appIcon192)
   },
   plugins: [
     react(),
@@ -79,7 +80,12 @@ export default defineConfig({
     {
       name: "parkeren-app-variant",
       transformIndexHtml(html) {
-        return html.replace("<title>Parkeren</title>", `<title>${appName}</title>`);
+        return html
+          .replace("<title>Parkeren</title>", `<title>${appName}</title>`)
+          .replace(
+            "</head>",
+            `    <link rel="apple-touch-icon" sizes="192x192" href="${appIcon192}" />\n  </head>`
+          );
       },
       async closeBundle() {
         if (appVariant !== "dev") return;
