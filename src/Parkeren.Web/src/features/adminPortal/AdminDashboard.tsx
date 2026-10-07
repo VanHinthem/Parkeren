@@ -1,4 +1,4 @@
-import { useEffect,useMemo,useState } from "react";
+import { useEffect,useState } from "react";
 import {
   getAdminBudgetUsage,
   getAdminDashboard,
@@ -6,16 +6,19 @@ import {
   getAdminUserParkingPolicy,
   getAssignedVehicles,
   getUsers,
+  previewVisitStart,
   startVisit,
   stopVisit,
   type AdminBudgetUsage,
   type AdminDashboardSummary,
   type AdminParkingPolicySummary,
   type AdminProviderStatus,
+  type StartVisitPreview,
   type UserSummary,
   type VehicleSummary
 } from "../../api/client";
 import { LicensePlate } from "../../components/LicensePlate";
+import { createDefaultVisitEndAt,isVisitEndAtAllowed,VisitEndTimeField } from "../../components/VisitEndTimeField";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
@@ -44,17 +47,24 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   }
 }
 
-function maxStartDurationMinutes(policy:AdminParkingPolicySummary|null|undefined){
-  if(!policy)return null;
-  return policy.maxVisitElapsedDurationMinutes;
+function formatPreviewMinutes(minutes:number|null){
+  if(minutes===null)return null;
+  const hours=Math.floor(minutes/60);
+  const rest=minutes%60;
+  if(hours===0)return `${rest} min`;
+  if(rest===0)return `${hours} uur`;
+  return `${hours} uur ${rest} min`;
 }
 
-function durationOptions(maxMinutes:number|null){
-  if(maxMinutes===null||maxMinutes<=0)return [];
-  const values:number[]=[];
-  for(let minutes=60;minutes<=maxMinutes;minutes+=60)values.push(minutes);
-  if(values.length===0||values[values.length-1]!==maxMinutes)values.push(maxMinutes);
-  return values;
+function previewValidationMessage(preview:StartVisitPreview|null){
+  if(!preview||preview.isAllowed)return undefined;
+  switch(preview.rejectionReason){
+    case "OpenEndedNotAllowed": return "Open einde is niet toegestaan volgens het parkeerbeleid van deze bezoeker.";
+    case "MaxVisitElapsedDurationExceeded": return "Deze eindtijd overschrijdt de maximale duur van het parkeerbezoek.";
+    case "MaxPaidParkingDurationExceeded": return "Deze eindtijd overschrijdt de maximale betaalde parkeertijd van deze bezoeker.";
+    case "EndNotAfterStart": return "De eindtijd moet na de starttijd liggen.";
+    default: return "Deze eindtijd is niet toegestaan volgens het parkeerbeleid van deze bezoeker.";
+  }
 }
 
 export function AdminDashboard(){
@@ -66,7 +76,11 @@ export function AdminDashboard(){
   const[vehicles,setVehicles]=useState<VehicleSummary[]>();
   const[selectedVehicleId,setSelectedVehicleId]=useState("");
   const[policy,setPolicy]=useState<AdminParkingPolicySummary|null>();
-  const[durationMinutes,setDurationMinutes]=useState(240);
+  const[startAt]=useState(()=>new Date());
+  const[desiredEndAt,setDesiredEndAt]=useState<string|null>(()=>createDefaultVisitEndAt(startAt,240));
+  const[startPreview,setStartPreview]=useState<StartVisitPreview|null>(null);
+  const[previewing,setPreviewing]=useState(false);
+  const[previewError,setPreviewError]=useState<string>();
   const[loading,setLoading]=useState(true);
   const[error,setError]=useState<string>();
   const[message,setMessage]=useState<string>();
@@ -135,16 +149,51 @@ export function AdminDashboard(){
     return()=>{cancelled=true;};
   },[selectedUserId]);
 
-  const maxDuration=maxStartDurationMinutes(policy);
-  const durations=useMemo(()=>durationOptions(maxDuration),[maxDuration]);
+  const maxDuration=policy?.maxVisitElapsedDurationMinutes??null;
 
   useEffect(()=>{
-    if(durations.length===0)return;
-    if(!durations.includes(durationMinutes)){
-      const preferred=durations.filter(value=>value<=240).at(-1)??durations[0];
-      setDurationMinutes(preferred);
+    if(policy===undefined||policy===null)return;
+    if(desiredEndAt===null){
+      if(!policy.allowOpenEndedVisits)
+        setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDuration));
+      return;
     }
-  },[durations,durationMinutes]);
+    if(!isVisitEndAtAllowed(startAt,desiredEndAt,policy.allowOpenEndedVisits,maxDuration))
+      setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDuration));
+  },[desiredEndAt,maxDuration,policy,startAt]);
+
+  useEffect(()=>{
+    if(!selectedUserId||!selectedVehicleId||policy===undefined||policy===null){
+      setStartPreview(null);
+      setPreviewError(undefined);
+      setPreviewing(false);
+      return;
+    }
+
+    let cancelled=false;
+    setPreviewing(true);
+    setPreviewError(undefined);
+    const timer=window.setTimeout(()=>{
+      previewVisitStart(selectedVehicleId,desiredEndAt,selectedUserId)
+        .then(result=>{
+          if(cancelled)return;
+          setStartPreview(result);
+        })
+        .catch(e=>{
+          if(cancelled)return;
+          setStartPreview(null);
+          setPreviewError(e instanceof Error?e.message:"Parkeeractie kon niet worden gecontroleerd.");
+        })
+        .finally(()=>{
+          if(!cancelled)setPreviewing(false);
+        });
+    },250);
+
+    return()=>{
+      cancelled=true;
+      window.clearTimeout(timer);
+    };
+  },[desiredEndAt,policy,selectedUserId,selectedVehicleId]);
 
   const attentionCount=dashboard?.activeVisits.filter(visit=>visit.health!=="Healthy").length??0;
   const selectedUserActiveCount=dashboard?.activeVisits.filter(visit=>visit.userId===selectedUserId).length??0;
@@ -158,8 +207,10 @@ export function AdminDashboard(){
     policy===null||
     vehicles===undefined||
     vehicles.length===0||
-    durationMinutes<=0||
-    (maxDuration!==null&&durations.length===0)||
+    !isVisitEndAtAllowed(startAt,desiredEndAt,policy?.allowOpenEndedVisits===true,maxDuration)||
+    previewing||
+    previewError!==undefined||
+    startPreview?.isAllowed!==true||
     capacityFull||
     userLimitReached;
 
@@ -175,8 +226,7 @@ export function AdminDashboard(){
     setError(undefined);
     setMessage(undefined);
 
-    const desiredEndAt=new Date(Date.now()+durationMinutes*60_000).toISOString();
-    const logicalKey=`${selectedUserId}:${selectedVehicleId}:${desiredEndAt}`;
+    const logicalKey=`${selectedUserId}:${selectedVehicleId}:${desiredEndAt??"open"}`;
     const operationId=getOrCreatePendingOperation("start",logicalKey);
 
     try{
@@ -280,22 +330,28 @@ export function AdminDashboard(){
                 </select>
               </label>
 
-              <label className="admin-dashboard__field">
-                <span>Parkeerduur</span>
-                {maxDuration===null
-                  ? <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={Math.max(1,Math.round(durationMinutes/60))}
-                      onChange={event=>setDurationMinutes(Math.max(0,Number(event.target.value))*60)}
-                      disabled={starting}
-                    />
-                  : <select value={durationMinutes} onChange={event=>setDurationMinutes(Number(event.target.value))} disabled={starting||durations.length===0}>
-                      {durations.map(minutes=><option key={minutes} value={minutes}>{formatAdminDuration(minutes)}</option>)}
-                    </select>}
-              </label>
+              {policy
+                ? <VisitEndTimeField
+                    startAt={startAt}
+                    value={desiredEndAt}
+                    onChange={setDesiredEndAt}
+                    allowOpenEnded={policy.allowOpenEndedVisits}
+                    maxDurationMinutes={policy.maxVisitElapsedDurationMinutes}
+                    disabled={starting}
+                  />
+                : null}
 
+              {previewing&&<p className="admin-dashboard__hint">Parkeerduur controleren…</p>}
+              {!previewing&&startPreview?.isAllowed&&startPreview.paidDurationMinutes!==null
+                ? <p className="admin-dashboard__hint">
+                    Betaalde parkeertijd: <strong>{formatPreviewMinutes(startPreview.paidDurationMinutes)}</strong>
+                    {startPreview.elapsedDurationMinutes!==null
+                      ? <> · Totale duur: <strong>{formatPreviewMinutes(startPreview.elapsedDurationMinutes)}</strong></>
+                      : null}
+                  </p>
+                : null}
+              {previewValidationMessage(startPreview)&&<p className="admin-dashboard__hint admin-dashboard__hint--error">{previewValidationMessage(startPreview)}</p>}
+              {previewError&&<p className="admin-dashboard__hint admin-dashboard__hint--error">{previewError}</p>}
               {startDisabledMessage&&<p className="admin-dashboard__hint">{startDisabledMessage}</p>}
               <Button onClick={()=>void handleStart()} disabled={startDisabled}>
                 {starting?"Starten…":"Parkeren starten"}
