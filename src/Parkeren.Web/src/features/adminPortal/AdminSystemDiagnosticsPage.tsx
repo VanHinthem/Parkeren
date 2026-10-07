@@ -6,33 +6,35 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import {
+  adminHealthStatusTone,
+  adminStatusClass,
+  formatAdminDateTime,
+  formatAdminHealthStatus,
+  formatAdminNumber,
+  type AdminHealthStatus
+} from "./adminFieldFormatters";
+import "./adminFieldPresentation.css";
 import "./AdminSystem.css";
 
-type HealthTone="healthy"|"warning"|"error";
-
-function formatDateTime(value:string|null){
-  if(!value)return "—";
-  return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"});
+function configuredHealth(configured:boolean):AdminHealthStatus{
+  return configured?"Healthy":"Error";
 }
 
-function toneClass(tone:HealthTone){
-  return `admin-system__status admin-system__status--${tone}`;
+function schedulerHealth(value:AdminSystemDiagnostics):AdminHealthStatus{
+  if(value.scheduler.overdueCount>0)return "Error";
+  if(value.scheduler.claimedCount>0)return "Warning";
+  return "Healthy";
 }
 
-function configuredTone(configured:boolean):HealthTone{
-  return configured?"healthy":"error";
+function pushHealth(value:AdminSystemDiagnostics):AdminHealthStatus{
+  if(value.pushDeliveries.failedCount>0)return "Error";
+  if(value.pushDeliveries.pendingCount>0)return "Warning";
+  return "Healthy";
 }
 
-function schedulerTone(value:AdminSystemDiagnostics):HealthTone{
-  if(value.scheduler.overdueCount>0)return "error";
-  if(value.scheduler.claimedCount>0)return "warning";
-  return "healthy";
-}
-
-function pushTone(value:AdminSystemDiagnostics):HealthTone{
-  if(value.pushDeliveries.failedCount>0)return "error";
-  if(value.pushDeliveries.pendingCount>0)return "warning";
-  return "healthy";
+function HealthStatus({status}:{status:AdminHealthStatus}){
+  return <span className={adminStatusClass(adminHealthStatusTone(status))}>{formatAdminHealthStatus(status)}</span>;
 }
 
 export function AdminSystemDiagnosticsPage(){
@@ -50,103 +52,104 @@ export function AdminSystemDiagnosticsPage(){
 
   useEffect(()=>{void load();},[]);
 
+  const subnav=<nav className="admin-subnav" aria-label="Systeem">
+    <a className="admin-subnav__link" href="/beheer/systeem">Instellingen</a>
+    <a className="admin-subnav__link" href="/beheer/systeem/audit">Audit</a>
+    <a className="admin-subnav__link active" href="/beheer/systeem/diagnostiek">Diagnostiek</a>
+  </nav>;
+
   if(!diagnostics&&!error)return <Loading label="Systeemdiagnostiek laden"/>;
 
   if(!diagnostics)return <div className="admin-system">
+    {subnav}
     <Alert tone="danger">{error??"Systeemdiagnostiek kon niet worden geladen."}</Alert>
-    <div className="admin-system__actions">
-      <Button onClick={()=>void load()}>Opnieuw proberen</Button>
+    <div className="admin-action-group admin-action-group--start">
+      <Button className="admin-action--compact" onClick={()=>void load()}>Opnieuw proberen</Button>
     </div>
   </div>;
 
-  const schedulerHealth=schedulerTone(diagnostics);
-  const pushHealth=pushTone(diagnostics);
+  const schedulerStatus=schedulerHealth(diagnostics);
+  const pushStatus=pushHealth(diagnostics);
 
   return <div className="admin-system">
+    <div className="admin-system__diagnostics-navrow">
+      {subnav}
+      <div className="admin-system__diagnostics-toolbar">
+        <span className="admin-meta">Geobserveerd: {formatAdminDateTime(diagnostics.observedAt)}</span>
+        <Button className="admin-action--compact" onClick={()=>void load()}>Vernieuwen</Button>
+      </div>
+    </div>
+
     {error&&<Alert tone="danger">{error}</Alert>}
 
-    <div className="admin-system__actions">
-      <Button variant="secondary" onClick={()=>void load()}>Vernieuwen</Button>
-    </div>
+    <div className="admin-system__columns">
+      <div className="admin-system__column">
+        <section className="admin-system__panel">
+          <div className="admin-system__panel-heading">
+            <h2>Database</h2>
+            <HealthStatus status={diagnostics.database.healthy?"Healthy":"Error"}/>
+          </div>
+          <p>Bereikbaarheid van de primaire applicatiedatabase.</p>
+          <dl className="admin-facts admin-system__diagnostic-facts">
+            <div className="admin-fact"><dt>Status</dt><dd>{diagnostics.database.status}</dd></div>
+          </dl>
+        </section>
 
-    <div className="admin-system__grid">
-      <section className="admin-system__panel">
-        <div className="admin-system__panel-heading">
-          <h2>Database</h2>
-          <span className={toneClass(diagnostics.database.healthy?"healthy":"error")}>
-            {diagnostics.database.healthy?"Healthy":"Error"}
-          </span>
-        </div>
-        <p>Bereikbaarheid van de primaire applicatiedatabase.</p>
-        <dl className="admin-system__diagnostics-list">
-          <div><dt>Status</dt><dd>{diagnostics.database.status}</dd></div>
-        </dl>
-      </section>
+        <section className="admin-system__panel">
+          <div className="admin-system__panel-heading">
+            <h2>Web Push</h2>
+            <HealthStatus status={configuredHealth(diagnostics.webPush.configured)}/>
+          </div>
+          <p>Controle of de vereiste Web Push-instellingen aanwezig zijn.</p>
+          <dl className="admin-facts admin-system__diagnostic-facts">
+            <div className="admin-fact"><dt>Status</dt><dd>{diagnostics.webPush.status}</dd></div>
+          </dl>
+        </section>
 
-      <section className="admin-system__panel">
-        <div className="admin-system__panel-heading">
-          <h2>Provider</h2>
-          <span className={toneClass(configuredTone(diagnostics.provider.configured))}>
-            {diagnostics.provider.configured?"Healthy":"Error"}
-          </span>
-        </div>
-        <p>Veilige configuratiestatus van de parkeerprovider.</p>
-        <dl className="admin-system__diagnostics-list">
-          <div><dt>Configuratie</dt><dd>{diagnostics.provider.status}</dd></div>
-        </dl>
-      </section>
+        <section className="admin-system__panel">
+          <div className="admin-system__panel-heading">
+            <h2>Push delivery</h2>
+            <HealthStatus status={pushStatus}/>
+          </div>
+          <p>Persistente pushwerkvoorraad. De inbox blijft de betrouwbare bron voor meldingen.</p>
+          <dl className="admin-facts admin-system__diagnostic-facts">
+            <div className="admin-fact"><dt>Pending</dt><dd className="admin-number">{formatAdminNumber(diagnostics.pushDeliveries.pendingCount)}</dd></div>
+            <div className="admin-fact"><dt>Failed</dt><dd className="admin-number">{formatAdminNumber(diagnostics.pushDeliveries.failedCount)}</dd></div>
+            <div className="admin-fact"><dt>Oudste pending</dt><dd>{formatAdminDateTime(diagnostics.pushDeliveries.oldestPendingCreatedAt)}</dd></div>
+            <div className="admin-fact"><dt>Laatste poging</dt><dd>{formatAdminDateTime(diagnostics.pushDeliveries.lastAttemptAt)}</dd></div>
+            <div className="admin-fact"><dt>Laatste delivery</dt><dd>{formatAdminDateTime(diagnostics.pushDeliveries.lastDeliveredAt)}</dd></div>
+          </dl>
+        </section>
+      </div>
 
-      <section className="admin-system__panel">
-        <div className="admin-system__panel-heading">
-          <h2>Web Push</h2>
-          <span className={toneClass(configuredTone(diagnostics.webPush.configured))}>
-            {diagnostics.webPush.configured?"Healthy":"Error"}
-          </span>
-        </div>
-        <p>Controle of de vereiste Web Push-instellingen aanwezig zijn.</p>
-        <dl className="admin-system__diagnostics-list">
-          <div><dt>Status</dt><dd>{diagnostics.webPush.status}</dd></div>
-        </dl>
-      </section>
+      <div className="admin-system__column">
+        <section className="admin-system__panel">
+          <div className="admin-system__panel-heading">
+            <h2>Provider</h2>
+            <HealthStatus status={configuredHealth(diagnostics.provider.configured)}/>
+          </div>
+          <p>Veilige configuratiestatus van de parkeerprovider.</p>
+          <dl className="admin-facts admin-system__diagnostic-facts">
+            <div className="admin-fact"><dt>Configuratie</dt><dd>{diagnostics.provider.status}</dd></div>
+          </dl>
+        </section>
 
-      <section className="admin-system__panel">
-        <div className="admin-system__panel-heading">
-          <h2>Scheduler</h2>
-          <span className={toneClass(schedulerHealth)}>
-            {schedulerHealth==="healthy"?"Healthy":schedulerHealth==="warning"?"Warning":"Error"}
-          </span>
-        </div>
-        <p>Werkvoorraad voor geplande Visit-acties en waarschuwingen.</p>
-        <dl className="admin-system__diagnostics-list">
-          <div><dt>Pending</dt><dd>{diagnostics.scheduler.pendingCount}</dd></div>
-          <div><dt>Claimed</dt><dd>{diagnostics.scheduler.claimedCount}</dd></div>
-          <div><dt>Overdue</dt><dd>{diagnostics.scheduler.overdueCount}</dd></div>
-          <div><dt>Oudste pending</dt><dd>{formatDateTime(diagnostics.scheduler.oldestPendingDueAt)}</dd></div>
-          <div><dt>Oudste claim</dt><dd>{formatDateTime(diagnostics.scheduler.oldestClaimedAt)}</dd></div>
-          <div><dt>Laatste completion</dt><dd>{formatDateTime(diagnostics.scheduler.lastCompletedAt)}</dd></div>
-        </dl>
-      </section>
-
-      <section className="admin-system__panel">
-        <div className="admin-system__panel-heading">
-          <h2>Push delivery</h2>
-          <span className={toneClass(pushHealth)}>
-            {pushHealth==="healthy"?"Healthy":pushHealth==="warning"?"Warning":"Error"}
-          </span>
-        </div>
-        <p>Persistente pushwerkvoorraad. De inbox blijft de betrouwbare bron voor meldingen.</p>
-        <dl className="admin-system__diagnostics-list">
-          <div><dt>Pending</dt><dd>{diagnostics.pushDeliveries.pendingCount}</dd></div>
-          <div><dt>Failed</dt><dd>{diagnostics.pushDeliveries.failedCount}</dd></div>
-          <div><dt>Oudste pending</dt><dd>{formatDateTime(diagnostics.pushDeliveries.oldestPendingCreatedAt)}</dd></div>
-          <div><dt>Laatste poging</dt><dd>{formatDateTime(diagnostics.pushDeliveries.lastAttemptAt)}</dd></div>
-          <div><dt>Laatste delivery</dt><dd>{formatDateTime(diagnostics.pushDeliveries.lastDeliveredAt)}</dd></div>
-        </dl>
-      </section>
-    </div>
-
-    <div className="admin-system__meta">
-      Geobserveerd: {formatDateTime(diagnostics.observedAt)}
+        <section className="admin-system__panel">
+          <div className="admin-system__panel-heading">
+            <h2>Scheduler</h2>
+            <HealthStatus status={schedulerStatus}/>
+          </div>
+          <p>Werkvoorraad voor geplande Visit-acties en waarschuwingen.</p>
+          <dl className="admin-facts admin-system__diagnostic-facts">
+            <div className="admin-fact"><dt>Pending</dt><dd className="admin-number">{formatAdminNumber(diagnostics.scheduler.pendingCount)}</dd></div>
+            <div className="admin-fact"><dt>Claimed</dt><dd className="admin-number">{formatAdminNumber(diagnostics.scheduler.claimedCount)}</dd></div>
+            <div className="admin-fact"><dt>Overdue</dt><dd className="admin-number">{formatAdminNumber(diagnostics.scheduler.overdueCount)}</dd></div>
+            <div className="admin-fact"><dt>Oudste pending</dt><dd>{formatAdminDateTime(diagnostics.scheduler.oldestPendingDueAt)}</dd></div>
+            <div className="admin-fact"><dt>Oudste claim</dt><dd>{formatAdminDateTime(diagnostics.scheduler.oldestClaimedAt)}</dd></div>
+            <div className="admin-fact"><dt>Laatste completion</dt><dd>{formatAdminDateTime(diagnostics.scheduler.lastCompletedAt)}</dd></div>
+          </dl>
+        </section>
+      </div>
     </div>
   </div>;
 }

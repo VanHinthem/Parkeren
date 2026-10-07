@@ -1,0 +1,101 @@
+.admin-table-wrap,
+.admin-dashboard__table-wrap,
+.admin-visits__table-wrap,
+.admin-users__table-wrap,
+.admin-provider__table-wrap,
+.admin-usage__table-wrap,
+.admin-analysis__table-wrap{
+  overflow-x:auto;
+}
+
+.admin-table,
+.admin-dashboard__table,
+.admin-visits__table,
+.admin-users__table,
+.admin-provider__table,
+.admin-usage__table,
+.admin-analysis__table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:.84rem;
+}
+
+.admin-table--fixed,
+.admin-dashboard__table,
+.admin-visits__table,
+.admin-users__table{
+  table-layout:fixed;
+}
+
+.admin-table th,
+.admin-table td,
+.admin-dashboard__table th,
+.admin-dashboard__table td,
+.admin-visits__table th,
+.admin-visits__table td,
+.admin-users__table th,
+.admin-users__table td,
+.admin-provider__table th,
+.admin-provider__table td,
+.admin-usage__table th,
+.admin-usage__table td,
+.admin-analysis__table th,
+.admin-analysis__table td{
+  padding:.72rem .58rem;
+  border-bottom:1px solid var(--color-border);
+  text-align:left;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+
+.admin-table th,
+.admin-dashboard__table th,
+.admin-visits__table th,
+.admin-users__table th,
+.admin-provider__table th,
+.admin-usage__table th,
+.admin-analysis__table th{
+  color:var(--color-text-muted);
+  font-size:.71rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+
+.admin-table tbody tr:last-child td,
+.admin-dashboard__table tbody tr:last-child td,
+.admin-visits__table tbody tr:last-child td,
+.admin-users__table tbody tr:last-child td,
+.admin-provider__table tbody tr:last-child td,
+.admin-usage__table tbody tr:last-child td,
+.admin-analysis__table tbody tr:last-child td{
+  border-bottom:0;
+}
+
+.admin-table__actions{
+  text-align:right!important;
+}
+
+.admin-table__control{
+  width:100%;
+  min-width:0;
+  min-height:2.35rem;
+  padding:0 .65rem;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-surface);
+  color:var(--color-text);
+  font:inherit;
+  font-size:.82rem;
+  font-weight:600;
+}
+
+.admin-table__detail-row>td{
+  padding:0!important;
+  white-space:normal!important;
+  background:var(--color-surface-muted);
+}
+
+.admin-table__detail-panel{
+  padding:.85rem .9rem;
+}

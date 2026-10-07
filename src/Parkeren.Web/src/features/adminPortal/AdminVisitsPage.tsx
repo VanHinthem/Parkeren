@@ -16,34 +16,12 @@ import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminVisits.css";
+import { formatAdminDateTime,formatAdminDuration,formatAdminVisitStatus,type AdminVisitStatus } from "./adminFieldFormatters";
 import { groupTimelineEvents,timelineSourceHref } from "./visitTimeline";
 
-type AdminVisitStatus="Starting"|"Active"|"Stopping"|"Completed"|"Cancelled";
 type AdminVisitStatusFilter=AdminVisitStatus|"";
 
-function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
-    : "—";
-}
-
-function formatMinutes(value:number|null){
-  if(value===null)return "Niet beschikbaar";
-  if(value<60)return `${value} min`;
-  const hours=Math.floor(value/60);
-  const minutes=value%60;
-  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
-}
-
-function statusLabel(status:AdminVisitStatus){
-  switch(status){
-    case "Starting": return "Wordt gestart";
-    case "Active": return "Actief";
-    case "Stopping": return "Wordt gestopt";
-    case "Completed": return "Afgerond";
-    case "Cancelled": return "Geannuleerd";
-  }
-}
+const visitStatusOptions:AdminVisitStatus[]=["Starting","Active","Stopping","Completed","Cancelled"];
 
 function timelineTitle(event:AdminVisitTimelineEvent){
   const titles:Record<string,string>={
@@ -100,9 +78,9 @@ function localDayEnd(value:string){
 }
 
 function visitStatusClass(visit:AdminVisitSummary){
-  if(visit.health!=="Healthy")return "admin-visits__status admin-visits__status--warning";
-  if(visit.status==="Active")return "admin-visits__status admin-visits__status--active";
-  return "admin-visits__status";
+  if(visit.health!=="Healthy")return "admin-status admin-status--warning";
+  if(visit.status==="Active")return "admin-status admin-status--active";
+  return "admin-status";
 }
 
 export function AdminVisitsPage(){
@@ -165,7 +143,7 @@ export function AdminVisitsPage(){
 
     <section className="admin-visits__panel">
       <form className="admin-visits__filters" onSubmit={submit}>
-        <label className="admin-visits__field">
+        <label className="admin-field">
           <span>Bezoeker</span>
           <select value={userId} onChange={event=>setUserId(event.target.value)}>
             <option value="">Alle bezoekers</option>
@@ -173,36 +151,32 @@ export function AdminVisitsPage(){
           </select>
         </label>
 
-        <label className="admin-visits__field">
+        <label className="admin-field">
           <span>Kenteken</span>
           <input value={licensePlate} onChange={event=>setLicensePlate(event.target.value.toUpperCase())} placeholder="Bijv. 12ABC3"/>
         </label>
 
-        <label className="admin-visits__field">
+        <label className="admin-field">
           <span>Vanaf</span>
           <input type="date" value={from} onChange={event=>setFrom(event.target.value)}/>
         </label>
 
-        <label className="admin-visits__field">
+        <label className="admin-field">
           <span>Tot en met</span>
           <input type="date" value={to} onChange={event=>setTo(event.target.value)}/>
         </label>
 
-        <label className="admin-visits__field">
+        <label className="admin-field">
           <span>Status</span>
           <select value={status} onChange={event=>setStatus(event.target.value as AdminVisitStatusFilter)}>
             <option value="">Alle statussen</option>
-            <option value="Starting">Wordt gestart</option>
-            <option value="Active">Actief</option>
-            <option value="Stopping">Wordt gestopt</option>
-            <option value="Completed">Afgerond</option>
-            <option value="Cancelled">Geannuleerd</option>
+            {visitStatusOptions.map(option=><option key={option} value={option}>{formatAdminVisitStatus(option)}</option>)}
           </select>
         </label>
 
-        <div className="admin-visits__filter-actions">
-          <Button type="submit">Filteren</Button>
-          <Button type="button" variant="secondary" onClick={reset}>Wissen</Button>
+        <div className="admin-action-group">
+          <Button className="admin-action--field" type="submit">Filteren</Button>
+          <Button className="admin-action--field" type="button" variant="secondary" onClick={reset}>Wissen</Button>
         </div>
       </form>
     </section>
@@ -220,7 +194,7 @@ export function AdminVisitsPage(){
                     <th>Kenteken</th>
                     <th>Gestart</th>
                     <th>Geëindigd</th>
-                    <th>Betaalde tijd</th>
+                    <th className="admin-duration admin-duration--table">Betaalde tijd</th>
                     <th>Status</th>
                     <th aria-label="Details"/>
                   </tr>
@@ -228,17 +202,17 @@ export function AdminVisitsPage(){
                 <tbody>
                   {visits.map(visit=><tr key={visit.id}>
                     <td>
-                      <span className="admin-visits__identity">
+                      <span className="admin-identity">
                         <strong>{visit.username}</strong>
                         {visit.startedByUserId!==visit.userId&&<small>Gestart door {visit.startedByUsername}</small>}
                       </span>
                     </td>
                     <td><LicensePlate value={visit.licensePlate}/></td>
-                    <td>{formatDateTime(visit.startAt)}</td>
-                    <td>{formatDateTime(visit.actualEndAt)}</td>
-                    <td>{formatMinutes(visit.paidDurationMinutes)}</td>
-                    <td><span className={visitStatusClass(visit)}>{statusLabel(visit.status)}</span></td>
-                    <td><a className="admin-visits__link" href={`/beheer/bezoeken/${visit.id}`}>Openen</a></td>
+                    <td>{formatAdminDateTime(visit.startAt)}</td>
+                    <td>{formatAdminDateTime(visit.actualEndAt)}</td>
+                    <td className="admin-duration admin-duration--table">{formatAdminDuration(visit.paidDurationMinutes)}</td>
+                    <td><span className={visitStatusClass(visit)}>{formatAdminVisitStatus(visit.status)}</span></td>
+                    <td><a className="admin-action-link" href={`/beheer/bezoeken/${visit.id}`}>Details</a></td>
                   </tr>)}
                 </tbody>
               </table>
@@ -295,9 +269,9 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
 
   return <div className="admin-visit-detail">
     <div className="admin-visit-detail__toolbar">
-      <a className="admin-visit-detail__back" href="/beheer/bezoeken">← Terug naar bezoeken</a>
+      <a className="admin-action-link admin-visit-detail__back" href="/beheer/bezoeken">← Terug naar bezoeken</a>
       {detail?.visit.status==="Active"&&
-        <Button variant="secondary" onClick={()=>void handleStop()} disabled={stopping}>
+        <Button className="admin-action--compact" variant="secondary" onClick={()=>void handleStop()} disabled={stopping}>
           {stopping?"Stoppen…":"Visit stoppen"}
         </Button>}
     </div>
@@ -312,12 +286,12 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
             <dl className="admin-visit-detail__facts">
               <div className="admin-visit-detail__fact"><dt>Bezoeker</dt><dd>{detail.visit.username}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Kenteken</dt><dd><LicensePlate value={detail.visit.licensePlate}/></dd></div>
-              <div className="admin-visit-detail__fact"><dt>Status</dt><dd>{statusLabel(detail.visit.status)} · {detail.visit.health}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Status</dt><dd>{formatAdminVisitStatus(detail.visit.status)} · {detail.visit.health}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Gestart door</dt><dd>{detail.visit.startedByUsername}</dd></div>
-              <div className="admin-visit-detail__fact"><dt>Gestart</dt><dd>{formatDateTime(detail.visit.startAt)}</dd></div>
-              <div className="admin-visit-detail__fact"><dt>Gepland tot</dt><dd>{detail.visit.desiredEndAt?formatDateTime(detail.visit.desiredEndAt):"Handmatig stoppen"}</dd></div>
-              <div className="admin-visit-detail__fact"><dt>Werkelijk einde</dt><dd>{formatDateTime(detail.visit.actualEndAt)}</dd></div>
-              <div className="admin-visit-detail__fact"><dt>Betaalde tijd</dt><dd>{formatMinutes(detail.visit.paidDurationMinutes)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Gestart</dt><dd>{formatAdminDateTime(detail.visit.startAt)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Gepland tot</dt><dd>{detail.visit.desiredEndAt?formatAdminDateTime(detail.visit.desiredEndAt):"Handmatig stoppen"}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Werkelijk einde</dt><dd>{formatAdminDateTime(detail.visit.actualEndAt)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Betaalde tijd</dt><dd className="admin-duration">{formatAdminDuration(detail.visit.paidDurationMinutes)}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Providerproduct</dt><dd>{providerProductLabel(detail.providerProductName,detail.providerProductExternalId)}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Providerlocatie</dt><dd>{detail.providerLocation??"—"}</dd></div>
             </dl>
@@ -326,8 +300,8 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
           <section className="admin-visits__panel admin-visit-detail__section">
             <h2>Policy snapshot</h2>
             <dl className="admin-visit-detail__facts">
-              <div className="admin-visit-detail__fact"><dt>Max. betaalde tijd</dt><dd>{formatMinutes(detail.policySnapshot.maxPaidParkingDurationMinutes)}</dd></div>
-              <div className="admin-visit-detail__fact"><dt>Max. Visitduur</dt><dd>{formatMinutes(detail.policySnapshot.maxVisitElapsedDurationMinutes)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Max. betaalde tijd</dt><dd className="admin-duration">{formatAdminDuration(detail.policySnapshot.maxPaidParkingDurationMinutes)}</dd></div>
+              <div className="admin-visit-detail__fact"><dt>Max. Visitduur</dt><dd className="admin-duration">{formatAdminDuration(detail.policySnapshot.maxVisitElapsedDurationMinutes)}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Verlengen toegestaan</dt><dd>{booleanLabel(detail.policySnapshot.allowVisitExtension)}</dd></div>
               <div className="admin-visit-detail__fact"><dt>Open einde toegestaan</dt><dd>{booleanLabel(detail.policySnapshot.allowOpenEndedVisits)}</dd></div>
             </dl>
@@ -344,8 +318,8 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>{action.state} · {action.health}</span>
                     </div>
                     <div className="admin-visit-detail__row-meta">
-                      <span>Gepland: {formatDateTime(action.plannedStartAt)} – {formatDateTime(action.plannedEndAt)}</span>
-                      <span>Werkelijk: {formatDateTime(action.actualStartAt)} – {formatDateTime(action.actualEndAt)}</span>
+                      <span>Gepland: {formatAdminDateTime(action.plannedStartAt)} – {formatAdminDateTime(action.plannedEndAt)}</span>
+                      <span>Werkelijk: {formatAdminDateTime(action.actualStartAt)} – {formatAdminDateTime(action.actualEndAt)}</span>
                       <span>Providerstatus: {action.providerStatus??"—"}</span>
                       <span>Product: {action.providerProductId??"—"}</span>
                       <span>Locatie: {action.providerLocation??"—"}</span>
@@ -362,14 +336,14 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                   {groupTimelineEvents(detail.timelineEvents).map(group=><details className="admin-visit-detail__timeline-group" key={group.key}>
                     <summary>
                       <strong>{timelineGroupTitle(group.events[0])}</strong>
-                      <span>{formatDateTime(group.events[0].occurredAt)}</span>
+                      <span>{formatAdminDateTime(group.events[0].occurredAt)}</span>
                       <span>{group.events.length} gebeurtenissen</span>
                     </summary>
                     <ol>
                       {group.events.map(event=><li key={event.id}>
                         <div className="admin-visit-detail__timeline-event-head">
                           <strong>{timelineTitle(event)}</strong>
-                          <time>{formatDateTime(event.occurredAt)}</time>
+                          <time>{formatAdminDateTime(event.occurredAt)}</time>
                         </div>
                         <p>{event.reasonCode.replaceAll("_"," ")}</p>
                         <details className="admin-visit-detail__timeline-details">
@@ -401,10 +375,10 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>{work.status}</span>
                     </div>
                     <div className="admin-visit-detail__row-meta">
-                      <span>Uitvoeren: {formatDateTime(work.dueAt)}</span>
+                      <span>Uitvoeren: {formatAdminDateTime(work.dueAt)}</span>
                       <span>Pogingen: {work.attemptCount}</span>
                       <span>Eindreden: {work.endReason??"—"}</span>
-                      {work.providerParkingActionId&&<a href={`#provider-action-${work.providerParkingActionId}`}>Gekoppelde provideractie</a>}
+                      {work.providerParkingActionId&&<a className="admin-action-link" href={`#provider-action-${work.providerParkingActionId}`}>Gekoppelde provideractie</a>}
                     </div>
                   </div>)}
                 </div>}
@@ -424,9 +398,9 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>Operation ID: {operation.operationId}</span>
                       <span>Pogingen: {operation.attemptCount}</span>
                       <span>Foutcode: {operation.lastErrorCode??"—"}</span>
-                      <span>Aangemaakt: {formatDateTime(operation.createdAt)}</span>
-                      <span>Requested end: {formatDateTime(operation.requestedEndAt)}</span>
-                      <span>Voltooid: {formatDateTime(operation.completedAt)}</span>
+                      <span>Aangemaakt: {formatAdminDateTime(operation.createdAt)}</span>
+                      <span>Requested end: {formatAdminDateTime(operation.requestedEndAt)}</span>
+                      <span>Voltooid: {formatAdminDateTime(operation.completedAt)}</span>
                     </div>
                   </div>)}
                 </div>}
@@ -443,9 +417,9 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>{change.result}</span>
                     </div>
                     <div className="admin-visit-detail__row-meta">
-                      <span>Van: {formatDateTime(change.previousDesiredEndAt)}</span>
-                      <span>Naar: {formatDateTime(change.requestedDesiredEndAt)}</span>
-                      <span>{formatDateTime(change.createdAt)}</span>
+                      <span>Van: {formatAdminDateTime(change.previousDesiredEndAt)}</span>
+                      <span>Naar: {formatAdminDateTime(change.requestedDesiredEndAt)}</span>
+                      <span>{formatAdminDateTime(change.createdAt)}</span>
                     </div>
                   </div>)}
                 </div>}
@@ -462,8 +436,8 @@ export function AdminVisitDetailPage({visitId}:{visitId:string}){
                       <span>{rule.continuation}</span>
                     </div>
                     <div className="admin-visit-detail__row-meta">
-                      <span>Geldig: {formatDateTime(rule.validFrom)} – {formatDateTime(rule.validUntil)}</span>
-                      <span>Max. provideractie: {formatMinutes(rule.maxProviderActionDurationMinutes)}</span>
+                      <span>Geldig: {formatAdminDateTime(rule.validFrom)} – {formatAdminDateTime(rule.validUntil)}</span>
+                      <span className="admin-duration">Max. provideractie: {formatAdminDuration(rule.maxProviderActionDurationMinutes)}</span>
                       <span>Feestdagen gratis: {booleanLabel(rule.publicHolidaysAreFree)}</span>
                     </div>
                   </div>)}

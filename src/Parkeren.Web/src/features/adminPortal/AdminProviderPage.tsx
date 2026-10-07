@@ -7,37 +7,26 @@ import {
   type AdminProviderProduct,
   type AdminProviderStatus
 } from "../../api/client";
+import { LicensePlate } from "../../components/LicensePlate";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import {
+  adminProviderActionStatusTone,
+  adminStatusClass,
+  formatAdminAvailability,
+  formatAdminDateTime,
+  formatAdminProviderActionStatus,
+  formatAdminProviderBalance,
+  formatAdminProviderBalanceUnit,
+  type AdminStatusTone
+} from "./adminFieldFormatters";
 import "./AdminProvider.css";
 
-function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
-    : "—";
-}
-
-function formatBalance(status:AdminProviderStatus){
-  const balance=status.balance;
-  if(!balance)return "Niet beschikbaar";
-
-  switch(balance.unit){
-    case "Euro":
-      return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
-    case "Minute":
-      return `${balance.remainingBalance} min`;
-    case "Times":
-      return `${balance.remainingBalance} keer`;
-    default:
-      return String(balance.remainingBalance);
-  }
-}
-
-function stateLabel(status:AdminProviderStatus){
-  if(status.balanceError&&status.balance===null)return {label:"Niet beschikbaar",className:"admin-provider__state admin-provider__state--error"};
-  if(status.balanceIsStale)return {label:"Verouderd",className:"admin-provider__state admin-provider__state--stale"};
-  return {label:"Actueel",className:"admin-provider__state"};
+function balanceState(status:AdminProviderStatus):{label:string;tone:AdminStatusTone}{
+  if(status.balanceError&&status.balance===null)return {label:"Niet beschikbaar",tone:"danger"};
+  if(status.balanceIsStale)return {label:"Verouderd",tone:"warning"};
+  return {label:"Actueel",tone:"active"};
 }
 
 export function AdminProviderPage(){
@@ -108,9 +97,14 @@ export function AdminProviderPage(){
 
   if(loading&&!status&&!products)return <Loading label="Providerstatus laden"/>;
 
-  const state=status?stateLabel(status):null;
+  const state=status?balanceState(status):null;
 
   return <div className="admin-provider">
+    <nav className="admin-subnav" aria-label="Provider & reconciliatie">
+      <a className="admin-subnav__link active" href="/beheer/provider">Provider</a>
+      <a className="admin-subnav__link" href="/beheer/provider/afwijkingen">Reconciliatie</a>
+    </nav>
+
     {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}
     {status?.balanceError&&<Alert tone={status.balance?"warning":"danger"}>
@@ -125,23 +119,23 @@ export function AdminProviderPage(){
         <h2>Officieel 2Park-saldo</h2>
         <div className="admin-provider__balance">
           <div className="admin-provider__balance-value">
-            <strong>{formatBalance(status)}</strong>
+            <strong className="admin-duration">{formatAdminProviderBalance(status.balance?.remainingBalance??null,status.balance?.unit??null)}</strong>
             <span>Autoritatieve providerwaarde van het defaultproduct</span>
           </div>
-          {state&&<span className={state.className}>{state.label}</span>}
+          {state&&<span className={adminStatusClass(state.tone)}>{state.label}</span>}
         </div>
         <p className="admin-provider__meta">
-          Laatst succesvol: {formatDateTime(status.lastSuccessfulBalanceAt)} · Laatste poging: {formatDateTime(status.lastBalanceAttemptAt)}
+          Laatst succesvol: {formatAdminDateTime(status.lastSuccessfulBalanceAt)} · Laatste poging: {formatAdminDateTime(status.lastBalanceAttemptAt)}
         </p>
       </section>
 
       <section className="admin-provider__panel">
         <h2>Actief defaultproduct</h2>
-        <dl className="admin-provider__facts">
-          <div className="admin-provider__fact"><dt>Product</dt><dd>{status.product?.name??"Niet ingesteld"}</dd></div>
-          <div className="admin-provider__fact"><dt>Provider product-ID</dt><dd>{status.product?.id??"—"}</dd></div>
-          <div className="admin-provider__fact"><dt>Location</dt><dd>{status.product?.location??"—"}</dd></div>
-          <div className="admin-provider__fact"><dt>Saldo-eenheid</dt><dd>{status.balance?.unit??"—"}</dd></div>
+        <dl className="admin-facts">
+          <div className="admin-fact"><dt>Product</dt><dd>{status.product?.name??"Niet ingesteld"}</dd></div>
+          <div className="admin-fact"><dt>Provider product-ID</dt><dd className="admin-code">{status.product?.id??"—"}</dd></div>
+          <div className="admin-fact"><dt>Location</dt><dd className="admin-code">{status.product?.location??"—"}</dd></div>
+          <div className="admin-fact"><dt>Saldo-eenheid</dt><dd>{formatAdminProviderBalanceUnit(status.balance?.unit??null)}</dd></div>
         </dl>
       </section>
     </div>}
@@ -152,15 +146,15 @@ export function AdminProviderPage(){
           <h2>2Park-producten</h2>
           <p>Providergegevens zijn read-only. Alleen het defaultproduct voor nieuwe Visits is lokaal beheerbaar.</p>
         </div>
-        <Button variant="secondary" onClick={()=>void syncProducts()} disabled={syncing}>
+        <Button className="admin-action--compact" variant="secondary" onClick={()=>void syncProducts()} disabled={syncing}>
           {syncing?"Synchroniseren…":"Producten synchroniseren"}
         </Button>
       </div>
 
       {!products||products.length===0
         ? <p className="admin-provider__empty">Nog geen producten lokaal vastgelegd. Synchroniseer met 2Park; bij precies één product wordt dit bij de eerste sync automatisch default.</p>
-        : <div className="admin-provider__table-wrap">
-            <table className="admin-provider__table">
+        : <div className="admin-table-wrap">
+            <table className="admin-table admin-table--fixed admin-provider__products-table">
               <thead>
                 <tr>
                   <th>Product</th>
@@ -169,20 +163,20 @@ export function AdminProviderPage(){
                   <th>Location</th>
                   <th>Status</th>
                   <th>Laatst gezien</th>
-                  <th/>
+                  <th aria-label="Acties"/>
                 </tr>
               </thead>
               <tbody>
                 {products.map(product=><tr key={product.id}>
-                  <td><strong>{product.name}</strong>{product.isDefault&&<span className="admin-provider__product-default">Default</span>}</td>
+                  <td><strong>{product.name}</strong>{product.isDefault&&<span className="admin-tag admin-tag--active">Default</span>}</td>
                   <td>{product.categoryName??product.categoryId??"—"}</td>
-                  <td>{product.providerProductId}</td>
-                  <td>{product.location}</td>
-                  <td>{product.isAvailable?"Beschikbaar":"Niet meer beschikbaar"}</td>
-                  <td>{formatDateTime(product.lastSeenAt)}</td>
-                  <td>
+                  <td className="admin-code admin-code--table">{product.providerProductId}</td>
+                  <td className="admin-code admin-code--table">{product.location}</td>
+                  <td><span className={adminStatusClass(product.isAvailable?"active":"neutral")}>{formatAdminAvailability(product.isAvailable)}</span></td>
+                  <td>{formatAdminDateTime(product.lastSeenAt)}</td>
+                  <td className="admin-table__actions">
                     {!product.isDefault&&product.isAvailable
-                      ? <Button variant="secondary" onClick={()=>void makeDefault(product)} disabled={changingDefault!==undefined}>
+                      ? <Button className="admin-action--compact" variant="secondary" onClick={()=>void makeDefault(product)} disabled={changingDefault!==undefined}>
                           {changingDefault===product.id?"Wijzigen…":"Als default gebruiken"}
                         </Button>
                       : null}
@@ -199,17 +193,17 @@ export function AdminProviderPage(){
           <h2>Actuele provideracties</h2>
           <p>Rechtstreeks uit 2Park voor het default parkeerproduct. Start, einde en status hieronder zijn providerwaarden; de lokale Visit en lokale ProviderParkingAction kunnen daarvan afwijken.</p>
         </div>
-        <Button variant="secondary" onClick={()=>void load()} disabled={loading}>
+        <Button className="admin-action--compact" variant="secondary" onClick={()=>void load()} disabled={loading}>
           {loading?"Vernieuwen…":"Vernieuwen"}
         </Button>
       </div>
 
-      <p className="admin-provider__meta">Opgehaald: {formatDateTime(status.actionsRetrievedAt)}</p>
+      <p className="admin-provider__meta">Opgehaald: {formatAdminDateTime(status.actionsRetrievedAt)}</p>
 
       {status.actions.length===0
         ? <p className="admin-provider__empty">Geen actuele provideracties ontvangen.</p>
-        : <div className="admin-provider__table-wrap">
-            <table className="admin-provider__table">
+        : <div className="admin-table-wrap">
+            <table className="admin-table admin-table--fixed admin-provider__actions-table">
               <thead>
                 <tr>
                   <th>Action-ID</th>
@@ -221,25 +215,20 @@ export function AdminProviderPage(){
                 </tr>
               </thead>
               <tbody>
-                {status.actions.map(action=><tr key={action.providerActionId}>
-                  <td>{action.providerActionId}</td>
-                  <td>{action.licensePlate}</td>
-                  <td>{formatDateTime(action.start)}</td>
-                  <td>{formatDateTime(action.end)}</td>
-                  <td>{action.location}</td>
-                  <td>{action.status}</td>
-                </tr>)}
+                {status.actions.map(action=>{
+                  const tone=adminProviderActionStatusTone(action.status);
+                  return <tr key={action.providerActionId}>
+                    <td className="admin-code admin-code--table">{action.providerActionId}</td>
+                    <td><LicensePlate value={action.licensePlate}/></td>
+                    <td>{formatAdminDateTime(action.start)}</td>
+                    <td>{formatAdminDateTime(action.end)}</td>
+                    <td className="admin-code admin-code--table">{action.location}</td>
+                    <td><span className={adminStatusClass(tone)}>{formatAdminProviderActionStatus(action.status)}</span></td>
+                  </tr>;
+                })}
               </tbody>
             </table>
           </div>}
     </section>}
-
-    <section className="admin-provider__panel admin-provider__notice">
-      <h2>Afwijkingen & reconciliatie</h2>
-      <p>
-        2Park blijft leidend voor providerstatus en officieel saldo. Gedetecteerde verschillen worden persistent vastgelegd en blijven na oplossing traceerbaar.
-      </p>
-      <a className="admin-provider__link" href="/beheer/provider/afwijkingen">Afwijkingen bekijken</a>
-    </section>
   </div>;
 }
