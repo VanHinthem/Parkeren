@@ -128,8 +128,7 @@ export function AdminStartVisitDialog({open,onClose,activeVisits,onStarted}:Prop
                       allowOpenEnded={policy.allowOpenEndedVisits}
                       ownerUserId={selectedUser.id}
                       embedded
-                      title={null}
-                      buttonLabel="Parkeren starten"
+                      hideHeading
                       onStart={handleStart}
                     />}
           </>

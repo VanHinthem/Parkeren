@@ -14,10 +14,8 @@ type Props={
   maxDurationMinutes?:number|null;
   allowOpenEnded?:boolean;
   ownerUserId?:string;
-  embedded?:boolean;
-  title?:string|null;
-  subtitle?:string|null;
-  buttonLabel?:string;
+  embedded?: boolean;
+  hideHeading?: boolean;
 };
 
 function formatMinutes(minutes:number|null){
@@ -55,10 +53,8 @@ export function StartVisitCard({
   maxDurationMinutes=240,
   allowOpenEnded=false,
   ownerUserId,
-  embedded=false,
-  title="Parkeren starten",
-  subtitle,
-  buttonLabel="Start parkeren"
+  embedded = false,
+  hideHeading = false
 }:Props){
   const[selectedVehicleId,setSelectedVehicleId]=useState(vehicles[0]?.id??"");
   const[startAt]=useState(()=>new Date());
@@ -126,10 +122,16 @@ export function StartVisitCard({
   const canStart=Boolean(vehicle)&&validEndAt&&!previewing&&!previewFailure&&preview?.isAllowed===true;
 
   const content=<div className="start-visit">
-      {title!==null?<div>
-        <h2>{title}</h2>
-        <p>{subtitle??(vehicle?"Kies de auto waarvoor je wilt parkeren.":"Er is geen auto aan je account toegewezen.")}</p>
-      </div>:null}
+      {!hideHeading ? (
+        <div>
+          <h2>Parkeren starten</h2>
+          <p>
+            {vehicle
+              ? "Kies de auto waarvoor je wilt parkeren."
+              : "Er is geen auto aan je account toegewezen."}
+          </p>
+        </div>
+      ) : null}
 
       {vehicles.length>1
         ? <label className="start-visit__field">
@@ -171,7 +173,7 @@ export function StartVisitCard({
           void onStart(vehicle.id,desiredEndAt);
         }}
       >
-        {starting?"Starten…":buttonLabel}
+        {starting ? "Starten…" : "Start parkeren"}
       </button>
     </div>;
 
