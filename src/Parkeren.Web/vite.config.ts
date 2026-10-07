@@ -32,7 +32,8 @@ const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512
 export default defineConfig({
   define: {
     __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId()),
-    __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion())
+    __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion()),
+    __PARKEREN_NOTIFICATION_ICON__: JSON.stringify(appIcon192)
   },
   plugins: [
     react(),
