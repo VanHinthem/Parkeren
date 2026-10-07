@@ -120,7 +120,7 @@ export function VisitEndTimeField({
 
     {allowOpenEnded
       ? <fieldset className="visit-end-time__modes" disabled={disabled}>
-          <legend>Einde</legend>
+          <legend>Eindmoment</legend>
           <label>
             <input
               type="radio"

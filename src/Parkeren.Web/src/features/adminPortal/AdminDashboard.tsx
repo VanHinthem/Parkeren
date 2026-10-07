@@ -137,9 +137,14 @@ export function AdminDashboard(){
       const activeVehicles=assigned.filter(vehicle=>vehicle.isActive);
       setVehicles(activeVehicles);
       setPolicy(parkingPolicy);
-      setDesiredEndAt(parkingPolicy.allowOpenEndedVisits
-        ? null
-        : createDefaultVisitEndAt(startAt,parkingPolicy.maxVisitElapsedDurationMinutes));
+      if(parkingPolicy){
+        setDesiredEndAt(parkingPolicy.allowOpenEndedVisits
+          ? null
+          : createDefaultVisitEndAt(
+              startAt,
+              parkingPolicy.maxVisitElapsedDurationMinutes
+            ));
+      }
       setSelectedVehicleId(current=>activeVehicles.some(vehicle=>vehicle.id===current)?current:(activeVehicles[0]?.id??""));
     }).catch(e=>{
       if(cancelled)return;
