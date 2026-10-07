@@ -1223,6 +1223,91 @@ app.MapGet("/api/visits/policy", async (
     });
 });
 
+app.MapPost("/api/visits/start-preview", async (
+    StartVisitPreviewRequest request,
+    IStartVisitRequestResolver requestResolver,
+    IStartVisitOperationalContextResolver operationalContextResolver,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+
+    if (request.VehicleId == Guid.Empty)
+        return Results.BadRequest(new { error = "VehicleId is verplicht." });
+
+    var ownerUserId = request.OwnerUserId ?? authenticated.User.Id;
+    var startAt = DateTimeOffset.UtcNow;
+
+    var requestContext = await requestResolver.ResolveAsync(
+        authenticated.User.Id,
+        ownerUserId,
+        request.VehicleId,
+        cancellationToken);
+    if (requestContext is null)
+        return Results.BadRequest(new { error = "Visit-context kon niet worden bepaald." });
+
+    try
+    {
+        StartVisitAuthorization.Validate(
+            requestContext.StartContext.Actor,
+            requestContext.StartContext.Owner,
+            requestContext.StartContext.Vehicle);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Forbid();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+
+    if (requestContext.ProviderContext?.ProductId is not Guid providerProductId)
+        return Results.Problem(
+            "Er is geen beschikbaar default parkeerproduct geconfigureerd.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    var operationalContext = await operationalContextResolver.ResolveForProductAsync(
+        ownerUserId,
+        providerProductId,
+        startAt,
+        request.DesiredEndAt,
+        cancellationToken);
+    if (operationalContext is null)
+        return Results.Problem(
+            "Parkeerbeleid of parkeerregels zijn niet beschikbaar.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    StartVisitPolicyAssessment assessment;
+    try
+    {
+        assessment = StartVisitPolicyAssessor.Assess(
+            startAt,
+            request.DesiredEndAt,
+            operationalContext.Policy,
+            operationalContext.RuleSets);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
+
+    return Results.Ok(new
+    {
+        assessment.IsAllowed,
+        paidDurationMinutes = assessment.PaidDuration is null
+            ? (int?)null
+            : (int)Math.Ceiling(assessment.PaidDuration.Value.TotalMinutes),
+        elapsedDurationMinutes = assessment.ElapsedDuration is null
+            ? (int?)null
+            : (int)Math.Ceiling(assessment.ElapsedDuration.Value.TotalMinutes),
+        rejectionReason = assessment.RejectionReason?.ToString()
+    });
+});
+
 app.MapPost("/api/visits/start", async (
     StartVisitRequest request,
     StartVisitFlow flow,
@@ -1997,6 +2082,7 @@ public sealed record AdminUserPolicyUpdateRequest(
     bool? AllowVisitExtension,
     bool? AllowOpenEndedVisits,
     int? MaxConcurrentVisits);
+public sealed record StartVisitPreviewRequest(Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 public sealed record StartVisitRequest(Guid OperationId, Guid VehicleId, Guid? OwnerUserId, DateTimeOffset? DesiredEndAt);
 public sealed record StopVisitRequest(Guid OperationId);
 public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);

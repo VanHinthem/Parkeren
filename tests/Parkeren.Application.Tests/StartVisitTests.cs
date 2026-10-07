@@ -120,6 +120,56 @@ public sealed class StartVisitTests
     }
 
     [Fact]
+    public void Policy_assessment_counts_only_paid_time_across_free_overnight_period()
+    {
+        var start = new DateTimeOffset(2026, 10, 7, 17, 0, 0, TimeSpan.Zero);
+        var end = new DateTimeOffset(2026, 10, 8, 8, 0, 0, TimeSpan.Zero);
+        var rules = new[]
+        {
+            new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1), null, TimeSpan.FromHours(4),
+                [new PaidWindow(DayOfWeek.Wednesday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                 new PaidWindow(DayOfWeek.Thursday, new TimeOnly(9, 0), new TimeOnly(20, 0))])
+        };
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(2), TimeSpan.FromHours(24), true);
+
+        var assessment = StartVisitPolicyAssessor.Assess(start, end, policy, rules);
+
+        Assert.True(assessment.IsAllowed);
+        Assert.Equal(TimeSpan.FromHours(2), assessment.PaidDuration);
+        Assert.Equal(TimeSpan.FromHours(15), assessment.ElapsedDuration);
+    }
+
+    [Fact]
+    public void Policy_assessment_rejects_when_paid_duration_exceeds_policy()
+    {
+        var start = new DateTimeOffset(2026, 10, 7, 16, 0, 0, TimeSpan.Zero);
+        var end = new DateTimeOffset(2026, 10, 7, 19, 0, 0, TimeSpan.Zero);
+        var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(2), TimeSpan.FromHours(8), true);
+
+        var assessment = StartVisitPolicyAssessor.Assess(start, end, policy, PaidRules(start));
+
+        Assert.False(assessment.IsAllowed);
+        Assert.Equal(StartVisitPolicyRejectionReason.MaxPaidParkingDurationExceeded, assessment.RejectionReason);
+        Assert.Equal(TimeSpan.FromHours(3), assessment.PaidDuration);
+    }
+
+    [Fact]
+    public void Policy_assessment_handles_open_ended_permission()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var allowed = new EffectiveParkingPolicy(TimeSpan.FromHours(4), TimeSpan.FromHours(8), false, true);
+        var blocked = allowed with { AllowOpenEndedVisits = false };
+
+        var allowedAssessment = StartVisitPolicyAssessor.Assess(start, null, allowed, PaidRules(start));
+        var blockedAssessment = StartVisitPolicyAssessor.Assess(start, null, blocked, PaidRules(start));
+
+        Assert.True(allowedAssessment.IsAllowed);
+        Assert.Null(allowedAssessment.PaidDuration);
+        Assert.False(blockedAssessment.IsAllowed);
+        Assert.Equal(StartVisitPolicyRejectionReason.OpenEndedNotAllowed, blockedAssessment.RejectionReason);
+    }
+
+    [Fact]
     public void Prepare_captures_policy_and_keeps_visit_starting_until_capacity_and_provider_work_are_committed()
     {
         var policy = new EffectiveParkingPolicy(TimeSpan.FromHours(8), TimeSpan.FromHours(12), true);

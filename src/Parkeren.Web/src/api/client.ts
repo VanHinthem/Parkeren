@@ -97,6 +97,21 @@ async function visitError(response:Response,fallback:string):Promise<Error>{
   return new Error(`${fallback} (HTTP ${response.status}).`);
 }
 
+export type StartVisitPreview={
+  isAllowed:boolean;
+  paidDurationMinutes:number|null;
+  elapsedDurationMinutes:number|null;
+  rejectionReason:"OpenEndedNotAllowed"|"EndNotAfterStart"|"MaxVisitElapsedDurationExceeded"|"MaxPaidParkingDurationExceeded"|null;
+};
+export async function previewVisitStart(vehicleId:string,desiredEndAt:string|null,ownerUserId?:string):Promise<StartVisitPreview>{
+  const response=await apiFetch("/api/visits/start-preview",{
+    method:"POST",
+    body:JSON.stringify({vehicleId,desiredEndAt,ownerUserId:ownerUserId??null})
+  });
+  if(!response.ok)throw await visitError(response,"Parkeeractie kon niet worden gecontroleerd");
+  return readJson<StartVisitPreview>(response);
+}
+
 export type StartVisitResult={visit:ActiveVisit;reconciliationRequired:boolean};
 export async function startVisit(vehicleId:string,desiredEndAt:string|null,operationId:string,ownerUserId?:string):Promise<StartVisitResult>{
   const response=await apiFetch("/api/visits/start",{
