@@ -7,6 +7,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_development_images:
+        description: Publish development images to GHCR
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   changes:
@@ -154,9 +160,15 @@ jobs:
       always() &&
       (
         (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
-        (github.event_name == 'pull_request' && github.base_ref == 'develop')
+        (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/develop' &&
+          inputs.publish_development_images
+        )
       ) &&
       (
+        github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.backend == 'true' ||
         needs.changes.outputs.frontend == 'true'
       ) &&
@@ -248,7 +260,13 @@ jobs:
           skip-setup-trivy: true
           hide-progress: true
       - name: Save scanned development images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            github.ref == 'refs/heads/develop' &&
+            inputs.publish_development_images
+          )
         run: |
           docker save -o dev-images.tar \
             parkeren-app:dev-${GITHUB_SHA} \
@@ -256,7 +274,13 @@ jobs:
             parkeren-two-park-mock:dev-${GITHUB_SHA} \
             parkeren-two-park-mock:dev
       - name: Upload scanned development images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            github.ref == 'refs/heads/develop' &&
+            inputs.publish_development_images
+          )
         uses: actions/upload-artifact@v4
         with:
           name: development-images-${{ github.sha }}
@@ -265,7 +289,13 @@ jobs:
           retention-days: 1
 
   publish-development-images:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/develop' &&
+        inputs.publish_development_images
+      )
     needs: [build-development-images]
     runs-on: ubuntu-latest
     permissions:
