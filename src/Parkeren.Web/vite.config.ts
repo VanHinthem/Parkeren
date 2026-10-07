@@ -23,6 +23,8 @@ function resolveAppVersion(): string {
 }
 
 const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
+const apiProxyTarget = process.env.PARKEREN_API_PROXY_TARGET ?? "http://localhost:5080";
+const pwaDevEnabled = process.env.PARKEREN_PWA_DEV === "true";
 const appName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
 const appIcon192 = appVariant === "dev" ? "/pwa-192x192-dev.png" : "/pwa-192x192.png";
 const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512.png";
@@ -43,6 +45,10 @@ export default defineConfig({
         // Never precache the SPA shell. Navigations must fetch the current
         // index.html so a deployment cannot revive an older asset graph.
         globIgnores: ["**/index.html"]
+      },
+      devOptions: {
+        enabled: pwaDevEnabled,
+        type: "module"
       },
       manifest: {
         name: appName,
@@ -86,7 +92,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:5080"
+      "/api": apiProxyTarget
     }
   },
   build: {
