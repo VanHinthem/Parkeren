@@ -1,6 +1,3 @@
-.other-active-visits .recent__row{grid-template-columns:2.15rem minmax(0,1fr) auto}
-.other-active-visits__content{display:grid;grid-template-columns:minmax(0,1fr) 6.3rem;grid-template-areas:"user plate" "schedule schedule";align-items:center;column-gap:.55rem;row-gap:.22rem;min-width:0}
-.other-active-visits__user{grid-area:user;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.other-active-visits__plate{grid-area:plate;justify-self:start}
-.other-active-visits__schedule{grid-area:schedule;font-size:.74rem;color:var(--color-text-muted);line-height:1.2}
-.other-active-visits__plate .license-plate{width:6.3rem}
+.other-active-visits__identity{display:flex;align-items:center;gap:.5rem;min-width:0}
+.other-active-visits__identity .license-plate{flex:0 0 auto}
+.other-active-visits__identity>strong{font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
