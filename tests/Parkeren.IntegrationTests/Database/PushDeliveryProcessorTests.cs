@@ -191,7 +191,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         await using (var seed = fixture.CreateDbContext())
         {
-            seed.Users.Add(user);
+            seed.Users.AddRange(user, admin);
             seed.Vehicles.Add(vehicle);
             seed.Visits.Add(visit);
             await seed.SaveChangesAsync(cancellationToken);
