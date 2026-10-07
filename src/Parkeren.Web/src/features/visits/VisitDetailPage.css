@@ -57,3 +57,5 @@
     grid-template-columns:6.5rem 1fr;
   }
 }
+
+.visit-detail__owner{display:flex;align-items:center;justify-content:space-between;gap:.75rem}.visit-detail__owner>span{font-size:.78rem;color:var(--color-text-muted)}.visit-detail__owner>strong{font-size:.9rem}
