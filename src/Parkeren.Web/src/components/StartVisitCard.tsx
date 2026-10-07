@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { VehicleSummary } from "../api/client";
 import { Card } from "../design/primitives/Card";
+import { createDefaultVisitEndAt, isVisitEndAtAllowed, VisitEndTimeField } from "./VisitEndTimeField";
 import "./StartVisitCard.css";
 
 type Props={
@@ -11,6 +12,7 @@ type Props={
   disabled?:boolean;
   disabledMessage?:string;
   maxDurationMinutes?:number|null;
+  allowOpenEnded?:boolean;
 };
 
 export function StartVisitCard({
@@ -20,46 +22,29 @@ export function StartVisitCard({
   error,
   disabled=false,
   disabledMessage,
-  maxDurationMinutes=240
+  maxDurationMinutes=240,
+  allowOpenEnded=false
 }:Props){
   const[selectedVehicleId,setSelectedVehicleId]=useState(vehicles[0]?.id??"");
-  const[durationHours,setDurationHours]=useState("4");
+  const[startAt]=useState(()=>new Date());
+  const[desiredEndAt,setDesiredEndAt]=useState<string|null>(()=>createDefaultVisitEndAt(startAt,maxDurationMinutes));
 
   useEffect(()=>{
     if(!vehicles.some(vehicle=>vehicle.id===selectedVehicleId))
       setSelectedVehicleId(vehicles[0]?.id??"");
   },[vehicles,selectedVehicleId]);
 
-  const vehicle=vehicles.find(item=>item.id===selectedVehicleId)??vehicles[0];
-  const maxDurationHours=maxDurationMinutes===null
-    ? null
-    : Math.max(1,Math.floor(maxDurationMinutes/60));
-  const durationOptions=useMemo(
-    ()=>maxDurationHours===null?[]:Array.from({length:maxDurationHours},(_,index)=>index+1),
-    [maxDurationHours]
-  );
-
   useEffect(()=>{
-    if(maxDurationHours!==null&&Number(durationHours)>maxDurationHours)
-      setDurationHours(String(maxDurationHours));
-  },[durationHours,maxDurationHours]);
+    if(desiredEndAt===null){
+      if(!allowOpenEnded)setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDurationMinutes));
+      return;
+    }
+    if(!isVisitEndAtAllowed(startAt,desiredEndAt,allowOpenEnded,maxDurationMinutes))
+      setDesiredEndAt(createDefaultVisitEndAt(startAt,maxDurationMinutes));
+  },[allowOpenEnded,desiredEndAt,maxDurationMinutes,startAt]);
 
-  const durationControl=maxDurationHours===null
-    ? <input
-        type="number"
-        min="1"
-        step="1"
-        value={durationHours}
-        onChange={event=>setDurationHours(event.target.value)}
-        disabled={starting||disabled}
-      />
-    : <select
-        value={durationHours}
-        onChange={event=>setDurationHours(event.target.value)}
-        disabled={starting||disabled}
-      >
-        {durationOptions.map(hours=><option key={hours} value={hours}>{hours} uur</option>)}
-      </select>;
+  const vehicle=vehicles.find(item=>item.id===selectedVehicleId)??vehicles[0];
+  const validEndAt=isVisitEndAtAllowed(startAt,desiredEndAt,allowOpenEnded,maxDurationMinutes);
 
   return <Card>
     <div className="start-visit">
@@ -77,23 +62,24 @@ export function StartVisitCard({
           </label>
         : vehicle?<strong className="start-visit__vehicle">{vehicle.licensePlate}</strong>:null}
 
-      <label className="start-visit__field">
-        <span>Parkeerduur{maxDurationHours===null?" (uren)":""}</span>
-        {durationControl}
-      </label>
+      <VisitEndTimeField
+        startAt={startAt}
+        value={desiredEndAt}
+        onChange={setDesiredEndAt}
+        allowOpenEnded={allowOpenEnded}
+        maxDurationMinutes={maxDurationMinutes}
+        disabled={starting||disabled}
+      />
 
-      {maxDurationHours===null&&<p>Er geldt geen maximale totale Visitduur voor jouw policy.</p>}
       {disabled&&disabledMessage?<p className="start-visit__error" role="status">{disabledMessage}</p>:null}
       {error?<p className="start-visit__error" role="alert">{error}</p>:null}
 
       <button
         className="start-visit__button"
-        disabled={!vehicle||starting||disabled}
+        disabled={!vehicle||starting||disabled||!validEndAt}
         onClick={()=>{
-          const hours=Number(durationHours);
-          if(!vehicle||!Number.isInteger(hours)||hours<1||(maxDurationHours!==null&&hours>maxDurationHours))
-            return;
-          void onStart(vehicle.id,new Date(Date.now()+hours*60*60*1000).toISOString());
+          if(!vehicle||!validEndAt)return;
+          void onStart(vehicle.id,desiredEndAt);
         }}
       >
         {starting?"Starten…":"Start parkeren"}
