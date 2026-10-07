@@ -128,7 +128,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         await using (var seed = fixture.CreateDbContext())
         {
-            seed.Users.AddRange(user, admin);
+            seed.Users.Add(user);
             seed.PushSubscriptions.Add(new Parkeren.Domain.Notifications.PushSubscription(
                 subscriptionId,
                 user.Id,
@@ -168,7 +168,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
         {
             await using var cleanup = fixture.CreateDbContext();
             await cleanup.PushSubscriptions.Where(x => x.Id == subscriptionId).ExecuteDeleteAsync(cancellationToken);
-            await cleanup.Users.Where(x => x.Id == user.Id || x.Id == admin.Id).ExecuteDeleteAsync(cancellationToken);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
         }
     }
 
@@ -232,8 +232,8 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
                 .Where(x => x.VisitId == visit.Id && x.Type == NotificationType.VisitStopped)
                 .ToListAsync(cancellationToken);
             Assert.Equal(2, notifications.Count);
-            var visitorNotification = Assert.Single(notifications.Where(x => x.RecipientUserId == user.Id));
-            var adminNotification = Assert.Single(notifications.Where(x => x.RecipientUserId == admin.Id));
+            var visitorNotification = Assert.Single(notifications, x => x.RecipientUserId == user.Id);
+            var adminNotification = Assert.Single(notifications, x => x.RecipientUserId == admin.Id);
             var visitorDelivery = await verify.PushDeliveries.SingleAsync(
                 x => x.NotificationId == visitorNotification.Id,
                 cancellationToken);
