@@ -58,4 +58,4 @@
   }
 }
 
-.visit-live-detail__heading{display:grid;gap:.15rem;padding:0 .05rem}.visit-live-detail__heading h2{margin:0;font-size:1rem;line-height:1.2}.visit-live-detail__heading p{margin:0;font-size:.78rem;color:var(--color-text-muted)}.visit-live-detail__heading p strong{color:var(--color-text);font-weight:700}
+.visit-live-detail__heading{padding:0 .05rem}.visit-live-detail__heading h2{margin:0;font-size:1rem;line-height:1.2}.visit-live-detail__heading h2 strong{font-weight:800}
