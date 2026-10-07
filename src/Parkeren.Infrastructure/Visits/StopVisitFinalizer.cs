@@ -89,7 +89,7 @@ internal sealed class StopVisitFinalizer(ParkerenDbContext dbContext, Notificati
 
         var notificationEvent = new NotificationEvent(Guid.NewGuid(), NotificationEventType.VisitStopped, visit.Id, actualEndAt);
         dbContext.NotificationEvents.Add(notificationEvent);
-        await inboxWriter.WriteAsync(notificationEvent, NotificationType.VisitStopped, visit.UserId, includeVisitor: true, includeAdmins: false, cancellationToken);
+        await inboxWriter.WriteAsync(notificationEvent, NotificationType.VisitStopped, visit.UserId, includeVisitor: true, includeAdmins: true, cancellationToken);
         await budgetWarningService.EvaluateAsync(visit, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
