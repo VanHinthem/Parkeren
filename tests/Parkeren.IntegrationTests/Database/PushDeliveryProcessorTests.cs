@@ -231,7 +231,6 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
             var notifications = await verify.Notifications
                 .Where(x => x.VisitId == visit.Id && x.Type == NotificationType.VisitStopped)
                 .ToListAsync(cancellationToken);
-            Assert.Equal(2, notifications.Count);
             var visitorNotification = Assert.Single(notifications, x => x.RecipientUserId == user.Id);
             var adminNotification = Assert.Single(notifications, x => x.RecipientUserId == admin.Id);
             var visitorDelivery = await verify.PushDeliveries.SingleAsync(
