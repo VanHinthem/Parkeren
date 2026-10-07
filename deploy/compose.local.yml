@@ -1,0 +1,102 @@
+services:
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    command:
+      - dotnet
+      - watch
+      - --project
+      - src/Parkeren.Api/Parkeren.Api.csproj
+      - run
+      - --no-launch-profile
+      - --urls
+      - http://0.0.0.0:8080
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+      ParkingProvider__Type: TwoParkMock
+      ParkingProvider__BaseUrl: http://two-park-mock:8080
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
+      WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
+      BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
+      BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+    ports:
+      - "${PARKEREN_APP_PORT:-5080}:8080"
+    volumes:
+      - ..:/workspace
+      - nuget_packages:/root/.nuget/packages
+    depends_on:
+      db:
+        condition: service_healthy
+      two-park-mock:
+        condition: service_started
+
+  web:
+    image: node:24-alpine
+    working_dir: /workspace/src/Parkeren.Web
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    restart: unless-stopped
+    environment:
+      PARKEREN_APP_VERSION: local
+      PARKEREN_APP_VARIANT: dev
+      PARKEREN_API_PROXY_TARGET: http://api:8080
+      PARKEREN_PWA_DEV: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${PARKEREN_WEB_PORT:-5173}:5173"
+    volumes:
+      - ..:/workspace
+      - web_node_modules:/workspace/src/Parkeren.Web/node_modules
+    depends_on:
+      api:
+        condition: service_started
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren_dev
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD:?Set PARKEREN_DB_PASSWORD}
+    ports:
+      - "${PARKEREN_DB_PORT:-5433}:5432"
+    volumes:
+      - parkeren_local_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  two-park-mock:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    command:
+      - dotnet
+      - watch
+      - --project
+      - src/Parkeren.TwoParkMock/Parkeren.TwoParkMock.csproj
+      - run
+      - --no-launch-profile
+      - --urls
+      - http://0.0.0.0:8080
+    restart: unless-stopped
+    environment:
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      TwoParkMock__StatePath: /data/actions.json
+    ports:
+      - "${PARKEREN_TWOPARK_MOCK_PORT:-5081}:8080"
+    volumes:
+      - ..:/workspace
+      - nuget_packages:/root/.nuget/packages
+      - two_park_mock_local_data:/data
+
+volumes:
+  parkeren_local_db:
+  two_park_mock_local_data:
+  nuget_packages:
+  web_node_modules:
