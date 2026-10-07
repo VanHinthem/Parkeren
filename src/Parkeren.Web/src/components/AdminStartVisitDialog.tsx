@@ -4,6 +4,7 @@ import {
   getAssignedVehicles,
   getUsers,
   previewVisitStart,
+  startVisit,
   type AdminActiveVisitSummary,
   type AdminParkingPolicySummary,
   type StartVisitPreview,
@@ -16,11 +17,14 @@ import {
   VisitEndTimeField
 } from "./VisitEndTimeField";
 import { Dialog } from "../design/primitives/Dialog";
+import { Button } from "../design/primitives/Button";
+import { clearPendingOperation,getOrCreatePendingOperation } from "../pendingOperations";
 
 type Props={
   open:boolean;
   onClose:()=>void;
   activeVisits:AdminActiveVisitSummary[];
+  onStarted:()=>Promise<void>|void;
 };
 
 function formatPreviewMinutes(minutes:number|null){
@@ -43,7 +47,7 @@ function previewValidationMessage(preview:StartVisitPreview|null){
   }
 }
 
-export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
+export function AdminStartVisitDialog({open,onClose,activeVisits,onStarted}:Props){
   const[users,setUsers]=useState<UserSummary[]>([]);
   const[usersLoading,setUsersLoading]=useState(false);
   const[usersError,setUsersError]=useState<string|null>(null);
@@ -56,6 +60,8 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
   const[preview,setPreview]=useState<StartVisitPreview|null>(null);
   const[previewing,setPreviewing]=useState(false);
   const[previewError,setPreviewError]=useState<string|null>(null);
+  const[starting,setStarting]=useState(false);
+  const[startError,setStartError]=useState<string|null>(null);
 
   useEffect(()=>{
     if(!open)return;
@@ -67,6 +73,8 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
     setPolicy(undefined);
     setSelectedVehicleId("");
     setPreview(null);
+    setStarting(false);
+    setStartError(null);
     getUsers()
       .then(result=>{
         if(!cancelled)setUsers(result.filter(user=>user.role==="Visitor"&&user.isActive));
@@ -90,6 +98,7 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
     setSelectedVehicleId("");
     setPreview(null);
     setPreviewError(null);
+    setStartError(null);
 
     Promise.all([
       getAssignedVehicles(selectedUser.id),
@@ -159,11 +168,56 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
 
   const activeCountFor=(userId:string)=>activeVisits.filter(visit=>visit.userId===userId).length;
 
-  return <Dialog open={open} title="Parkeren starten voor bezoeker" onClose={onClose}>
+  const selectedUserLimitReached=selectedUser!==null&&
+    selectedUser.maxConcurrentVisits!==null&&
+    activeCountFor(selectedUser.id)>=selectedUser.maxConcurrentVisits;
+
+  const startDisabled=
+    starting||
+    selectedUser===null||
+    selectedVehicleId===""||
+    !policy||
+    selectedUserLimitReached||
+    !isVisitEndAtAllowed(
+      startAt,
+      desiredEndAt,
+      policy?.allowOpenEndedVisits===true,
+      policy?.maxVisitElapsedDurationMinutes??null
+    )||
+    previewing||
+    previewError!==null||
+    preview?.isAllowed!==true;
+
+  async function handleStart(){
+    if(startDisabled||!selectedUser||!selectedVehicleId)return;
+    setStarting(true);
+    setStartError(null);
+
+    const logicalKey=`${selectedUser.id}:${selectedVehicleId}:${desiredEndAt??"open"}`;
+    const operationId=getOrCreatePendingOperation("start",logicalKey);
+
+    try{
+      const result=await startVisit(
+        selectedVehicleId,
+        desiredEndAt,
+        operationId,
+        selectedUser.id
+      );
+      if(!result.reconciliationRequired)clearPendingOperation("start",logicalKey);
+      await onStarted();
+      onClose();
+    }catch(error){
+      setStartError(error instanceof Error?error.message:"Parkeeractie kon niet worden gestart.");
+    }finally{
+      setStarting(false);
+    }
+  }
+
+  return <Dialog open={open} title="Parkeren starten voor bezoeker" onClose={()=>{if(!starting)onClose();}}>
     <div className="actions-page__visitor-dialog">
       {selectedUser
         ? <>
-            <button type="button" className="actions-page__visitor-back" onClick={()=>setSelectedUser(null)}>← Andere bezoeker kiezen</button>
+            <button type="button" className="actions-page__visitor-back" onClick={()=>setSelectedUser(null)} disabled={starting}>← Andere bezoeker kiezen</button>
             <div className="actions-page__visitor-selection">
               <strong>{selectedUser.username}</strong>
               <small>{activeCountFor(selectedUser.id)===0?"Geen lopende actie":`${activeCountFor(selectedUser.id)} lopende actie(s)`}</small>
@@ -178,7 +232,7 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
                   : <>
                       <label className="actions-page__visitor-field">
                         <span>Voertuig</span>
-                        <select value={selectedVehicleId} onChange={event=>setSelectedVehicleId(event.target.value)}>
+                        <select value={selectedVehicleId} onChange={event=>setSelectedVehicleId(event.target.value)} disabled={starting}>
                           {vehicles.map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}
                         </select>
                       </label>
@@ -189,6 +243,7 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
                         onChange={setDesiredEndAt}
                         allowOpenEnded={policy.allowOpenEndedVisits}
                         maxDurationMinutes={policy.maxVisitElapsedDurationMinutes}
+                        disabled={starting}
                       />
 
                       {previewing?<p className="actions-page__visitor-hint">Parkeerduur controleren…</p>:null}
@@ -206,6 +261,15 @@ export function AdminStartVisitDialog({open,onClose,activeVisits}:Props){
                       {previewError
                         ? <p className="actions-page__visitor-hint actions-page__visitor-hint--error" role="alert">{previewError}</p>
                         : null}
+                      {selectedUserLimitReached
+                        ? <p className="actions-page__visitor-hint actions-page__visitor-hint--error" role="alert">Deze bezoeker heeft het maximum aantal lopende parkeeracties bereikt.</p>
+                        : null}
+                      {startError
+                        ? <p className="actions-page__visitor-hint actions-page__visitor-hint--error" role="alert">{startError}</p>
+                        : null}
+                      <Button onClick={()=>void handleStart()} disabled={startDisabled}>
+                        {starting?"Starten…":"Parkeren starten"}
+                      </Button>
                     </>}
           </>
         : usersLoading
