@@ -16,14 +16,26 @@ function elapsed(startAt:string,now:number){
   return [hours,minutes,rest].map(value=>value.toString().padStart(2,"0")).join(":");
 }
 
-export function OtherActiveVisits({visits,now}:{visits:AdminActiveVisitSummary[];now:number}){
+type Props={
+  visits:AdminActiveVisitSummary[];
+  now:number;
+  hrefForVisit?:(visit:AdminActiveVisitSummary)=>string;
+  showUsername?:boolean;
+};
+
+export function OtherActiveVisits({
+  visits,
+  now,
+  hrefForVisit=visit=>`/acties/${visit.id}`,
+  showUsername=true
+}:Props){
   return <div className="recent other-active-visits">
-    {visits.map(visit=><a className="recent__row recent__row--link" href={`/acties/${visit.id}`} data-return-to="/acties" key={visit.id}>
+    {visits.map(visit=><a className="recent__row recent__row--link" href={hrefForVisit(visit)} data-return-to="/acties" key={visit.id}>
       <span className="recent__icon recent__icon--active"><Icon name="car"/></span>
       <span className="recent__details">
         <span className="other-active-visits__identity">
           <LicensePlate value={visit.licensePlate}/>
-          <strong>{visit.username}</strong>
+          {showUsername?<strong>{visit.username}</strong>:null}
         </span>
         <small>
           Gestart {time(visit.startAt)}
