@@ -112,4 +112,64 @@ public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture
             await db.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(token);
         }
     }
+    [Fact]
+    public async Task Vehicle_shared_by_two_users_keeps_imported_history_unassigned()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var plate = $"HM{suffix[..6].ToUpperInvariant()}";
+        var actionId = $"shared-{suffix}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var userA = new User(Guid.NewGuid(), $"shared-a-{suffix}", $"SHARED-A-{suffix}", "hash", UserRole.Visitor);
+        var userB = new User(Guid.NewGuid(), $"shared-b-{suffix}", $"SHARED-B-{suffix}", "hash", UserRole.Visitor);
+        var start = new DateTimeOffset(2026, 10, 7, 14, 0, 0, TimeSpan.Zero);
+        var record = new ProviderActionHistoryRecord(
+            actionId, "COMPLETED", start, start.AddMinutes(30),
+            0.35m, "EUR", plate, "OSS Zone J");
+
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                db.Users.AddRange(userA, userB);
+                db.Vehicles.Add(vehicle);
+                db.UserVehicles.AddRange(
+                    new UserVehicle(userA.Id, vehicle.Id),
+                    new UserVehicle(userB.Id, vehicle.Id));
+                await db.SaveChangesAsync(token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistoryNewActionStore(db);
+                Assert.Equal(ProviderHistoryNewActionResult.Inserted,
+                    await store.InsertIfMissingAsync("product-1", record, start.AddHours(1), token));
+            }
+
+            await using (var verify = fixture.CreateDbContext())
+            {
+                var action = await verify.ProviderParkingActions.AsNoTracking()
+                    .SingleAsync(x => x.ProviderActionId == actionId, token);
+                Assert.Equal(vehicle.Id, action.VehicleId);
+                Assert.Null(action.AssignedUserId);
+                Assert.Equal(ProviderActionAssignmentSource.Unassigned, action.AssignmentSource);
+                Assert.Null(action.VisitId);
+                Assert.Equal(2, await verify.UserVehicles.CountAsync(
+                    x => x.VehicleId == vehicle.Id, token));
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateDbContext();
+            await db.ProviderParkingActions.Where(x => x.ProviderActionId == actionId)
+                .ExecuteDeleteAsync(token);
+            await db.UserVehicles.Where(x => x.VehicleId == vehicle.Id)
+                .ExecuteDeleteAsync(token);
+            await db.Users.Where(x => x.Id == userA.Id || x.Id == userB.Id)
+                .ExecuteDeleteAsync(token);
+            await db.Vehicles.Where(x => x.Id == vehicle.Id)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
 }
