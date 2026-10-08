@@ -147,7 +147,7 @@ export function AdminProviderHistoryPage() {
                   </select>
                 </label>
                 <Button variant="secondary" disabled={savingId === item.id}
-                  onClick={() => void saveAssignment(item.id, selectedUsers[item.id] ?? item.assignedUserId)}>
+                  onClick={() => void saveAssignment(item.id, (selectedUsers[item.id] ?? item.assignedUserId) || null)}>
                   {savingId === item.id ? "Opslaan…" : "Toewijzing opslaan"}
                 </Button>
               </div>}
