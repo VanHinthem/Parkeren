@@ -170,6 +170,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             });
             var services = new ServiceCollection();
             services.AddInfrastructure(configuration);
+            services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
             services.AddSingleton<IParkingProvider>(parkingProvider);
             services.AddLogging();
             await using var provider = services.BuildServiceProvider();
@@ -339,6 +340,11 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 .Where(x => x.Id == user.Id)
                 .ExecuteDeleteAsync(cancellationToken);
         }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     private static PaidWindow[] CreatePaidWindows(
