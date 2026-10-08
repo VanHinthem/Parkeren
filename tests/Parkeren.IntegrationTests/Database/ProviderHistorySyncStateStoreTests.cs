@@ -48,4 +48,51 @@ public sealed class ProviderHistorySyncStateStoreTests(PostgreSqlFixture fixture
                 .ExecuteDeleteAsync(token);
         }
     }
+    [Fact]
+    public async Task Failure_is_persisted_and_subsequent_completion_clears_error()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var productId = $"failure-sync-{Guid.NewGuid():N}";
+        var attempted = new DateTimeOffset(2026, 10, 8, 16, 0, 0, TimeSpan.Zero);
+        var completedAt = attempted.AddMinutes(5);
+
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistorySyncStateStore(db);
+                await store.GetOrCreateAsync(productId, 10, token);
+                await store.RecordPageCompletedAsync(productId, 0, attempted, token);
+                await store.RecordFailureAsync(productId, attempted, "Provider unavailable", token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistorySyncStateStore(db);
+                var failed = await store.GetOrCreateAsync(productId, 10, token);
+                Assert.Equal(1, failed.NextPageNumber);
+                Assert.Equal("Provider unavailable", failed.LastError);
+                Assert.Equal(attempted, failed.LastAttemptAt);
+                Assert.Null(failed.LastSuccessfulSyncAt);
+                await store.RecordSyncCompletedAsync(productId, completedAt, token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var completed = await new ProviderHistorySyncStateStore(db)
+                    .GetOrCreateAsync(productId, 10, token);
+                Assert.Equal(0, completed.NextPageNumber);
+                Assert.Null(completed.LastError);
+                Assert.Equal(completedAt, completed.LastAttemptAt);
+                Assert.Equal(completedAt, completed.LastSuccessfulSyncAt);
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateDbContext();
+            await db.ProviderHistorySyncStates.Where(x => x.ProviderProductId == productId)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
 }
