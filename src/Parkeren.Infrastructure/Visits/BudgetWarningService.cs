@@ -72,7 +72,7 @@ internal sealed class BudgetWarningService(
             var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
                 .Where(x =>
                     (providerProductId != null && x.ProviderProductId == providerProductId ||
-                     (x.VisitId.HasValue && dbContext.Visits.Any(v =>
+                     (x.ProviderProductId == null && x.VisitId.HasValue && dbContext.Visits.Any(v =>
                          v.Id == x.VisitId.Value && v.ProviderProductId == period.ProviderProductId))) &&
                     x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
                     x.ActualStartAt.Value < period.ValidUntil &&
