@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { getAdminProviderActionHistory, getAdminProviderProducts, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { LicensePlate } from "../../components/LicensePlate";
@@ -6,6 +6,7 @@ import { Loading } from "../../design/primitives/Loading";
 import { Button } from "../../design/primitives/Button";
 import { formatAdminDateTime, formatAdminProviderActionStatus } from "./adminFieldFormatters";
 import { AdminProviderSubnav } from "./AdminProviderSubnav";
+import "./adminFieldPresentation.css";
 import "./AdminProvider.css";
 
 function dateBoundary(value: string, nextDay: boolean) {
@@ -17,6 +18,7 @@ function dateBoundary(value: string, nextDay: boolean) {
 
 export function AdminProviderHistoryPage() {
   const [data, setData] = useState<AdminProviderActionHistoryPage>();
+  const [expandedId, setExpandedId] = useState<string>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -87,14 +89,37 @@ export function AdminProviderHistoryPage() {
       {loading && <Loading label="Historie laden" />}
       {!loading && data && <div className="admin-table-wrap">
         <table className="admin-table">
-          <thead><tr><th>Kenteken</th><th>Start</th><th>Product</th><th>Status</th><th>Herkomst</th></tr></thead>
-          <tbody>{data.items.map(item => <tr key={item.id}>
+          <thead><tr><th>Kenteken</th><th>Start</th><th>Product</th><th>Status</th><th>Herkomst</th><th aria-label="Acties" /></tr></thead>
+          <tbody>{data.items.map(item => <Fragment key={item.id}><tr>
             <td>{item.licensePlate ? <LicensePlate value={item.licensePlate} /> : "—"}</td>
             <td>{formatAdminDateTime(item.actualStartAt)}</td>
             <td>{products.find(product => product.providerProductId === item.providerProductId)?.name ?? item.providerProductId ?? "—"}</td>
             <td>{formatAdminProviderActionStatus(item.state)}</td>
             <td>{item.origin === "Managed" ? "Beheerd" : item.origin === "Imported" ? "Geïmporteerd" : item.origin === "External" ? "Extern" : item.origin}</td>
-          </tr>)}</tbody>
+            <td className="admin-table__actions">
+              <button type="button" className="admin-action-link admin-action-link--muted"
+                aria-expanded={expandedId === item.id}
+                onClick={() => setExpandedId(expandedId === item.id ? undefined : item.id)}>
+                {expandedId === item.id ? "Verbergen" : "Details"}
+              </button>
+            </td>
+          </tr>
+          {expandedId === item.id && <tr className="admin-table__detail-row">
+            <td colSpan={6}><div className="admin-table__detail-panel">
+              <dl className="admin-facts admin-facts--grid">
+                <div className="admin-fact"><dt>Provideractie-ID</dt><dd className="admin-code">{item.providerActionId ?? "—"}</dd></div>
+                <div className="admin-fact"><dt>Lokale actie-ID</dt><dd className="admin-code">{item.id}</dd></div>
+                <div className="admin-fact"><dt>Product-ID</dt><dd className="admin-code">{item.providerProductId ?? "—"}</dd></div>
+                <div className="admin-fact"><dt>Werkelijke start</dt><dd>{formatAdminDateTime(item.actualStartAt)}</dd></div>
+                <div className="admin-fact"><dt>Werkelijk einde</dt><dd>{formatAdminDateTime(item.actualEndAt)}</dd></div>
+                <div className="admin-fact"><dt>Historie-status</dt><dd>{item.historyStatus}</dd></div>
+                <div className="admin-fact"><dt>Toewijzingsbron</dt><dd>{item.assignmentSource}</dd></div>
+                <div className="admin-fact"><dt>Gebruiker-ID</dt><dd className="admin-code">{item.assignedUserId ?? "Niet toegewezen"}</dd></div>
+                <div className="admin-fact"><dt>Providerkosten</dt><dd>{item.providerCostAmount === null ? "—" : item.providerCostAmount.toLocaleString("nl-NL", { style: "currency", currency: "EUR" })}</dd></div>
+              </dl>
+              {item.visitId && <a className="admin-action-link" href={`/beheer/bezoeken/${item.visitId}`}>Visit openen</a>}
+            </div></td>
+          </tr>}</Fragment>)}</tbody>
         </table>
         <div className="admin-provider__toolbar">
           <p>{data.totalCount} provideracties · pagina {page} van {Math.max(1, Math.ceil(data.totalCount / data.pageSize))}</p>
