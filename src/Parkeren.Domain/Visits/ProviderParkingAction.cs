@@ -43,6 +43,51 @@ public sealed class ProviderParkingAction
     public ProviderActionHealth Health { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public uint Version { get; private set; }
+    /// <summary>
+    /// Creates a completed historical action without issuing a provider mutation or creating a Visit.
+    /// </summary>
+    public static ProviderParkingAction ImportCompleted(
+        Guid id,
+        string providerActionId,
+        string providerProductId,
+        string? providerLocation,
+        Guid vehicleId,
+        ProviderActionAssignment assignment,
+        DateTimeOffset actualStartAt,
+        DateTimeOffset actualEndAt,
+        decimal? providerCostAmount,
+        string providerStatus,
+        DateTimeOffset observedAt)
+    {
+        if (id == Guid.Empty) throw new ArgumentException("An action id is required.", nameof(id));
+        if (string.IsNullOrWhiteSpace(providerActionId))
+            throw new ArgumentException("A provider action id is required.", nameof(providerActionId));
+        if (string.IsNullOrWhiteSpace(providerProductId))
+            throw new ArgumentException("A provider product id is required.", nameof(providerProductId));
+        if (string.IsNullOrWhiteSpace(providerStatus))
+            throw new ArgumentException("A provider status is required.", nameof(providerStatus));
+        if (actualEndAt < actualStartAt)
+            throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        if (providerCostAmount is < 0m)
+            throw new ArgumentOutOfRangeException(nameof(providerCostAmount));
+
+        // Historical start and end are authoritative; no Start/Stop lifecycle transitions occur.
+        var plannedEnd = actualEndAt > actualStartAt ? actualEndAt : actualStartAt.AddTicks(1);
+        var action = new ProviderParkingAction(
+            id, null, actualStartAt, plannedEnd, providerProductId, providerLocation);
+        action.SetImportedAttribution(ProviderActionOrigin.Imported, vehicleId, assignment, observedAt);
+        action.ProviderActionId = providerActionId.Trim();
+        action.ProviderStatus = providerStatus.Trim();
+        action.ActualStartAt = actualStartAt;
+        action.ActualEndAt = actualEndAt;
+        action.ProviderCostAmount = providerCostAmount;
+        action.State = ProviderActionState.Completed;
+        action.HistoryStatus = providerCostAmount.HasValue
+            ? ProviderHistoryStatus.Reconciled
+            : ProviderHistoryStatus.Incomplete;
+        return action;
+    }
+
     public void SetImportedAttribution(
         ProviderActionOrigin origin,
         Guid vehicleId,
