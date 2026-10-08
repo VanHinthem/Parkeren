@@ -100,8 +100,16 @@ public sealed class ProviderHistoryCheckpointedImportService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await checkpoints.RecordFailureAsync(
-                providerProductId, timeProvider.GetUtcNow(), ex.Message, cancellationToken);
+            try
+            {
+                await checkpoints.RecordFailureAsync(
+                    providerProductId, timeProvider.GetUtcNow(), ex.Message, CancellationToken.None);
+            }
+            catch (Exception) // Best-effort diagnostics must not hide the import failure.
+            {
+                // Preserve the original exception for the caller.
+            }
+
             throw;
         }
     }
