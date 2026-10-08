@@ -1086,7 +1086,7 @@ app.MapGet("/api/admin/provider/actions", async (
     if (authenticated.User is null)
         return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin)
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (page is < 1 || pageSize is < 1 or > 100)
         return Results.BadRequest("Page must be positive and page size between 1 and 100.");
     if (from.HasValue && until.HasValue && from >= until)
@@ -1108,7 +1108,7 @@ app.MapGet("/api/admin/provider/actions/{actionId:guid}/assignment-history", asy
     if (authenticated.User is null)
         return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin)
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (!await db.ProviderParkingActions.AnyAsync(x => x.Id == actionId, cancellationToken))
         return Results.NotFound();
 
@@ -1141,7 +1141,7 @@ app.MapPut("/api/admin/provider/actions/{actionId:guid}/assignment", async (
     if (authenticated.User is null)
         return Results.Unauthorized();
     if (authenticated.User.Role != UserRole.Admin)
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     try
     {
