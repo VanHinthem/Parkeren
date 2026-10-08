@@ -23,6 +23,12 @@ public sealed class ProviderParkingAction
     }
     public Guid Id { get; private set; }
     public Guid? VisitId { get; private set; }
+    public ProviderActionOrigin Origin { get; private set; } = ProviderActionOrigin.Managed;
+    public Guid? VehicleId { get; private set; }
+    public Guid? AssignedUserId { get; private set; }
+    public ProviderActionAssignmentSource AssignmentSource { get; private set; } = ProviderActionAssignmentSource.Unassigned;
+    public DateTimeOffset? FirstObservedAt { get; private set; }
+    public DateTimeOffset? LastSyncedAt { get; private set; }
     public string? ProviderActionId { get; private set; }
     public string? ProviderProductId { get; private set; }
     public string? ProviderLocation { get; private set; }
@@ -37,6 +43,51 @@ public sealed class ProviderParkingAction
     public ProviderActionHealth Health { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public uint Version { get; private set; }
+    public void SetImportedAttribution(
+        ProviderActionOrigin origin,
+        Guid vehicleId,
+        ProviderActionAssignment assignment,
+        DateTimeOffset observedAt)
+    {
+        if (origin == ProviderActionOrigin.Managed)
+            throw new ArgumentException("Import attribution requires an imported or external origin.", nameof(origin));
+        if (VisitId.HasValue || State != ProviderActionState.Planned || ProviderActionId is not null)
+            throw new InvalidOperationException("Import attribution can only be initialized on an unstarted action without a Visit.");
+        if (vehicleId == Guid.Empty)
+            throw new ArgumentException("A vehicle id is required.", nameof(vehicleId));
+        ArgumentNullException.ThrowIfNull(assignment);
+        if (assignment.Source == ProviderActionAssignmentSource.Confirmed)
+            throw new ArgumentException("Imported actions cannot have confirmed app attribution.", nameof(assignment));
+
+        Origin = origin;
+        VehicleId = vehicleId;
+        AssignedUserId = assignment.UserId;
+        AssignmentSource = assignment.Source;
+        FirstObservedAt = observedAt;
+        LastSyncedAt = observedAt;
+    }
+
+    public void AssignHistoricalUser(ProviderActionAssignment assignment)
+    {
+        ArgumentNullException.ThrowIfNull(assignment);
+        if (Origin == ProviderActionOrigin.Managed)
+            throw new InvalidOperationException("Managed action attribution comes from its Visit.");
+        if (assignment.Source is not (ProviderActionAssignmentSource.ManuallyAssigned or ProviderActionAssignmentSource.Unassigned))
+            throw new ArgumentException("Only explicit manual assignment or unassignment is allowed.", nameof(assignment));
+        if ((assignment.UserId is null) != (assignment.Source == ProviderActionAssignmentSource.Unassigned))
+            throw new ArgumentException("Assignment and user must be consistent.", nameof(assignment));
+
+        AssignedUserId = assignment.UserId;
+        AssignmentSource = assignment.Source;
+    }
+
+    public void RecordHistorySync(DateTimeOffset observedAt)
+    {
+        if (Origin == ProviderActionOrigin.Managed && FirstObservedAt is null)
+            FirstObservedAt = observedAt;
+        LastSyncedAt = observedAt;
+    }
+
     public void MarkStarting() { Ensure(ProviderActionState.Planned); State = ProviderActionState.Starting; }
     public void CaptureStartResponse(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); if (string.IsNullOrWhiteSpace(providerActionId)) throw new ArgumentException("Provider action id is required.", nameof(providerActionId)); ProviderActionId = providerActionId; ActualStartAt = actualStartAt; ProviderStatus = providerStatus; }
     public void MarkActive(string providerActionId, DateTimeOffset actualStartAt, string? providerStatus = null) { Ensure(ProviderActionState.Starting); CaptureStartResponse(providerActionId, actualStartAt, providerStatus); State = ProviderActionState.Active; Health = ProviderActionHealth.Healthy; }

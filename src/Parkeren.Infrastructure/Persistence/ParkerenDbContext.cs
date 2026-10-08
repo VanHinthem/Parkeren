@@ -602,6 +602,13 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.Property(x => x.Key).HasMaxLength(500).IsRequired();
             entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            // These domain fields are staged until the dedicated schema migration.
+            entity.Ignore(x => x.Origin);
+            entity.Ignore(x => x.VehicleId);
+            entity.Ignore(x => x.AssignedUserId);
+            entity.Ignore(x => x.AssignmentSource);
+            entity.Ignore(x => x.FirstObservedAt);
+            entity.Ignore(x => x.LastSyncedAt);
             entity.Property(x => x.ProviderActionId).HasMaxLength(200);
             entity.Property(x => x.ProviderStatus).HasMaxLength(100);
             entity.Property(x => x.Version).IsRowVersion();
