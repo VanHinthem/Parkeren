@@ -11,7 +11,8 @@ public sealed record AdminProviderActionHistoryFilter(
     ProviderActionOrigin? Origin = null,
     Guid? AssignedUserId = null,
     DateTimeOffset? From = null,
-    DateTimeOffset? Until = null);
+    DateTimeOffset? Until = null,
+    bool OldestFirst = false);
 
 public sealed record AdminProviderActionHistoryRow(
     Guid Id,
