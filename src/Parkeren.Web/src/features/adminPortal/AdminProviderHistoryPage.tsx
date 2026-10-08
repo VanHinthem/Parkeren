@@ -10,6 +10,7 @@ import "./AdminProvider.css";
 export function AdminProviderHistoryPage() {
   const [data, setData] = useState<AdminProviderActionHistoryPage>();
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -20,9 +21,12 @@ export function AdminProviderHistoryPage() {
   useEffect(() => { void getAdminProviderProducts().then(setProducts).catch(() => setProducts([])); }, []);
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError("");
     getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin})
       .then(result => { if (active) setData(result); })
-      .catch(() => { if (active) setError("Historie kon niet worden geladen."); });
+      .catch(() => { if (active) { setData(undefined); setError("Historie kon niet worden geladen."); } })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [page, appliedSearch, productId, state, origin]);
   return <div className="admin-provider">
@@ -53,8 +57,8 @@ export function AdminProviderHistoryPage() {
         <Button type="submit" variant="secondary">Zoeken</Button>
       </form>
       {error && <Alert tone="danger">{error}</Alert>}
-      {!data && !error && <Loading label="Historie laden" />}
-      {data && <div className="admin-table-wrap">
+      {loading && <Loading label="Historie laden" />}
+      {!loading && data && <div className="admin-table-wrap">
         <table className="admin-table">
           <thead><tr><th>Kenteken</th><th>Start</th><th>Product</th><th>Status</th><th>Herkomst</th></tr></thead>
           <tbody>{data.items.map(item => <tr key={item.id}>
