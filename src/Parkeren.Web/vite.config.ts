@@ -25,6 +25,7 @@ function resolveAppVersion(): string {
 const appVariant = process.env.PARKEREN_APP_VARIANT === "acc" ? "acc" : process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
 const apiProxyTarget = process.env.PARKEREN_API_PROXY_TARGET ?? "http://localhost:5080";
 const pwaDevEnabled = process.env.PARKEREN_PWA_DEV === "true";
+const devHmrHost = process.env.PARKEREN_HMR_HOST;
 const appName = appVariant === "acc" ? "Parkeren ACC" : appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
 const appIcon192 = appVariant === "production" ? "/pwa-192x192.png" : `/pwa-192x192-${appVariant}.png`;
 const appIcon512 = appVariant === "production" ? "/pwa-512x512.png" : `/pwa-512x512-${appVariant}.png`;
@@ -99,6 +100,16 @@ export default defineConfig({
     }
   ],
   server: {
+    watch: {
+      usePolling: true
+    },
+    ...(devHmrHost ? {
+      hmr: {
+        protocol: "wss" as const,
+        host: devHmrHost,
+        clientPort: 443
+      }
+    } : {}),
     proxy: {
       "/api": apiProxyTarget
     }
