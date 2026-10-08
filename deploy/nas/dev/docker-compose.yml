@@ -8,29 +8,30 @@ services:
         set -eu
         branch="${PARKEREN_ACTIVE_BRANCH}"
         interval="${PARKEREN_GIT_POLL_SECONDS}"
-        case "$interval" in ''|*[!0-9]*) echo "Invalid polling interval"; exit 1;; esac
-        [ "$interval" -ge 10 ] || exit 1
-        case "$branch" in ''|-*|*' '*) echo "Invalid branch"; exit 1;; esac
-        git check-ref-format "refs/heads/$branch"
+        case "$$interval" in ''|*[!0-9]*) echo "Invalid polling interval"; exit 1;; esac
+        [ "$$interval" -ge 10 ] || exit 1
+        case "$$branch" in ''|-*|*' '*) echo "Invalid branch"; exit 1;; esac
+        git check-ref-format "refs/heads/$$branch"
         mkdir -p /workspace
         if [ ! -d /workspace/.git ]; then
-          [ -z "$(ls -A /workspace)" ] || { echo "Source must be empty"; exit 1; }
+          [ -z "$$(ls -A /workspace)" ] || { echo "Source must be empty"; exit 1; }
           git -C /workspace init
           git -C /workspace remote add origin https://github.com/VanHinthem/Parkeren.git
         fi
         while :; do
-          if git -C /workspace fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/parkeren-active"; then
-            target="$(git -C /workspace rev-parse refs/remotes/origin/parkeren-active)"
-            current="$(git -C /workspace rev-parse HEAD 2>/dev/null || true)"
-            if [ "$current" != "$target" ]; then
-              git -C /workspace reset --hard "$target"
+          if git -C /workspace fetch --no-tags --depth=1 origin "+refs/heads/$$branch:refs/remotes/origin/parkeren-active"; then
+            target="$$(git -C /workspace rev-parse refs/remotes/origin/parkeren-active)"
+            current="$$(git -C /workspace rev-parse HEAD 2>/dev/null || true)"
+            if [ "$$current" != "$$target" ]; then
+              git -C /workspace reset --hard "$$target"
               git -C /workspace clean -fd -e node_modules/ -e bin/ -e obj/
-              echo "DEV deployed $branch at $target"
+              echo "DEV deployed $$branch at $$target"
             fi
+            echo "$$target" > /workspace/.git/parkeren-ready
           else
             echo "Git fetch failed; retaining current checkout" >&2
           fi
-          sleep "$interval"
+          sleep "$$interval"
         done
     restart: unless-stopped
     healthcheck:
