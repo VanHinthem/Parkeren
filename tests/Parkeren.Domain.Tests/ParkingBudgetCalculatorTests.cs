@@ -227,6 +227,22 @@ public sealed class ParkingBudgetCalculatorTests
     }
 
     [Fact]
+    public void Action_based_budget_does_not_estimate_missing_actual_start()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        var action = new ProviderParkingAction(Guid.NewGuid(), null, start, start.AddHours(2));
+        action.MarkStarting();
+        action.MarkScheduled($"scheduled-{Guid.NewGuid():N}");
+        action.BeginStopping();
+        action.MarkStopped(start.AddHours(1));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+                BudgetPeriod(start.Date, start.Date.AddDays(1), 100),
+                new[] { action }, new[] { Rules(start.AddDays(-1)) }));
+    }
+
+    [Fact]
     public void Action_based_budget_clips_at_local_new_year_boundary()
     {
         // The 2027 Amsterdam year begins at 2026-12-31 23:00 UTC.
