@@ -172,4 +172,68 @@ public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture
         }
     }
 
+    [Fact]
+    public async Task Later_vehicle_user_link_does_not_reassign_existing_historical_action()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var plate = $"HL{suffix[..6].ToUpperInvariant()}";
+        var actionId = $"later-{suffix}";
+        var user = new User(Guid.NewGuid(), $"later-{suffix}", $"LATER-{suffix}", "hash", UserRole.Visitor);
+        var start = new DateTimeOffset(2026, 10, 7, 15, 0, 0, TimeSpan.Zero);
+        var record = new ProviderActionHistoryRecord(
+            actionId, "COMPLETED", start, start.AddMinutes(10),
+            0.15m, "EUR", plate, "OSS Zone J");
+        Guid? vehicleId = null;
+
+        try
+        {
+            await using (var initial = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistoryNewActionStore(initial);
+                Assert.Equal(ProviderHistoryNewActionResult.Inserted,
+                    await store.InsertIfMissingAsync("product-1", record, start.AddHours(1), token));
+                vehicleId = await initial.ProviderParkingActions
+                    .Where(x => x.ProviderActionId == actionId)
+                    .Select(x => x.VehicleId)
+                    .SingleAsync(token);
+            }
+
+            await using (var assign = fixture.CreateDbContext())
+            {
+                assign.Users.Add(user);
+                assign.UserVehicles.Add(new UserVehicle(user.Id, vehicleId!.Value));
+                await assign.SaveChangesAsync(token);
+            }
+
+            await using (var repeated = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistoryNewActionStore(repeated);
+                Assert.Equal(ProviderHistoryNewActionResult.AlreadyExists,
+                    await store.InsertIfMissingAsync("product-1", record, start.AddHours(2), token));
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var action = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.ProviderActionId == actionId, token);
+            Assert.Null(action.AssignedUserId);
+            Assert.Equal(ProviderActionAssignmentSource.Unassigned, action.AssignmentSource);
+            Assert.Equal(vehicleId, action.VehicleId);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.ProviderActionId == actionId)
+                .ExecuteDeleteAsync(token);
+            if (vehicleId.HasValue)
+            {
+                await cleanup.UserVehicles.Where(x => x.VehicleId == vehicleId.Value)
+                    .ExecuteDeleteAsync(token);
+                await cleanup.Vehicles.Where(x => x.Id == vehicleId.Value)
+                    .ExecuteDeleteAsync(token);
+            }
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(token);
+        }
+    }
+
 }
