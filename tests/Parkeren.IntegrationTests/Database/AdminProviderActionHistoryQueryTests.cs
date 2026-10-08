@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.Users;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.ParkingProvider;
 
@@ -61,6 +63,58 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             await cleanup.ProviderParkingActions.Where(x => ids.Contains(x.Id))
                 .ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task History_query_resolves_managed_visit_owner_and_imported_assignee()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var owner = new User(Guid.NewGuid(), $"owner-{suffix}", $"OWNER-{suffix}", "hash", UserRole.Visitor);
+        var assignee = new User(Guid.NewGuid(), $"assignee-{suffix}", $"ASSIGNEE-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"HU{suffix[..6].ToUpperInvariant()}";
+        var vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
+        var start = new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), owner.Id, vehicle.Id,
+            owner.Id, start, start.AddHours(1),
+            new EffectiveParkingPolicySnapshot(null, null, true, false));
+        var managed = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, start, start.AddHours(1));
+        var imported = Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), $"assigned-{suffix}", $"product-{suffix}", "OSS_J",
+            vehicle.Id, ProviderActionAssignment.Manual(assignee.Id),
+            start.AddHours(1), start.AddHours(2), 0.2m, "COMPLETED", start.AddHours(3));
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.AddRange(owner, assignee);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                seed.ProviderParkingActions.AddRange(managed, imported);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using var db = fixture.CreateDbContext();
+            var rows = await new AdminProviderActionHistoryQuery(db).GetAsync(
+                new AdminProviderActionHistoryFilter(Search: plate), ct);
+            var managedRow = Assert.Single(rows.Items, row => row.Id == managed.Id);
+            var importedRow = Assert.Single(rows.Items, row => row.Id == imported.Id);
+            Assert.Equal(owner.Username, managedRow.Username);
+            Assert.Null(managedRow.AssignedUserId);
+            Assert.Equal(assignee.Username, importedRow.Username);
+            Assert.Equal(assignee.Id, importedRow.AssignedUserId);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.Id == managed.Id || x.Id == imported.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == owner.Id || x.Id == assignee.Id)
                 .ExecuteDeleteAsync(ct);
         }
     }
