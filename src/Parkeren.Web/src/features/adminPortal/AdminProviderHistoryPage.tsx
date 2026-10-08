@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAdminProviderActionHistory, getAdminProviderProducts, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
+import { LicensePlate } from "../../components/LicensePlate";
 import { Loading } from "../../design/primitives/Loading";
 import { Button } from "../../design/primitives/Button";
 import { formatAdminDateTime, formatAdminProviderActionStatus } from "./adminFieldFormatters";
@@ -88,9 +89,9 @@ export function AdminProviderHistoryPage() {
         <table className="admin-table">
           <thead><tr><th>Kenteken</th><th>Start</th><th>Product</th><th>Status</th><th>Herkomst</th></tr></thead>
           <tbody>{data.items.map(item => <tr key={item.id}>
-            <td>{item.licensePlate ?? "—"}</td>
+            <td>{item.licensePlate ? <LicensePlate value={item.licensePlate} /> : "—"}</td>
             <td>{formatAdminDateTime(item.actualStartAt)}</td>
-            <td>{item.providerProductId ?? "—"}</td>
+            <td>{products.find(product => product.providerProductId === item.providerProductId)?.name ?? item.providerProductId ?? "—"}</td>
             <td>{formatAdminProviderActionStatus(item.state)}</td>
             <td>{item.origin === "Managed" ? "Beheerd" : item.origin === "Imported" ? "Geïmporteerd" : item.origin === "External" ? "Extern" : item.origin}</td>
           </tr>)}</tbody>
