@@ -135,6 +135,24 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                 Assert.Equal(notificationCountBefore,
                     await verify.NotificationEvents.CountAsync(token));
             }
+
+            // Replaying the same history must not duplicate budget thresholds
+            // or generate previously suppressed notifications.
+            int firstBaselineCount;
+            await using (var baseline = fixture.CreateDbContext())
+                firstBaselineCount = await baseline.ParkingBudgetWarningStates.CountAsync(
+                    x => x.ParkingBudgetPeriodId == period.Id, token);
+
+            await using (var repeat = fixture.CreateDbContext())
+                await CreateService(repeat, reader).ImportAsync(externalProduct, 10, token);
+
+            await using (var repeated = fixture.CreateDbContext())
+            {
+                Assert.Equal(firstBaselineCount, await repeated.ParkingBudgetWarningStates
+                    .CountAsync(x => x.ParkingBudgetPeriodId == period.Id, token));
+                Assert.Equal(notificationCountBefore,
+                    await repeated.NotificationEvents.CountAsync(token));
+            }
         }
         finally
         {
