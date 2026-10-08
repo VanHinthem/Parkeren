@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.ParkingProvider;
+using Parkeren.Domain.Rules;
+using Parkeren.Domain.Vehicles;
 using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Persistence;
 
@@ -78,6 +80,79 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
             await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
                 .ExecuteDeleteAsync(token);
             await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
+    [Fact]
+    public async Task Successful_history_import_records_budget_baseline_without_notifications()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var externalProduct = $"budget-history-{suffix}";
+        var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        var product = new ParkingProviderProduct(Guid.NewGuid(), externalProduct,
+            "History budget", "TEST", "Test", $"LOC-{suffix}", start);
+        var period = new ParkingBudgetPeriod(Guid.NewGuid(),
+            start.AddDays(-1), start.AddDays(1), TimeSpan.FromHours(1));
+        period.AssignProviderProduct(product.Id);
+        var rules = new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-2), null,
+            TimeSpan.FromHours(4),
+            [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0))]);
+        rules.AssignProviderProduct(product.Id);
+        var plate = $"BH{suffix[..6].ToUpperInvariant()}";
+        var actionId = $"budget-action-{suffix}";
+        var record = new ProviderActionHistoryRecord(actionId, "COMPLETED",
+            start, start.AddHours(1), 0.20m, "EUR", plate);
+        var reader = new Reader((page, ct) =>
+            Task.FromResult(new ProviderActionHistoryPage(
+                page == 0 ? [record] : [], page, 10, 1)));
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ParkingBudgetPeriods.Add(period);
+                seed.ParkingRuleSets.Add(rules);
+                await seed.SaveChangesAsync(token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+                await CreateService(db, reader).ImportAsync(externalProduct, 10, token);
+
+            await using (var verify = fixture.CreateDbContext())
+            {
+                Assert.True(await verify.ProviderParkingActions.AnyAsync(
+                    x => x.ProviderActionId == actionId && x.VisitId == null, token));
+                var thresholds = await verify.ParkingBudgetWarningStates.AsNoTracking()
+                    .Where(x => x.ParkingBudgetPeriodId == period.Id)
+                    .Select(x => x.ThresholdPercentage).ToArrayAsync(token);
+                Assert.NotEmpty(thresholds);
+                Assert.False(await verify.NotificationEvents.AnyAsync(
+                    x => x.Type == Parkeren.Domain.Notifications.NotificationEventType.BudgetWarning, token)
+                    && thresholds.Length == 0);
+            }
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ParkingBudgetWarningStates.Where(x => x.ParkingBudgetPeriodId == period.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == externalProduct)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == externalProduct)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ProviderParkingActions.Where(x => x.ProviderActionId == actionId)
+                .ExecuteDeleteAsync(token);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
+                .ExecuteDeleteAsync(token);
+            await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == rules.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ParkingRuleSets.Where(x => x.Id == rules.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ParkingBudgetPeriods.Where(x => x.Id == period.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
                 .ExecuteDeleteAsync(token);
         }
     }
