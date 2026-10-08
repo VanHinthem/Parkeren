@@ -13,7 +13,14 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
         if (filter.Page < 1 || filter.PageSize is < 1 or > 100)
             throw new ArgumentOutOfRangeException(nameof(filter), "Page must be positive and page size between 1 and 100.");
 
+        if (filter.From.HasValue && filter.Until.HasValue && filter.From >= filter.Until)
+            throw new ArgumentException("From must be earlier than Until.", nameof(filter));
+
         var actions = db.ProviderParkingActions.AsNoTracking().AsQueryable();
+        if (filter.From.HasValue)
+            actions = actions.Where(x => (x.ActualStartAt ?? x.PlannedStartAt) >= filter.From.Value);
+        if (filter.Until.HasValue)
+            actions = actions.Where(x => (x.ActualStartAt ?? x.PlannedStartAt) < filter.Until.Value);
         if (!string.IsNullOrWhiteSpace(filter.ProviderProductId))
             actions = actions.Where(x => x.ProviderProductId == filter.ProviderProductId);
         if (filter.State.HasValue)
