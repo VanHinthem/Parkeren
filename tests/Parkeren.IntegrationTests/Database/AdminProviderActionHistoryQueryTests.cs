@@ -77,9 +77,9 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             query.GetAsync(new AdminProviderActionHistoryFilter(PageSize: 101), ct));
     }
 
-    private static ProviderParkingAction Import(
+    private static Parkeren.Domain.Visits.ProviderParkingAction Import(
         string id, string product, Guid vehicleId, DateTimeOffset start) =>
-        ProviderParkingAction.ImportCompleted(Guid.NewGuid(), id, product, "OSS_J",
+        Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(Guid.NewGuid(), id, product, "OSS_J",
             vehicleId, ProviderActionAssignment.Unassigned, start, start.AddMinutes(30),
             0.2m, "COMPLETED", start.AddHours(3));
 }
