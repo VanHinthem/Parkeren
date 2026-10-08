@@ -11,13 +11,15 @@ namespace Parkeren.Infrastructure.ParkingProvider;
 public sealed class ProviderHistoryTransactionalPageImporter(
     ParkerenDbContext db,
     ProviderHistoryPageImporter importer,
-    IProviderHistorySyncStateStore checkpoints)
+    IProviderHistorySyncStateStore checkpoints,
+    ProviderHistorySyncRunStore? runs = null)
 {
     public async Task<ProviderHistoryImportSummary> ImportPageAsync(
         string providerProductId,
         ProviderActionHistoryPage page,
         DateTimeOffset observedAt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? runId = null)
     {
         ArgumentNullException.ThrowIfNull(page);
         if (string.IsNullOrWhiteSpace(providerProductId))
@@ -43,6 +45,14 @@ public sealed class ProviderHistoryTransactionalPageImporter(
             providerProductId, page, observedAt, cancellationToken);
         await checkpoints.RecordPageCompletedAsync(
             providerProductId, page.PageNumber, observedAt, cancellationToken);
+        if (runId is Guid id)
+        {
+            if (runs is null)
+                throw new InvalidOperationException("Run store is required for tracked page imports.");
+            await runs.RecordPageAsync(id, page.Records.Count,
+                result.Inserted, result.Refreshed,
+                result.SkippedManaged + result.AlreadyExists, cancellationToken);
+        }
         await transaction.CommitAsync(cancellationToken);
         return result;
     }

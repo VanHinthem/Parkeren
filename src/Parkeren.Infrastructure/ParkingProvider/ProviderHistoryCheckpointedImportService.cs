@@ -107,14 +107,12 @@ public sealed class ProviderHistoryCheckpointedImportService(
                     throw new InvalidOperationException("Provider history reader returned an empty nonterminal page.");
 
                 var result = await pages.ImportPageAsync(
-                    providerProductId, page, observedAt, cancellationToken);
+                    providerProductId, page, observedAt, cancellationToken, runId);
                 inserted += result.Inserted;
                 refreshed += result.Refreshed;
                 skipped += result.SkippedManaged;
                 existing += result.AlreadyExists;
-                await runs.RecordPageAsync(runId, page.Records.Count,
-                    result.Inserted, result.Refreshed,
-                    result.SkippedManaged + result.AlreadyExists, cancellationToken);
+
 
                 if (!page.HasMore)
                 {
