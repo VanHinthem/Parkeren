@@ -6,7 +6,9 @@ public sealed record ProviderActionHistoryRecord(
     DateTimeOffset ActualStartAt,
     DateTimeOffset ActualEndAt,
     decimal? ProviderCostAmount,
-    string? Currency);
+    string? Currency,
+    string? LicensePlate = null,
+    string? Location = null);
 
 public sealed record ProviderActionHistoryPage(
     IReadOnlyList<ProviderActionHistoryRecord> Records,

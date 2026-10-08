@@ -241,7 +241,9 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                 ParseProviderTime(x.StartLocal!.Value),
                 ParseProviderTime(x.EndLocal!.Value),
                 x.CostAmount,
-                x.Currency))
+                x.Currency,
+                x.LicensePlate is null ? null : NormalizePlate(x.LicensePlate),
+                x.Location))
             .ToArray();
 
         return new ProviderActionHistoryPage(records, pageNumber, pageSize, pageMaxIndex);

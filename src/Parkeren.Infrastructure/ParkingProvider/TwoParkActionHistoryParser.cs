@@ -9,7 +9,9 @@ public sealed record TwoParkHistoryAction(
     DateTime? StartLocal,
     DateTime? EndLocal,
     decimal? CostAmount,
-    string? Currency);
+    string? Currency,
+    string? LicensePlate = null,
+    string? Location = null);
 
 public sealed record TwoParkHistoryPage(
     IReadOnlyList<TwoParkHistoryAction> Actions,
@@ -45,7 +47,9 @@ public static class TwoParkActionHistoryParser
                     ReadDate(parameters, "TIMESTART"),
                     ReadDate(parameters, "TIMEEND"),
                     ReadAmount(parameters, "COST"),
-                    ReadValue(parameters, "CURRENCY_DESC")));
+                    ReadValue(parameters, "CURRENCY_DESC"),
+                    ReadValue(parameters, "MBR_IDENT"),
+                    ReadValue(parameters, "LOCATION")));
             }
         }
 

@@ -35,6 +35,8 @@ public sealed class TwoParkProviderHistoryReaderTests
         Assert.Equal(DateTimeOffset.Parse("2026-10-04T06:41:27+00:00", CultureInfo.InvariantCulture), record.ActualEndAt);
         Assert.Equal(0.01m, record.ProviderCostAmount);
         Assert.Equal("€", record.Currency);
+        Assert.Equal("AB12CD", record.LicensePlate);
+        Assert.Equal("OSS Zone J", record.Location);
     }
 
     [Fact]
@@ -114,6 +116,8 @@ public sealed class TwoParkProviderHistoryReaderTests
               "atn_state": "COMPLETED",
               "atn_id": "action-{{index}}",
               "atn_parameters": [
+                { "prr_label": "MBR_IDENT", "prr_value": "AB-12-CD" },
+                { "prr_label": "LOCATION", "prr_value": "OSS Zone J" },
                 { "prr_label": "TIMESTART", "prr_value": "04-10-2026 08:41:14" },
                 { "prr_label": "TIMEEND", "prr_value": "04-10-2026 08:41:27" },
                 { "prr_label": "COST", "prr_value": "0.01" },
