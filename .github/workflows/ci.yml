@@ -58,6 +58,7 @@ jobs:
         env:
           PARKEREN_DB_PASSWORD: ci-validation-placeholder
           PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+          PARKEREN_GIT_POLL_SECONDS: '15'
         run: |
           docker compose -f deploy/nas/acc/docker-compose.yml config --quiet
           docker compose -f deploy/nas/dev/docker-compose.yml config --quiet
@@ -65,9 +66,10 @@ jobs:
         env:
           PARKEREN_DB_PASSWORD: ci-validation-placeholder
           PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+          PARKEREN_GIT_POLL_SECONDS: '15'
         run: |
           docker compose -f deploy/nas/dev/docker-compose.yml config --format json |
-            python3 -c 'import json,sys; c=json.load(sys.stdin)["services"]["branch-controller"]["command"]; assert "$branch" in c and "$interval" in c and "$(git " in c, "controller shell variables were interpolated by Compose"'
+            python3 -c 'import json,sys; c=json.load(sys.stdin)["services"]["branch-controller"]["command"]; script="\n".join(c) if isinstance(c,list) else c; assert all(token in script for token in ("$branch","$interval","$(git ")), "controller shell variables were interpolated by Compose"'
 
   secret-scan:
     runs-on: ubuntu-latest
