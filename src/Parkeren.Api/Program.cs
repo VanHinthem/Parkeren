@@ -1065,6 +1065,33 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapGet("/api/admin/provider-history/sync-status", async (
+    string? providerProductId,
+    ParkerenDbContext db,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var states = await db.ProviderHistorySyncStates.AsNoTracking()
+        .Where(x => providerProductId == null || x.ProviderProductId == providerProductId)
+        .OrderBy(x => x.ProviderProductId)
+        .ToListAsync(cancellationToken);
+    var runs = await db.ProviderHistorySyncRuns.AsNoTracking()
+        .Where(x => providerProductId == null || x.ProviderProductId == providerProductId)
+        .OrderByDescending(x => x.StartedAt)
+        .ThenByDescending(x => x.Id)
+        .Take(25)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new { states, runs });
+});
+
 app.MapGet("/api/admin/provider/actions", async (
     int? page,
     int? pageSize,
