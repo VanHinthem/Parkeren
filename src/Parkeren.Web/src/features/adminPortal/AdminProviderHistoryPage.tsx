@@ -35,7 +35,7 @@ export function AdminProviderHistoryPage() {
     getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin,
       from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true)})
       .then(result => { if (active) setData(result); })
-      .catch(() => { if (active) { setData(undefined); setError("Historie kon niet worden geladen."); } })
+      .catch((reason: unknown) => { if (active) { setData(undefined); setError(reason instanceof Error ? `Historie kon niet worden geladen: ${reason.message}` : "Historie kon niet worden geladen."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [page, appliedSearch, productId, state, origin, fromDate, toDate]);
@@ -43,7 +43,7 @@ export function AdminProviderHistoryPage() {
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
       <h2>Provideractiehistorie</h2>
-      <form className="admin-provider__toolbar" onSubmit={event => {
+      <form className="admin-provider__toolbar admin-provider__history-filters" onSubmit={event => {
         event.preventDefault();
         setPage(1);
         setAppliedSearch(search.trim());
