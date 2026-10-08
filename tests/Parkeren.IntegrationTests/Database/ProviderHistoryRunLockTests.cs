@@ -47,6 +47,8 @@ public sealed class ProviderHistoryRunLockTests(PostgreSqlFixture fixture)
         {
             reader.Release.TrySetResult();
             await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(token);
             await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
                 .ExecuteDeleteAsync(token);
         }
@@ -61,6 +63,7 @@ public sealed class ProviderHistoryRunLockTests(PostgreSqlFixture fixture)
                 new ProviderHistoryExistingActionStore(db),
                 new ProviderHistoryNewActionStore(db)), checkpoints);
         return new ProviderHistoryCheckpointedImportService(
-            reader, pages, checkpoints, TimeProvider.System, db);
+            reader, pages, checkpoints, TimeProvider.System, db,
+            new ProviderHistorySyncRunStore(db));
     }
 }
