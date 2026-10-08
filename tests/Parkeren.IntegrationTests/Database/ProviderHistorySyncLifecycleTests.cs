@@ -178,6 +178,82 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Historical_budget_baseline_rejects_missing_or_partial_rules(bool partial)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var externalId = $"rules-{suffix}";
+        var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        var product = new ParkingProviderProduct(Guid.NewGuid(), externalId,
+            "Budget test", "TEST", "Test", $"LOC-{suffix}", start);
+        var period = new ParkingBudgetPeriod(Guid.NewGuid(), start.AddDays(-1),
+            start.AddDays(1), TimeSpan.FromHours(1));
+        period.AssignProviderProduct(product.Id);
+        var plate = $"RR{suffix[..6].ToUpperInvariant()}";
+        var vehicle = Parkeren.Domain.Vehicles.Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
+        var action = Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), $"action-{suffix}", externalId, product.Location,
+            vehicle.Id, Parkeren.Domain.Visits.ProviderActionAssignment.Unassigned,
+            start, start.AddHours(1), 0.20m, "COMPLETED", start.AddHours(2));
+        ParkingRuleSet? rules = null;
+        if (partial)
+        {
+            rules = new ParkingRuleSet(Guid.NewGuid(), start.AddDays(-1),
+                start.AddMinutes(30), TimeSpan.FromHours(4),
+                [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0))]);
+            rules.AssignProviderProduct(product.Id);
+        }
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ParkingBudgetPeriods.Add(period);
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.Add(action);
+                if (rules is not null)
+                    seed.ParkingRuleSets.Add(rules);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    ProviderHistoryBudgetBaseline.RecordAsync(db, externalId, start.AddHours(3), ct));
+                Assert.Contains("Missing historical parking rules", error.Message);
+            }
+
+            await using var check = fixture.CreateDbContext();
+            Assert.False(await check.ParkingBudgetWarningStates
+                .AnyAsync(x => x.ParkingBudgetPeriodId == period.Id, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ParkingBudgetWarningStates.Where(x => x.ParkingBudgetPeriodId == period.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id)
+                .ExecuteDeleteAsync(ct);
+            if (rules is not null)
+            {
+                await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == rules.Id)
+                    .ExecuteDeleteAsync(ct);
+                await cleanup.ParkingRuleSets.Where(x => x.Id == rules.Id)
+                    .ExecuteDeleteAsync(ct);
+            }
+            await cleanup.ParkingBudgetPeriods.Where(x => x.Id == period.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
     private static ProviderHistoryCheckpointedImportService CreateService(
         ParkerenDbContext db, IProviderActionHistoryReader reader)
     {
