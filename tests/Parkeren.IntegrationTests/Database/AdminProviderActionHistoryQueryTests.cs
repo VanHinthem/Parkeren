@@ -3,6 +3,7 @@ using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Rules;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.ParkingProvider;
 
@@ -129,6 +130,52 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == owner.Id || x.Id == assignee.Id)
                 .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task History_query_filters_open_discrepancies_without_including_resolved_ones()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var plate = $"HD{suffix[..6].ToUpperInvariant()}";
+        var vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
+        var start = new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero);
+        var openAction = Import($"open-{suffix}", $"product-{suffix}", vehicle.Id, start);
+        var resolvedAction = Import($"resolved-{suffix}", $"product-{suffix}", vehicle.Id, start.AddHours(1));
+        var open = new ProviderDiscrepancy(Guid.NewGuid(), $"open-{suffix}",
+            ProviderDiscrepancyType.ProviderActionStatusMismatch, Guid.NewGuid(),
+            start.AddDays(1), providerParkingActionId: openAction.Id);
+        var resolved = new ProviderDiscrepancy(Guid.NewGuid(), $"resolved-{suffix}",
+            ProviderDiscrepancyType.ProviderActionStatusMismatch, Guid.NewGuid(),
+            start.AddDays(1), providerParkingActionId: resolvedAction.Id);
+        resolved.Resolve(start.AddDays(2));
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.AddRange(openAction, resolvedAction);
+                seed.ProviderDiscrepancies.AddRange(open, resolved);
+                await seed.SaveChangesAsync(ct);
+            }
+            await using var db = fixture.CreateDbContext();
+            var query = new AdminProviderActionHistoryQuery(db);
+            var withOpen = await query.GetAsync(new AdminProviderActionHistoryFilter(
+                Search: plate, HasOpenDiscrepancy: true), ct);
+            var withoutOpen = await query.GetAsync(new AdminProviderActionHistoryFilter(
+                Search: plate, HasOpenDiscrepancy: false), ct);
+            Assert.Equal(openAction.Id, Assert.Single(withOpen.Items).Id);
+            Assert.Equal(resolvedAction.Id, Assert.Single(withoutOpen.Items).Id);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderDiscrepancies.Where(x => x.Id == open.Id || x.Id == resolved.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.Id == openAction.Id || x.Id == resolvedAction.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
         }
     }
 
