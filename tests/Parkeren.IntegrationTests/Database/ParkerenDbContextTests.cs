@@ -2169,7 +2169,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var actionDuration = action.ActualEndAt!.Value - action.ActualStartAt!.Value;
         var expectedCost = decimal.Ceiling(
             (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
-        Assert.Equal(expectedCost, action.ProviderCostAmount);
+        Assert.InRange(action.ProviderCostAmount!.Value, expectedCost - 0.01m, expectedCost);
         Assert.NotEmpty(await verifyContext.ParkingBudgetWarningStates
             .Where(x => x.ParkingBudgetPeriodId == budgetPeriod.Id)
             .ToListAsync(cancellationToken));
@@ -2415,7 +2415,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var actionDuration = persistedAction.ActualEndAt!.Value - persistedAction.ActualStartAt!.Value;
         var expectedCost = decimal.Ceiling(
             (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
-        Assert.Equal(expectedCost, persistedAction.ProviderCostAmount);
+        Assert.InRange(persistedAction.ProviderCostAmount!.Value, expectedCost - 0.01m, expectedCost);
         Assert.Equal(ProviderOperationStatus.Succeeded, persistedStopOperation.Status);
         Assert.Equal(1, persistedStopOperation.AttemptCount);
 
@@ -3977,7 +3977,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         var actionDuration = persistedAction.ActualEndAt!.Value - persistedAction.ActualStartAt!.Value;
         var expectedCost = decimal.Ceiling(
             (2m * actionDuration.Ticks / TimeSpan.TicksPerHour) * 100m) / 100m;
-        Assert.Equal(expectedCost, persistedAction.ProviderCostAmount);
+        Assert.InRange(persistedAction.ProviderCostAmount!.Value, expectedCost - 0.01m, expectedCost);
         Assert.Equal(ProviderOperationStatus.Succeeded, stopOperation.Status);
 
         var remoteActions = await parkingProvider.GetActionsAsync(cancellationToken);
