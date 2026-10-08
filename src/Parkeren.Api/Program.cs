@@ -1065,6 +1065,30 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapPost("/api/admin/provider-history/sync", async (
+    ProviderHistorySyncStartRequest request,
+    ProviderHistorySyncRunStarter starter,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(request.ProviderProductId) || request.ProviderProductId.Trim().Length > 100)
+        return Results.BadRequest(new { error = "Geldig providerproduct is vereist." });
+
+    var run = await starter.TryStartAsync(
+        request.ProviderProductId, Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunMode.Manual,
+        cancellationToken);
+    return run is null
+        ? Results.Conflict(new { error = "Er loopt al een synchronisatie voor dit product." })
+        : Results.Accepted($"/api/admin/provider-history/sync-status?providerProductId={Uri.EscapeDataString(run.ProviderProductId)}",
+            new { run.Id, run.ProviderProductId, run.Status });
+});
+
 app.MapGet("/api/admin/provider-history/sync-status", async (
     string? providerProductId,
     ParkerenDbContext db,
@@ -2211,3 +2235,4 @@ public sealed record ProviderActionAssignmentRequest(Guid? UserId);
 
 public sealed record PushSubscriptionRequest(string Endpoint, string P256dh, string Auth);
 public sealed record PushSubscriptionDeleteRequest(string Endpoint);
+public sealed record ProviderHistorySyncStartRequest(string ProviderProductId);
