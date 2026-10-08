@@ -621,13 +621,12 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
         {
             entity.ToTable("provider_parking_actions");
             entity.HasKey(x => x.Id);
-            // These domain fields are staged until the dedicated schema migration.
-            entity.Ignore(x => x.Origin);
-            entity.Ignore(x => x.VehicleId);
-            entity.Ignore(x => x.AssignedUserId);
-            entity.Ignore(x => x.AssignmentSource);
-            entity.Ignore(x => x.FirstObservedAt);
-            entity.Ignore(x => x.LastSyncedAt);
+            entity.Property(x => x.Origin).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ProviderActionOrigin.Managed).IsRequired();
+            entity.Property(x => x.AssignmentSource).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ProviderActionAssignmentSource.Unassigned).IsRequired();
+            entity.HasOne<Parkeren.Domain.Vehicles.Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Parkeren.Domain.Users.User>().WithMany().HasForeignKey(x => x.AssignedUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.VehicleId);
+            entity.HasIndex(x => x.AssignedUserId);
             entity.Property(x => x.ProviderActionId).HasMaxLength(200);
             entity.Property(x => x.ProviderProductId).HasMaxLength(200);
             entity.Property(x => x.ProviderLocation).HasMaxLength(100);
