@@ -235,7 +235,7 @@ export type AdminProviderActionHistoryRow={
   id:string;providerActionId:string|null;visitId:string|null;providerProductId:string|null;
   licensePlate:string|null;actualStartAt:string|null;actualEndAt:string|null;
   providerCostAmount:number|null;state:string;origin:string;assignedUserId:string|null;
-  assignmentSource:string;historyStatus:string;
+  assignmentSource:string;historyStatus:string;username:string|null;
 };
 export type AdminProviderActionHistoryPage={
   items:AdminProviderActionHistoryRow[];page:number;pageSize:number;totalCount:number;
