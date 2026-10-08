@@ -6,6 +6,21 @@ namespace Parkeren.Domain.Tests;
 public sealed class ProviderParkingActionAssignmentTests
 {
     [Fact]
+    public void Managed_action_stores_vehicle_without_changing_visit_relationship()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var visitId = Guid.NewGuid();
+        var vehicleId = Guid.NewGuid();
+        var action = new ProviderParkingAction(Guid.NewGuid(), visitId,
+            start, start.AddHours(1), "visitor", "OSS_J", vehicleId);
+
+        Assert.Equal(visitId, action.VisitId);
+        Assert.Equal(vehicleId, action.VehicleId);
+        Assert.Equal(ProviderActionOrigin.Managed, action.Origin);
+        Assert.Equal(ProviderActionAssignmentSource.Unassigned, action.AssignmentSource);
+    }
+
+    [Fact]
     public void Imported_action_captures_vehicle_and_inferred_user_without_visit()
     {
         var start = DateTimeOffset.UtcNow.AddDays(-1);
