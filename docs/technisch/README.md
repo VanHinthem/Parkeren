@@ -2,7 +2,7 @@
 
 Architectuur-, ontwikkel-, integratie-, test-, deployment- en operationele documentatie.
 
-- [Voorbeelden gepubliceerde container-images](../../deploy/examples/README.md) — productie- en development-Compose met env-templates, handmatig pullen en rollback.
+- [NAS deployments PRD, ACC en DEV](../../deploy/nas/README.md) — per omgeving een Compose- en env-template, installatie, Git-sync en rollbackaandachtspunten.
 - [ADR-index](adr/README.md) — architectuurbeslissingen.
 
 Voor de actuele Visit/scheduler-implementatie:
