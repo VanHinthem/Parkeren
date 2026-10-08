@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ProviderHistoryPageImporter>();
         services.AddScoped<ProviderHistoryReadAndImportService>();
         services.AddScoped<ProviderHistoryFullImportService>();
+        services.AddScoped<IProviderHistorySyncStateStore, ProviderHistorySyncStateStore>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
         services.AddScoped<IVisitSchedulerWorkClaimer, PostgresVisitSchedulerWorkClaimer>();
         services.AddScoped<IVisitSchedulerWorkProcessor, VisitSchedulerWorkProcessor>();
