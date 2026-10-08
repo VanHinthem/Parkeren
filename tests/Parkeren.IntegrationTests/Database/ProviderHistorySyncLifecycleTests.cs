@@ -89,7 +89,8 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
         var pages = new ProviderHistoryTransactionalPageImporter(
             db, new ProviderHistoryPageImporter(
                 new ProviderHistoryExistingActionStore(db),
-                new ProviderHistoryNewActionStore(db)), checkpoint);
+                new ProviderHistoryNewActionStore(db)), checkpoint,
+            new ProviderHistorySyncRunStore(db));
         return new ProviderHistoryCheckpointedImportService(
             reader, pages, checkpoint, TimeProvider.System, db,
             new ProviderHistorySyncRunStore(db));
