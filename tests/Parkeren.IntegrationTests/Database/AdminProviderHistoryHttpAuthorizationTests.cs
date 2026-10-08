@@ -41,6 +41,7 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
                     builder.UseEnvironment("Development");
                     builder.UseSetting("ConnectionStrings:Parkeren", fixture.ConnectionString);
                     builder.UseSetting("ParkingProvider:Type", "TwoParkMock");
+                    builder.UseSetting("ParkingProvider:BaseUrl", "http://localhost:5081/");
                     builder.ConfigureServices(services =>
                         services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>());
                 });
