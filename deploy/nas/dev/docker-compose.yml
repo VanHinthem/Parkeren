@@ -1,5 +1,16 @@
 name: ${COMPOSE_PROJECT_NAME:-parkeren-dev}
 services:
+  branch-controller:
+    image: alpine/git:2.49.1
+    entrypoint: ["/bin/sh", "/opt/parkeren/branch-controller.sh"]
+    restart: unless-stopped
+    environment:
+      PARKEREN_ACTIVE_BRANCH: ${PARKEREN_ACTIVE_BRANCH:?Set active GitHub branch}
+      PARKEREN_GIT_POLL_SECONDS: ${PARKEREN_GIT_POLL_SECONDS:-15}
+    volumes:
+      - ./source:/workspace
+      - ./branch-controller.sh:/opt/parkeren/branch-controller.sh:ro
+
   web:
     image: node:24-alpine
     working_dir: /workspace/src/Parkeren.Web
