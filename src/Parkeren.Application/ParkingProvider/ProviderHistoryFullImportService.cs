@@ -35,6 +35,8 @@ public sealed class ProviderHistoryFullImportService(
                 throw new InvalidOperationException("Provider history reader returned an unexpected page.");
             if (page.Records.Count > pageSize)
                 throw new InvalidOperationException("Provider history reader returned too many records.");
+            if (page.HasMore && page.Records.Count == 0)
+                throw new InvalidOperationException("Provider history reader returned an empty page while more records are expected.");
 
             var result = await importer.ImportPageAsync(
                 providerProductId, page, observedAt, cancellationToken);

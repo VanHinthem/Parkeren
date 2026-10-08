@@ -9,6 +9,7 @@ public sealed class ProviderHistoryFullImportServiceTests
     {
         public List<int> Pages { get; } = [];
         public int? FailAtPage { get; set; }
+        public int? EmptyAtPage { get; set; }
 
         public Task<ProviderActionHistoryPage> GetActionHistoryPageAsync(
             string productId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
@@ -16,6 +17,8 @@ public sealed class ProviderHistoryFullImportServiceTests
             Pages.Add(pageNumber);
             if (FailAtPage == pageNumber)
                 throw new InvalidOperationException("Simulated provider history failure.");
+            if (EmptyAtPage == pageNumber)
+                return Task.FromResult(new ProviderActionHistoryPage([], pageNumber, pageSize, 3));
             var start = DateTimeOffset.UnixEpoch;
             var record = new ProviderActionHistoryRecord(
                 $"action-{pageNumber}", "COMPLETED", start, start.AddMinutes(5),
@@ -72,6 +75,22 @@ public sealed class ProviderHistoryFullImportServiceTests
             service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
 
         Assert.Equal("Simulated provider history failure.", exception.Message);
+        Assert.Equal([0, 1], reader.Pages);
+        Assert.Equal(["action-0"], store.Inserted);
+    }
+
+    [Fact]
+    public async Task Empty_nonterminal_page_fails_without_reading_further_pages()
+    {
+        var reader = new HistoryReader { EmptyAtPage = 1 };
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
+
+        Assert.Contains("empty page", exception.Message);
         Assert.Equal([0, 1], reader.Pages);
         Assert.Equal(["action-0"], store.Inserted);
     }
