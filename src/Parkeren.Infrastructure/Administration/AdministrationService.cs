@@ -1474,7 +1474,7 @@ internal sealed class AdministrationService(
         var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
             .Where(x =>
                 ((externalProductId != null && x.ProviderProductId == externalProductId) ||
-                 (x.VisitId.HasValue && dbContext.Visits.Any(v =>
+                 (x.ProviderProductId == null && x.VisitId.HasValue && dbContext.Visits.Any(v =>
                      v.Id == x.VisitId.Value && v.ProviderProductId == period.ProviderProductId))) &&
                 x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
                 x.ActualStartAt.Value < period.ValidUntil &&
