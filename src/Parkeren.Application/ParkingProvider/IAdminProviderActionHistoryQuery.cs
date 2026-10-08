@@ -12,7 +12,8 @@ public sealed record AdminProviderActionHistoryFilter(
     Guid? AssignedUserId = null,
     DateTimeOffset? From = null,
     DateTimeOffset? Until = null,
-    bool OldestFirst = false);
+    bool OldestFirst = false,
+    bool? HasOpenDiscrepancy = null);
 
 public sealed record AdminProviderActionHistoryRow(
     Guid Id,
