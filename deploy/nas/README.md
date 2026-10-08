@@ -1,13 +1,13 @@
-# NAS deployment — ACC en DEV
+# NAS deployment — PRD, ACC en DEV
 
-PRD (`parkeren.vanhinthem.nl`) is buiten scope. Gebruik deze templates **alleen voor nieuwe ACC en DEV stacks**. Beide gebruiken uitsluitend TwoParkMock; geen echte 2Park-credentials.
+De `prd/` map bevat uitsluitend een **referentietemplate** voor bestaande productie. Vervang de actieve productieconfiguratie of volumes niet zonder eerst projectnaam, volume-identiteit en huidige instellingen te controleren. ACC en DEV gebruiken uitsluitend TwoParkMock; PRD gebruikt echte TwoPark.
 
 ## Mappen op de NAS
 
-Maak twee afzonderlijke mappen aan (locaties zijn voorbeelden):
+Voor nieuwe installaties zijn afzonderlijke mappen bedoeld (locaties zijn voorbeelden); de bestaande PRD-installatie blijft ongewijzigd:
 
 ```
-docker/parkeren-acc/
+docker/parkeren-prd/\n  docker-compose.yml\n  .env\ndocker/parkeren-acc/
   docker-compose.yml
   .env
 docker/parkeren-dev/
@@ -16,18 +16,18 @@ docker/parkeren-dev/
   source/               # wordt automatisch geïnitialiseerd
 ```
 
-Kopieer voor elke map de inhoud uit `deploy/nas/acc/` of `deploy/nas/dev/`. Hernoem `.env.example` naar `.env`. Kies **een uniek, sterk databasewachtwoord per omgeving** en vul voor de eerste start `PARKEREN_BOOTSTRAP_ADMIN_USERNAME` en een zescijferige `PARKEREN_BOOTSTRAP_ADMIN_PIN` in. Bewaar echte secrets uitsluitend op de NAS, nooit in GitHub.
+Kopieer voor nieuwe ACC/DEV-installaties de inhoud uit `deploy/nas/acc/` of `deploy/nas/dev/`. `deploy/nas/prd/` is alleen een template voor toekomstige of expliciet geplande productiemigraties. Hernoem `.env.example` naar `.env`. Kies **een uniek, sterk databasewachtwoord per omgeving** en vul voor de eerste start `PARKEREN_BOOTSTRAP_ADMIN_USERNAME` en een zescijferige `PARKEREN_BOOTSTRAP_ADMIN_PIN` in. Bewaar echte secrets uitsluitend op de NAS, nooit in GitHub.
 
 Geen Git, Node of .NET-installatie op de NAS-host nodig: alles draait in containers. Docker Compose moet wel de projectbestanden vanuit de gekozen map kunnen benaderen.
 
-## ACC (acceptatie)
+## PRD (productie)\n\nDe productieconfiguratie blijft ongewijzigd. De map `prd/` documenteert de gewenste mapindeling voor een eventuele latere gecontroleerde migratie; pas `COMPOSE_PROJECT_NAME`, productiecredentials, immutable release-image en bestaande databasevolumes uitsluitend aan na verificatie van de actuele productie-inrichting.\n\n## ACC (acceptatie)
 
 - URL: `https://parkeren-acc.vanhinthem.nl`
 - NPM forwards naar NAS-hostpoort `5082` (of `PARKEREN_APP_PORT`).
 - De app- en mock-images komen uit GHCR met dezelfde `PARKEREN_ACC_IMAGE_TAG`; standaard `acc`.
 - De tag `acc` wordt gepubliceerd na een geslaagde push naar `develop`, **niet** bij een feature-branch commit.
 - Voor reproduceerbare builds gebruik `acc-<volledige-commit-sha>` in plaats van `acc`.
-- `COMPOSE_PROJECT_NAME=parkeren-acc`, met eigen database- en mockvolumes.
+- `ASPNETCORE_ENVIRONMENT=Production` voorkomt publieke diagnostische DEV-endpoints; `ParkingProvider__Type=TwoParkMock` blijft behouden.\n- De NAS beheert de Compose-projectnaam; er staat daarom geen top-level `name:` in het Compose-bestand.\n- `COMPOSE_PROJECT_NAME=parkeren-acc`, met eigen database- en mockvolumes.
 
 Binnen de ACC-map:
 
