@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminAuditWriter, AdminAuditWriter>();
         services.AddScoped<IAdminAuditQueryService, AdminAuditQueryService>();
         services.AddScoped<IAdminProviderStatusService, AdminProviderStatusService>();
+        services.AddScoped<IAdminProviderActionHistoryQuery, AdminProviderActionHistoryQuery>();
         services.AddScoped<IProviderProductCatalogService, ProviderProductCatalogService>();
         services.AddScoped<IProviderDiscrepancyService, ProviderDiscrepancyService>();
         services.AddScoped<IProviderHistoryExistingActionStore, ProviderHistoryExistingActionStore>();
