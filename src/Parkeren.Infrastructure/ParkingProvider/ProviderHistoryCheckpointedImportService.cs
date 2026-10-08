@@ -116,6 +116,8 @@ public sealed class ProviderHistoryCheckpointedImportService(
 
                 if (!page.HasMore)
                 {
+                    await ProviderHistoryBudgetBaseline.RecordAsync(
+                        db, providerProductId, timeProvider.GetUtcNow(), cancellationToken);
                     await checkpoints.RecordSyncCompletedAsync(
                         providerProductId, timeProvider.GetUtcNow(), cancellationToken);
                     await runs.CompleteAsync(runId, timeProvider.GetUtcNow(), cancellationToken);
