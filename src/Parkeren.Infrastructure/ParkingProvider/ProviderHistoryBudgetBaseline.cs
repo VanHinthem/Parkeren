@@ -49,8 +49,22 @@ internal static class ProviderHistoryBudgetBaseline
 
             // Missing historical rules must not turn real paid parking into
             // a silently calculated zero-hour budget.
-            if (!rules.Any(x => x.ValidFrom < period.ValidUntil &&
-                                (x.ValidUntil == null || x.ValidUntil > period.ValidFrom)))
+            var relevantRules = rules
+                .Where(x => x.ValidFrom < period.ValidUntil &&
+                            (x.ValidUntil == null || x.ValidUntil > period.ValidFrom))
+                .OrderBy(x => x.ValidFrom).ToArray();
+            var coveredUntil = period.ValidFrom;
+            foreach (var rule in relevantRules)
+            {
+                if (rule.ValidFrom > coveredUntil)
+                    break;
+                var ruleEnd = rule.ValidUntil ?? period.ValidUntil;
+                if (ruleEnd > coveredUntil)
+                    coveredUntil = ruleEnd;
+                if (coveredUntil >= period.ValidUntil)
+                    break;
+            }
+            if (coveredUntil < period.ValidUntil)
                 throw new InvalidOperationException(
                     $"Missing historical parking rules for budget period {period.Id}.");
 
