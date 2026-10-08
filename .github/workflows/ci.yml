@@ -50,6 +50,25 @@ jobs:
               - 'deploy/compose*.yml'
               - '.github/workflows/**'
 
+  validate-nas-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate standalone ACC and DEV Compose templates
+        env:
+          PARKEREN_DB_PASSWORD: ci-validation-placeholder
+          PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+        run: |
+          docker compose -f deploy/nas/acc/docker-compose.yml config --quiet
+          docker compose -f deploy/nas/dev/docker-compose.yml config --quiet
+      - name: Check DEV controller shell interpolation
+        env:
+          PARKEREN_DB_PASSWORD: ci-validation-placeholder
+          PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+        run: |
+          docker compose -f deploy/nas/dev/docker-compose.yml config --format json |
+            python3 -c 'import json,sys; c=json.load(sys.stdin)["services"]["branch-controller"]["command"]; assert "$branch" in c and "$interval" in c and "$(git " in c, "controller shell variables were interpolated by Compose"'
+
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
