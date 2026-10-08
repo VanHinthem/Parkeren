@@ -136,6 +136,21 @@ export function AdminProviderHistoryPage() {
                 <div className="admin-fact"><dt>Gebruiker-ID</dt><dd className="admin-code">{item.assignedUserId ?? "Niet toegewezen"}</dd></div>
                 <div className="admin-fact"><dt>Providerkosten</dt><dd>{item.providerCostAmount === null ? "—" : item.providerCostAmount.toLocaleString("nl-NL", { style: "currency", currency: "EUR" })}</dd></div>
               </dl>
+              {item.origin !== "Managed" && <div className="admin-provider__toolbar">
+                <label>Gebruiker toewijzen
+                  <select className="admin-table__control"
+                    value={selectedUsers[item.id] ?? item.assignedUserId ?? ""}
+                    onChange={event => setSelectedUsers(values => ({...values, [item.id]: event.target.value}))}>
+                    <option value="">Niet toegewezen</option>
+                    {users.filter(user => user.role === "Visitor" || user.id === item.assignedUserId)
+                      .map(user => <option key={user.id} value={user.id}>{user.username}</option>)}
+                  </select>
+                </label>
+                <Button variant="secondary" disabled={savingId === item.id}
+                  onClick={() => void saveAssignment(item.id, selectedUsers[item.id] ?? item.assignedUserId)}>
+                  {savingId === item.id ? "Opslaan…" : "Toewijzing opslaan"}
+                </Button>
+              </div>}
               {item.visitId && <a className="admin-action-link" href={`/beheer/bezoeken/${item.visitId}`}>Visit openen</a>}
             </div></td>
           </tr>}</Fragment>)}</tbody>
