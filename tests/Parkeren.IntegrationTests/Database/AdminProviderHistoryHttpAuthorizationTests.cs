@@ -49,9 +49,12 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
             var actionId = Guid.NewGuid();
             var historyUrl = "/api/admin/provider/actions";
             var syncStatusUrl = "/api/admin/provider-history/sync-status";
+            var syncStartUrl = "/api/admin/provider-history/sync";
             var auditUrl = $"/api/admin/provider/actions/{actionId:D}/assignment-history";
             var assignmentUrl = $"/api/admin/provider/actions/{actionId:D}/assignment";
 
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await http.PostAsJsonAsync(syncStartUrl, new { ProviderProductId = "history-test-product" }, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized,
                 (await http.GetAsync(syncStatusUrl, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized,
@@ -65,6 +68,8 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
                 new { Username = username, Pin = pin }, ct);
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
 
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await http.PostAsJsonAsync(syncStartUrl, new { ProviderProductId = "history-test-product" }, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await http.GetAsync(syncStatusUrl, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
