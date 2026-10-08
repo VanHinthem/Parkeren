@@ -48,11 +48,12 @@ services:
   web:
     image: node:24-alpine
     working_dir: /workspace/src/Parkeren.Web
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
     restart: unless-stopped
     environment:
       PARKEREN_APP_VARIANT: dev
       PARKEREN_API_PROXY_TARGET: http://api:8080
+      CHOKIDAR_USEPOLLING: "true"
       __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: parkeren-dev.vanhinthem.nl
     ports:
       - "${PARKEREN_WEB_PORT:-5084}:5173"
@@ -77,6 +78,10 @@ services:
       ParkingProvider__BaseUrl: http://two-park-mock:8080
       BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
       BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
+      WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
     volumes:
       - ./source:/workspace
       - nuget_packages:/root/.nuget/packages
