@@ -132,8 +132,8 @@ export function AdminProviderHistoryPage() {
                 <div className="admin-fact"><dt>Werkelijke start</dt><dd>{formatAdminDateTime(item.actualStartAt)}</dd></div>
                 <div className="admin-fact"><dt>Werkelijk einde</dt><dd>{formatAdminDateTime(item.actualEndAt)}</dd></div>
                 <div className="admin-fact"><dt>Historie-status</dt><dd>{item.historyStatus}</dd></div>
-                <div className="admin-fact"><dt>Toewijzingsbron</dt><dd>{item.assignmentSource}</dd></div>
-                <div className="admin-fact"><dt>Gebruiker-ID</dt><dd className="admin-code">{item.assignedUserId ?? "Niet toegewezen"}</dd></div>
+                <div className="admin-fact"><dt>Toewijzingsbron</dt><dd>{item.origin === "Managed" ? "Via Visit" : item.assignmentSource === "Unassigned" ? "Niet toegewezen" : item.assignmentSource === "Inferred" ? "Afgeleid" : item.assignmentSource === "ManuallyAssigned" ? "Handmatig" : "Bevestigd"}</dd></div>
+                <div className="admin-fact"><dt>Gebruiker</dt><dd>{item.username ?? "Niet toegewezen"}</dd></div>
                 <div className="admin-fact"><dt>Providerkosten</dt><dd>{item.providerCostAmount === null ? "—" : item.providerCostAmount.toLocaleString("nl-NL", { style: "currency", currency: "EUR" })}</dd></div>
               </dl>
               {item.origin !== "Managed" && <div className="admin-provider__toolbar">
