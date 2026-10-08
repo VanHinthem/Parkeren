@@ -236,4 +236,26 @@ public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture
         }
     }
 
+    [Fact]
+    public async Task Missing_plate_rejects_import_without_creating_action_or_vehicle()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var actionId = $"no-plate-{suffix}";
+        var start = new DateTimeOffset(2026, 10, 7, 16, 0, 0, TimeSpan.Zero);
+        var record = new ProviderActionHistoryRecord(
+            actionId, "COMPLETED", start, start.AddMinutes(10),
+            0.15m, "EUR", null, "OSS Zone J");
+
+        await using var db = fixture.CreateDbContext();
+        var store = new ProviderHistoryNewActionStore(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.InsertIfMissingAsync("product-1", record, start.AddHours(1), token));
+
+        Assert.False(await db.ProviderParkingActions.AnyAsync(x => x.ProviderActionId == actionId, token));
+        Assert.Empty(db.ChangeTracker.Entries<Vehicle>()
+            .Where(x => x.State == EntityState.Added));
+    }
+
 }
