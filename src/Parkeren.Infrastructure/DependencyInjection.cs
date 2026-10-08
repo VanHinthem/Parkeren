@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddDbContext<ParkerenDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
+        services.AddScoped<ProviderHistorySyncRunStarter>();
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IAdminSystemDiagnosticsService, AdminSystemDiagnosticsService>();
         services.AddScoped<IAdminAuditWriter, AdminAuditWriter>();
