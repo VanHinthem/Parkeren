@@ -19,15 +19,15 @@ function resolveBuildId(): string {
 function resolveAppVersion(): string {
   const configured = process.env.PARKEREN_APP_VERSION;
   if (configured) return configured;
-  return process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "local";
+  return ["dev", "acc"].includes(process.env.PARKEREN_APP_VARIANT ?? "") ? process.env.PARKEREN_APP_VARIANT! : "local";
 }
 
-const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
+const appVariant = process.env.PARKEREN_APP_VARIANT === "acc" ? "acc" : process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
 const apiProxyTarget = process.env.PARKEREN_API_PROXY_TARGET ?? "http://localhost:5080";
 const pwaDevEnabled = process.env.PARKEREN_PWA_DEV === "true";
-const appName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
-const appIcon192 = appVariant === "dev" ? "/pwa-192x192-dev.png" : "/pwa-192x192.png";
-const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512.png";
+const appName = appVariant === "acc" ? "Parkeren ACC" : appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
+const appIcon192 = appVariant === "production" ? "/pwa-192x192.png" : `/pwa-192x192-${appVariant}.png`;
+const appIcon512 = appVariant === "production" ? "/pwa-512x512.png" : `/pwa-512x512-${appVariant}.png`;
 const notificationBadge = "/notification-badge.png";
 
 export default defineConfig({
@@ -89,10 +89,10 @@ export default defineConfig({
           );
       },
       async closeBundle() {
-        if (appVariant !== "dev") return;
+        if (appVariant === "production") return;
 
         await copyFile(
-          fileURLToPath(new URL("./public/pwa-192x192-dev.png", import.meta.url)),
+          fileURLToPath(new URL(`./public/pwa-192x192-${appVariant}.png`, import.meta.url)),
           fileURLToPath(new URL("./dist/pwa-192x192.png", import.meta.url))
         );
       }

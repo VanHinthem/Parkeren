@@ -1,0 +1,122 @@
+name: ${COMPOSE_PROJECT_NAME:-parkeren-dev}
+services:
+  branch-controller:
+    image: alpine/git:2.49.1
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        set -eu
+        branch="${PARKEREN_ACTIVE_BRANCH}"
+        interval="${PARKEREN_GIT_POLL_SECONDS}"
+        case "$$interval" in ''|*[!0-9]*) echo "Invalid polling interval"; exit 1;; esac
+        [ "$$interval" -ge 10 ] || exit 1
+        case "$$branch" in ''|-*|*' '*) echo "Invalid branch"; exit 1;; esac
+        git check-ref-format "refs/heads/$$branch"
+        mkdir -p /workspace
+        if [ ! -d /workspace/.git ]; then
+          [ -z "$$(ls -A /workspace)" ] || { echo "Source must be empty"; exit 1; }
+          git -C /workspace init
+          git -C /workspace remote add origin https://github.com/VanHinthem/Parkeren.git
+        fi
+        # On restart/branch switch, do not report healthy until a fresh fetch succeeds.
+        rm -f /workspace/.git/parkeren-ready
+        while :; do
+          if git -C /workspace fetch --no-tags --depth=1 origin "+refs/heads/$$branch:refs/remotes/origin/parkeren-active"; then
+            target="$$(git -C /workspace rev-parse refs/remotes/origin/parkeren-active)"
+            current="$$(git -C /workspace rev-parse HEAD 2>/dev/null || true)"
+            if [ "$$current" != "$$target" ]; then
+              git -C /workspace reset --hard "$$target"
+              git -C /workspace clean -fd -e node_modules/ -e bin/ -e obj/
+              echo "DEV deployed $$branch at $$target"
+            fi
+            echo "$$target" > /workspace/.git/parkeren-ready
+          else
+            echo "Git fetch failed; retaining current checkout" >&2
+          fi
+          sleep "$$interval"
+        done
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /workspace/.git/parkeren-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    environment:
+      PARKEREN_ACTIVE_BRANCH: ${PARKEREN_ACTIVE_BRANCH:?Set active GitHub branch}
+      PARKEREN_GIT_POLL_SECONDS: ${PARKEREN_GIT_POLL_SECONDS:-15}
+    volumes:
+      - ./source:/workspace
+
+  web:
+    image: node:24-alpine
+    working_dir: /workspace/src/Parkeren.Web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
+    restart: unless-stopped
+    environment:
+      PARKEREN_APP_VARIANT: dev
+      PARKEREN_API_PROXY_TARGET: http://api:8080
+      CHOKIDAR_USEPOLLING: "true"
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: parkeren-dev.vanhinthem.nl
+    ports:
+      - "${PARKEREN_WEB_PORT:-5084}:5173"
+    volumes:
+      - ./source:/workspace
+      - node_modules:/workspace/src/Parkeren.Web/node_modules
+    depends_on:
+      api:
+        condition: service_started
+      branch-controller:
+        condition: service_healthy
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    command: dotnet watch --project src/Parkeren.Api/Parkeren.Api.csproj run --no-launch-profile --urls http://0.0.0.0:8080
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?required}
+      ParkingProvider__Type: TwoParkMock
+      ParkingProvider__BaseUrl: http://two-park-mock:8080
+      BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
+      BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+      Notifications__RetentionDays: ${PARKEREN_NOTIFICATION_RETENTION_DAYS:-90}
+      WebPush__Subject: ${PARKEREN_WEBPUSH_SUBJECT:-}
+      WebPush__PublicKey: ${PARKEREN_WEBPUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${PARKEREN_WEBPUSH_PRIVATE_KEY:-}
+    volumes:
+      - ./source:/workspace
+      - nuget_packages:/root/.nuget/packages
+    depends_on:
+      branch-controller:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      two-park-mock:
+        condition: service_started
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren_dev
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD:?required}
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  two-park-mock:
+    image: ghcr.io/vanhinthem/parkeren-two-park-mock:${PARKEREN_MOCK_IMAGE_TAG:-acc}
+    restart: unless-stopped
+    environment:
+      TwoParkMock__StatePath: /data/actions.json
+    volumes:
+      - mock_data:/data
+volumes:
+  node_modules:
+  nuget_packages:
+  db_data:
+  mock_data:
