@@ -242,7 +242,7 @@ export type AdminProviderActionHistoryPage={
 };
 export type AdminProviderActionHistoryFilter={
   page:number;pageSize:number;search?:string;providerProductId?:string;
-  state?:string;origin?:string;
+  state?:string;origin?:string;from?:string;until?:string;
 };
 export async function getAdminProviderActionHistory(filter:AdminProviderActionHistoryFilter){
   const params=new URLSearchParams({page:String(filter.page),pageSize:String(filter.pageSize)});
@@ -250,6 +250,8 @@ export async function getAdminProviderActionHistory(filter:AdminProviderActionHi
   if(filter.providerProductId)params.set("providerProductId",filter.providerProductId);
   if(filter.state)params.set("state",filter.state);
   if(filter.origin)params.set("origin",filter.origin);
+  if(filter.from)params.set("from",filter.from);
+  if(filter.until)params.set("until",filter.until);
   return json<AdminProviderActionHistoryPage>(
     await apiFetch("/api/admin/provider/actions?"+params.toString()));
 }
