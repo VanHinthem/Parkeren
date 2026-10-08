@@ -46,7 +46,7 @@ public sealed class ProviderHistoryPageImporterTests
         var page = new ProviderActionHistoryPage(
             [Record("new"), Record("managed"), Record("imported"), Record("new")], 0, 10, 4);
 
-        var result = await importer.ImportPageAsync("product-1", page, DateTimeOffset.UtcNow);
+        var result = await importer.ImportPageAsync("product-1", page, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
 
         Assert.Equal(new ProviderHistoryImportSummary(1, 1, 1, 0), result);
         Assert.Equal(["new", "managed", "imported"], existing.Calls);
@@ -62,7 +62,7 @@ public sealed class ProviderHistoryPageImporterTests
         var page = new ProviderActionHistoryPage([Record("valid"), Record("")], 0, 10, 2);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            importer.ImportPageAsync("product-1", page, DateTimeOffset.UtcNow));
+            importer.ImportPageAsync("product-1", page, DateTimeOffset.UtcNow, TestContext.Current.CancellationToken));
 
         Assert.Empty(existing.Calls);
         Assert.Empty(fresh.Calls);
