@@ -67,11 +67,11 @@ internal sealed class BudgetWarningService(
             var providerProductId = await dbContext.ParkingProviderProducts.AsNoTracking()
                 .Where(x => x.Id == period.ProviderProductId)
                 .Select(x => x.ProviderProductId)
-                .SingleAsync(cancellationToken);
+                .SingleOrDefaultAsync(cancellationToken);
 
             var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
                 .Where(x =>
-                    (x.ProviderProductId == providerProductId ||
+                    (providerProductId != null && x.ProviderProductId == providerProductId ||
                      (x.VisitId.HasValue && dbContext.Visits.Any(v =>
                          v.Id == x.VisitId.Value && v.ProviderProductId == period.ProviderProductId))) &&
                     x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
