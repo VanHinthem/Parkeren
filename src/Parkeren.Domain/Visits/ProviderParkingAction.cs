@@ -13,12 +13,15 @@ public sealed class ProviderParkingAction
         DateTimeOffset plannedStartAt,
         DateTimeOffset plannedEndAt,
         string? providerProductId = null,
-        string? providerLocation = null)
+        string? providerLocation = null,
+        Guid? vehicleId = null)
     {
+        if (vehicleId == Guid.Empty) throw new ArgumentException("Vehicle id must be non-empty.", nameof(vehicleId));
         if (plannedEndAt <= plannedStartAt) throw new ArgumentOutOfRangeException(nameof(plannedEndAt));
         Id = id; VisitId = visitId; PlannedStartAt = plannedStartAt; PlannedEndAt = plannedEndAt;
         ProviderProductId = providerProductId;
         ProviderLocation = providerLocation;
+        VehicleId = vehicleId;
         State = ProviderActionState.Planned; Health = ProviderActionHealth.Healthy; CreatedAt = DateTimeOffset.UtcNow;
     }
     public Guid Id { get; private set; }
