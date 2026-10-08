@@ -1075,6 +1075,7 @@ app.MapGet("/api/admin/provider/actions", async (
     Guid? assignedUserId,
     DateTimeOffset? from,
     DateTimeOffset? until,
+    bool? oldestFirst,
     IAdminProviderActionHistoryQuery history,
     IAuthenticationService authentication,
     HttpContext context,
@@ -1092,7 +1093,7 @@ app.MapGet("/api/admin/provider/actions", async (
 
     return Results.Ok(await history.GetAsync(
         new AdminProviderActionHistoryFilter(page ?? 1, pageSize ?? 25, search,
-            providerProductId, state, origin, assignedUserId, from, until), cancellationToken));
+            providerProductId, state, origin, assignedUserId, from, until, oldestFirst ?? false), cancellationToken));
 });
 
 app.MapPut("/api/admin/provider/actions/{actionId:guid}/assignment", async (
