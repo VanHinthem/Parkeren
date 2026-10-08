@@ -33,7 +33,7 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
 
         var total = await actions.CountAsync(cancellationToken);
         var offset = (long)(filter.Page - 1) * filter.PageSize;
-        var rows = offset >= total
+        List<AdminProviderActionHistoryRow> rows = offset >= total
             ? []
             : await actions.OrderByDescending(x => x.ActualStartAt ?? x.PlannedStartAt)
                 .ThenByDescending(x => x.Id)
