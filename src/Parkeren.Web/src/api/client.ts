@@ -256,6 +256,14 @@ export async function getAdminProviderActionHistory(filter:AdminProviderActionHi
     await apiFetch("/api/admin/provider/actions?"+params.toString()));
 }
 
+export async function assignAdminProviderActionUser(actionId:string,userId:string|null){
+  const response=await apiFetch(`/api/admin/provider/actions/${encodeURIComponent(actionId)}/assignment`,{
+    method:"PUT",body:JSON.stringify({userId})
+  });
+  if(!response.ok)throw await visitError(response,"Toewijzing van provideractie is mislukt");
+  return json<{changed:boolean}>(response);
+}
+
 export type AdminProviderProduct={
   id:string;
   providerProductId:string;
