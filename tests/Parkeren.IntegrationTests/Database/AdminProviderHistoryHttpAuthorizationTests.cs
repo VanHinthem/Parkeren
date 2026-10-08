@@ -86,4 +86,60 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
             await cleanup.Users.Where(x => x.Id == visitor.Id).ExecuteDeleteAsync(ct);
         }
     }
+    [Fact]
+    public async Task Admin_can_reserve_one_manual_sync_and_duplicate_request_conflicts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var productId = $"history-http-{suffix}";
+        var username = $"history-admin-{suffix}";
+        const string pin = "357159";
+        var admin = new User(Guid.NewGuid(), username,
+            username.ToUpperInvariant(), "pending", UserRole.Admin);
+        admin.ChangePinHash(new PasswordHasher<User>().HashPassword(admin, pin));
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(admin);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            await using var factory = new WebApplicationFactory<Parkeren.Api.WebPushOptions>()
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Development");
+                    builder.UseSetting("ConnectionStrings:Parkeren", fixture.ConnectionString);
+                    builder.UseSetting("ParkingProvider:Type", "TwoParkMock");
+                    builder.UseSetting("ParkingProvider:BaseUrl", "http://localhost:5081/");
+                    builder.ConfigureServices(services =>
+                        services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>());
+                });
+            using var http = factory.CreateClient();
+            var login = await http.PostAsJsonAsync("/api/auth/login",
+                new { Username = username, Pin = pin }, ct);
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+
+            var url = "/api/admin/provider-history/sync";
+            var first = await http.PostAsJsonAsync(url, new { ProviderProductId = productId }, ct);
+            Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict,
+                (await http.PostAsJsonAsync(url, new { ProviderProductId = productId }, ct)).StatusCode);
+
+            await using var verify = fixture.CreateDbContext();
+            var run = Assert.Single(await verify.ProviderHistorySyncRuns.AsNoTracking()
+                .Where(x => x.ProviderProductId == productId).ToListAsync(ct));
+            Assert.Equal(Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunStatus.Running, run.Status);
+            Assert.Equal(Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunMode.Manual, run.Mode);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == productId).ExecuteDeleteAsync(ct);
+            await cleanup.UserSessions.Where(x => x.UserId == admin.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
 }
