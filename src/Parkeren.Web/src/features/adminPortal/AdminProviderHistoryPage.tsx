@@ -32,6 +32,7 @@ export function AdminProviderHistoryPage() {
   const [productId, setProductId] = useState("");
   const [state, setState] = useState("");
   const [origin, setOrigin] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   useEffect(() => {
@@ -43,12 +44,12 @@ export function AdminProviderHistoryPage() {
     setLoading(true);
     setError("");
     getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin,
-      from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true)})
+      from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true), assignedUserId})
       .then(result => { if (active) setData(result); })
       .catch((reason: unknown) => { if (active) { setData(undefined); setError(reason instanceof Error ? `Historie kon niet worden geladen: ${reason.message}` : "Historie kon niet worden geladen."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [page, appliedSearch, productId, state, origin, fromDate, toDate, reload]);
+  }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, reload]);
   async function saveAssignment(actionId:string, userId:string|null) {
     setSavingId(actionId);
     setError("");
@@ -92,6 +93,13 @@ export function AdminProviderHistoryPage() {
           <option value="Managed">Beheerd</option>
           <option value="Imported">Geïmporteerd</option>
           <option value="External">Extern</option>
+          </select>
+        </label>
+        <label>Gebruiker
+          <select className="admin-table__control" aria-label="Gebruiker" value={assignedUserId}
+            onChange={event => { setPage(1); setAssignedUserId(event.target.value); }}>
+            <option value="">Alle gebruikers</option>
+            {users.map(user => <option key={user.id} value={user.id}>{user.username}</option>)}
           </select>
         </label>
         <label>Van
