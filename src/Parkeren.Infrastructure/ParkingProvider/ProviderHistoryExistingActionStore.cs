@@ -5,7 +5,7 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
 
-internal sealed class ProviderHistoryExistingActionStore(ParkerenDbContext dbContext)
+public sealed class ProviderHistoryExistingActionStore(ParkerenDbContext dbContext)
     : IProviderHistoryExistingActionStore
 {
     public async Task<ProviderHistoryExistingActionResult> ApplyIfExistingAsync(
