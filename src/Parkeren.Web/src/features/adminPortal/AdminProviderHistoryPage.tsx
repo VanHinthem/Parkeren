@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { assignAdminProviderActionUser, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
+import { assignAdminProviderActionUser, getAdminProviderAssignmentHistory, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type AdminProviderAssignmentAuditEntry, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { LicensePlate } from "../../components/LicensePlate";
 import { Loading } from "../../design/primitives/Loading";
@@ -22,6 +22,7 @@ export function AdminProviderHistoryPage() {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<Record<string,string>>({});
   const [savingId, setSavingId] = useState<string>();
+  const [audit, setAudit] = useState<Record<string,AdminProviderAssignmentAuditEntry[]>>({});
   const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -52,12 +53,24 @@ export function AdminProviderHistoryPage() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, oldestFirst, discrepancyFilter, reload]);
+  async function toggleDetails(actionId:string) {
+    if (expandedId === actionId) { setExpandedId(undefined); return; }
+    setExpandedId(actionId);
+    try {
+      const entries = await getAdminProviderAssignmentHistory(actionId);
+      setAudit(current => ({...current,[actionId]:entries}));
+    } catch {
+      setError("Toewijzingshistorie kon niet worden geladen.");
+    }
+  }
   async function saveAssignment(actionId:string, userId:string|null) {
     setSavingId(actionId);
     setError("");
     try {
       await assignAdminProviderActionUser(actionId, userId);
       setReload(value => value + 1);
+      const entries = await getAdminProviderAssignmentHistory(actionId);
+      setAudit(current => ({...current,[actionId]:entries}));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Toewijzing kon niet worden opgeslagen.");
     } finally {
@@ -143,7 +156,7 @@ export function AdminProviderHistoryPage() {
             <td className="admin-table__actions">
               <button type="button" className="admin-action-link admin-action-link--muted"
                 aria-expanded={expandedId === item.id}
-                onClick={() => setExpandedId(expandedId === item.id ? undefined : item.id)}>
+                onClick={() => void toggleDetails(item.id)}>
                 {expandedId === item.id ? "Verbergen" : "Details"}
               </button>
             </td>
