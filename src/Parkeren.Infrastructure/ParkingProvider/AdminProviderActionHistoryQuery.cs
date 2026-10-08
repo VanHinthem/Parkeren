@@ -28,7 +28,9 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
         if (filter.Origin.HasValue)
             actions = actions.Where(x => x.Origin == filter.Origin.Value);
         if (filter.AssignedUserId.HasValue)
-            actions = actions.Where(x => x.AssignedUserId == filter.AssignedUserId.Value);
+            actions = actions.Where(x => x.Origin == Parkeren.Domain.Visits.ProviderActionOrigin.Managed
+                ? x.VisitId.HasValue && db.Visits.Any(v => v.Id == x.VisitId.Value && v.UserId == filter.AssignedUserId.Value)
+                : x.AssignedUserId == filter.AssignedUserId.Value);
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var search = filter.Search.Trim();
