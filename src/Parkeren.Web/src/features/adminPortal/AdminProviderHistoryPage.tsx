@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getAdminProviderActionHistory, type AdminProviderActionHistoryPage } from "../../api/client";
+import { getAdminProviderActionHistory, getAdminProviderProducts, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { Loading } from "../../design/primitives/Loading";
 import { Button } from "../../design/primitives/Button";
@@ -13,13 +13,18 @@ export function AdminProviderHistoryPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [products, setProducts] = useState<AdminProviderProduct[]>([]);
+  const [productId, setProductId] = useState("");
+  const [state, setState] = useState("");
+  const [origin, setOrigin] = useState("");
+  useEffect(() => { void getAdminProviderProducts().then(setProducts).catch(() => setProducts([])); }, []);
   useEffect(() => {
     let active = true;
-    getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch})
+    getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin})
       .then(result => { if (active) setData(result); })
       .catch(() => { if (active) setError("Historie kon niet worden geladen."); });
     return () => { active = false; };
-  }, [page, appliedSearch]);
+  }, [page, appliedSearch, productId, state, origin]);
   return <div className="admin-provider">
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
@@ -30,6 +35,21 @@ export function AdminProviderHistoryPage() {
         setAppliedSearch(search.trim());
       }}>
         <input className="admin-table__control" aria-label="Kenteken of provideractie-ID" placeholder="Kenteken of provideractie-ID" value={search} onChange={event => setSearch(event.target.value)} />
+        <select className="admin-table__control" aria-label="Providerproduct" value={productId} onChange={event => { setPage(1); setProductId(event.target.value); }}>
+          <option value="">Alle producten</option>
+          {products.map(product => <option key={product.id} value={product.providerProductId}>{product.name}</option>)}
+        </select>
+        <select className="admin-table__control" aria-label="Status" value={state} onChange={event => { setPage(1); setState(event.target.value); }}>
+          <option value="">Alle statussen</option>
+          {["Planned", "Starting", "Scheduled", "Active", "Stopping", "Stopped", "Completed", "Failed"].map(value =>
+            <option key={value} value={value}>{formatAdminProviderActionStatus(value)}</option>)}
+        </select>
+        <select className="admin-table__control" aria-label="Herkomst" value={origin} onChange={event => { setPage(1); setOrigin(event.target.value); }}>
+          <option value="">Alle herkomsten</option>
+          <option value="Managed">Beheerd</option>
+          <option value="Imported">Geïmporteerd</option>
+          <option value="External">Extern</option>
+        </select>
         <Button type="submit" variant="secondary">Zoeken</Button>
       </form>
       {error && <Alert tone="danger">{error}</Alert>}
