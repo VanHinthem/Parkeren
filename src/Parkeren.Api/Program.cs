@@ -1072,6 +1072,8 @@ app.MapGet("/api/admin/provider/actions", async (
     ProviderActionState? state,
     ProviderActionOrigin? origin,
     Guid? assignedUserId,
+    DateTimeOffset? from,
+    DateTimeOffset? until,
     IAdminProviderActionHistoryQuery history,
     IAuthenticationService authentication,
     HttpContext context,
@@ -1084,10 +1086,12 @@ app.MapGet("/api/admin/provider/actions", async (
         return Results.Forbid();
     if (page is < 1 || pageSize is < 1 or > 100)
         return Results.BadRequest("Page must be positive and page size between 1 and 100.");
+    if (from.HasValue && until.HasValue && from >= until)
+        return Results.BadRequest("From must be earlier than Until.");
 
     return Results.Ok(await history.GetAsync(
         new AdminProviderActionHistoryFilter(page ?? 1, pageSize ?? 25, search,
-            providerProductId, state, origin, assignedUserId), cancellationToken));
+            providerProductId, state, origin, assignedUserId, from, until), cancellationToken));
 });
 
 app.MapGet("/api/admin/provider/discrepancies", async (
