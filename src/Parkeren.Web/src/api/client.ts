@@ -242,7 +242,7 @@ export type AdminProviderActionHistoryPage={
 };
 export type AdminProviderActionHistoryFilter={
   page:number;pageSize:number;search?:string;providerProductId?:string;
-  state?:string;origin?:string;from?:string;until?:string;assignedUserId?:string;
+  state?:string;origin?:string;from?:string;until?:string;assignedUserId?:string;oldestFirst?:boolean;
 };
 export async function getAdminProviderActionHistory(filter:AdminProviderActionHistoryFilter){
   const params=new URLSearchParams({page:String(filter.page),pageSize:String(filter.pageSize)});
@@ -251,6 +251,7 @@ export async function getAdminProviderActionHistory(filter:AdminProviderActionHi
   if(filter.state)params.set("state",filter.state);
   if(filter.origin)params.set("origin",filter.origin);
   if(filter.assignedUserId)params.set("assignedUserId",filter.assignedUserId);
+  if(filter.oldestFirst)params.set("oldestFirst","true");
   if(filter.from)params.set("from",filter.from);
   if(filter.until)params.set("until",filter.until);
   return json<AdminProviderActionHistoryPage>(
