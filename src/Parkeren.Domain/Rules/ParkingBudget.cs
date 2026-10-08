@@ -52,6 +52,45 @@ public static class ParkingBudgetCalculator
 
 public static class RealizedParkingBudgetUsageCalculator
 {
+    /// <summary>
+    /// Calculates realized paid time from distinct terminated provider actions,
+    /// regardless of whether an action belongs to a Visit. Callers must supply
+    /// actions for the budget period's provider product.
+    /// </summary>
+    public static ParkingBudgetUsage CalculateFromActions(
+        ParkingBudgetPeriod period,
+        IEnumerable<ProviderParkingAction> providerActions,
+        IEnumerable<ParkingRuleSet> ruleSets)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(providerActions);
+        ArgumentNullException.ThrowIfNull(ruleSets);
+
+        var completed = providerActions
+            .GroupBy(x => x.Id)
+            .Select(group => group.First())
+            .Where(x => x.State is ProviderActionState.Completed or ProviderActionState.Stopped)
+            .ToArray();
+        var segments = ProviderActionPaidTimeCalculator.CalculatePaidSegments(
+            completed, period.ValidFrom, period.ValidUntil, ruleSets)
+            .OrderBy(x => x.Start)
+            .ToArray();
+
+        var used = TimeSpan.Zero;
+        DateTimeOffset? coveredUntil = null;
+        foreach (var segment in segments)
+        {
+            var from = coveredUntil.HasValue && coveredUntil.Value > segment.Start
+                ? coveredUntil.Value : segment.Start;
+            if (segment.End > from)
+                used += segment.End - from;
+            if (!coveredUntil.HasValue || segment.End > coveredUntil.Value)
+                coveredUntil = segment.End;
+        }
+
+        return ParkingBudgetCalculator.Calculate(period, used);
+    }
+
     public static ParkingBudgetUsage Calculate(
         ParkingBudgetPeriod period,
         IEnumerable<Visit> visits,
