@@ -37,8 +37,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
         var parkingProvider = new TwoParkMockProvider(http);
 
-        var now = DateTimeOffset.UtcNow;
-        now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+        // Keep the synthetic parking windows in daytime, even when CI runs at night.
+        // Use a future date so recovery does not treat scheduled work as overdue.
+        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
         (await http.PostAsJsonAsync(
             "api/test/clock/set",
             new { UtcNow = now },
