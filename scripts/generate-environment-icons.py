@@ -45,3 +45,5 @@ if __name__ == "__main__":
             target = PUBLIC / f"pwa-{size}x{size}-{environment}.png"
             count = recolor(source, target, hue)
             print(f"{target.name}: changed {count} pixels")
+
+# Color variants are generated from the immutable production masters.
