@@ -61,7 +61,8 @@ public sealed class ProviderHistoryRunLockTests(PostgreSqlFixture fixture)
         var pages = new ProviderHistoryTransactionalPageImporter(
             db, new ProviderHistoryPageImporter(
                 new ProviderHistoryExistingActionStore(db),
-                new ProviderHistoryNewActionStore(db)), checkpoints);
+                new ProviderHistoryNewActionStore(db)), checkpoints,
+            new ProviderHistorySyncRunStore(db));
         return new ProviderHistoryCheckpointedImportService(
             reader, pages, checkpoints, TimeProvider.System, db,
             new ProviderHistorySyncRunStore(db));
