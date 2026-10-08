@@ -18,6 +18,8 @@ services:
           git -C /workspace init
           git -C /workspace remote add origin https://github.com/VanHinthem/Parkeren.git
         fi
+        # On restart/branch switch, do not report healthy until a fresh fetch succeeds.
+        rm -f /workspace/.git/parkeren-ready
         while :; do
           if git -C /workspace fetch --no-tags --depth=1 origin "+refs/heads/$$branch:refs/remotes/origin/parkeren-active"; then
             target="$$(git -C /workspace rev-parse refs/remotes/origin/parkeren-active)"
