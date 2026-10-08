@@ -17,16 +17,18 @@ services:
           git -C /workspace init
           git -C /workspace remote add origin https://github.com/VanHinthem/Parkeren.git
         fi
+        echo "[branch-controller] Starting: branch=$branch; polling every $interval seconds"
         # On restart/branch switch, do not report healthy until a fresh fetch succeeds.
         rm -f /workspace/.git/parkeren-ready
         while :; do
           if git -C /workspace fetch --no-tags --depth=1 origin "+refs/heads/$$branch:refs/remotes/origin/parkeren-active"; then
             target="$$(git -C /workspace rev-parse refs/remotes/origin/parkeren-active)"
             current="$$(git -C /workspace rev-parse HEAD 2>/dev/null || true)"
-            if [ "$$current" != "$$target" ]; then
+            if [ "$current" != "$target" ]; then
+              echo "[branch-controller] New commit detected on $branch: ${current:-none} -> $target"
               git -C /workspace reset --hard "$$target"
               git -C /workspace clean -fd -e node_modules/ -e bin/ -e obj/
-              echo "DEV deployed $$branch at $$target"
+              echo "[branch-controller] Checkout updated: branch=$branch commit=$target"
             fi
             echo "$$target" > /workspace/.git/parkeren-ready
           else
