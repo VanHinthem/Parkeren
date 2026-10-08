@@ -7,6 +7,13 @@ import { formatAdminDateTime, formatAdminProviderActionStatus } from "./adminFie
 import { AdminProviderSubnav } from "./AdminProviderSubnav";
 import "./AdminProvider.css";
 
+function dateBoundary(value: string, nextDay: boolean) {
+  if (!value) return undefined;
+  const boundary = new Date(value + "T00:00:00");
+  if (nextDay) boundary.setDate(boundary.getDate() + 1);
+  return boundary.toISOString();
+}
+
 export function AdminProviderHistoryPage() {
   const [data, setData] = useState<AdminProviderActionHistoryPage>();
   const [error, setError] = useState("");
@@ -18,17 +25,20 @@ export function AdminProviderHistoryPage() {
   const [productId, setProductId] = useState("");
   const [state, setState] = useState("");
   const [origin, setOrigin] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   useEffect(() => { void getAdminProviderProducts().then(setProducts).catch(() => setProducts([])); }, []);
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
-    getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin})
+    getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin,
+      from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true)})
       .then(result => { if (active) setData(result); })
       .catch(() => { if (active) { setData(undefined); setError("Historie kon niet worden geladen."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [page, appliedSearch, productId, state, origin]);
+  }, [page, appliedSearch, productId, state, origin, fromDate, toDate]);
   return <div className="admin-provider">
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
@@ -54,6 +64,14 @@ export function AdminProviderHistoryPage() {
           <option value="Imported">Geïmporteerd</option>
           <option value="External">Extern</option>
         </select>
+        <label>Van
+          <input className="admin-table__control" type="date" value={fromDate}
+            max={toDate || undefined} onChange={event => { setPage(1); setFromDate(event.target.value); }} />
+        </label>
+        <label>Tot en met
+          <input className="admin-table__control" type="date" value={toDate}
+            min={fromDate || undefined} onChange={event => { setPage(1); setToDate(event.target.value); }} />
+        </label>
         <Button type="submit" variant="secondary">Zoeken</Button>
       </form>
       {error && <Alert tone="danger">{error}</Alert>}
