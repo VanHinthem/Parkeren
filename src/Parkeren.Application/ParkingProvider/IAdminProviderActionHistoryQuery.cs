@@ -26,7 +26,8 @@ public sealed record AdminProviderActionHistoryRow(
     ProviderActionOrigin Origin,
     Guid? AssignedUserId,
     ProviderActionAssignmentSource AssignmentSource,
-    ProviderHistoryStatus HistoryStatus);
+    ProviderHistoryStatus HistoryStatus,
+    string? Username);
 
 public sealed record AdminProviderActionHistoryPage(
     IReadOnlyList<AdminProviderActionHistoryRow> Items,
