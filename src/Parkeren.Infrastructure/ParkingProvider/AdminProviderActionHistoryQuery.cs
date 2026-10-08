@@ -54,7 +54,11 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
                         .Select(v => v.NormalizedLicensePlate).FirstOrDefault(),
                     x.ActualStartAt, x.ActualEndAt, x.ProviderCostAmount,
                     x.State, x.Origin, x.AssignedUserId, x.AssignmentSource,
-                    x.HistoryStatus))
+                    x.HistoryStatus,
+                    db.Users.Where(u => u.Id == (x.Origin == Parkeren.Domain.Visits.ProviderActionOrigin.Managed
+                        ? db.Visits.Where(v => v.Id == x.VisitId).Select(v => (Guid?)v.UserId).FirstOrDefault()
+                        : x.AssignedUserId))
+                        .Select(u => u.Username).FirstOrDefault()))
                 .ToListAsync(cancellationToken);
         return new AdminProviderActionHistoryPage(rows, filter.Page, filter.PageSize, total);
     }
