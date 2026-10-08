@@ -117,6 +117,10 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                 await seed.SaveChangesAsync(token);
             }
 
+            int notificationCountBefore;
+            await using (var before = fixture.CreateDbContext())
+                notificationCountBefore = await before.NotificationEvents.CountAsync(token);
+
             await using (var db = fixture.CreateDbContext())
                 await CreateService(db, reader).ImportAsync(externalProduct, 10, token);
 
@@ -128,9 +132,8 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                     .Where(x => x.ParkingBudgetPeriodId == period.Id)
                     .Select(x => x.ThresholdPercentage).ToArrayAsync(token);
                 Assert.NotEmpty(thresholds);
-                Assert.False(await verify.NotificationEvents.AnyAsync(
-                    x => x.Type == Parkeren.Domain.Notifications.NotificationEventType.BudgetWarning, token)
-                    && thresholds.Length == 0);
+                Assert.Equal(notificationCountBefore,
+                    await verify.NotificationEvents.CountAsync(token));
             }
         }
         finally
