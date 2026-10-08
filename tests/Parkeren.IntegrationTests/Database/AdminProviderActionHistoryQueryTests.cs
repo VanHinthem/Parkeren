@@ -106,6 +106,12 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             Assert.Null(managedRow.AssignedUserId);
             Assert.Equal(assignee.Username, importedRow.Username);
             Assert.Equal(assignee.Id, importedRow.AssignedUserId);
+            var ownerResults = await new AdminProviderActionHistoryQuery(db).GetAsync(
+                new AdminProviderActionHistoryFilter(AssignedUserId: owner.Id, Search: plate), ct);
+            Assert.Equal(managed.Id, Assert.Single(ownerResults.Items).Id);
+            var assigneeResults = await new AdminProviderActionHistoryQuery(db).GetAsync(
+                new AdminProviderActionHistoryFilter(AssignedUserId: assignee.Id, Search: plate), ct);
+            Assert.Equal(imported.Id, Assert.Single(assigneeResults.Items).Id);
         }
         finally
         {
