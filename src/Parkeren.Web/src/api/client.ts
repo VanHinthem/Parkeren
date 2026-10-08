@@ -259,6 +259,14 @@ export async function getAdminProviderActionHistory(filter:AdminProviderActionHi
     await apiFetch("/api/admin/provider/actions?"+params.toString()));
 }
 
+export type AdminProviderAssignmentAuditEntry={
+  id:string;createdAt:string;actorUserId:string;actorUsername:string|null;contextJson:string|null;
+};
+export async function getAdminProviderAssignmentHistory(actionId:string){
+  return json<AdminProviderAssignmentAuditEntry[]>(
+    await apiFetch(`/api/admin/provider/actions/${encodeURIComponent(actionId)}/assignment-history`));
+}
+
 export async function assignAdminProviderActionUser(actionId:string,userId:string|null){
   const response=await apiFetch(`/api/admin/provider/actions/${encodeURIComponent(actionId)}/assignment`,{
     method:"PUT",body:JSON.stringify({userId})
