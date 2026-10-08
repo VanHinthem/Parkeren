@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { getAdminProviderActionHistory, getAdminProviderProducts, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
+import { assignAdminProviderActionUser, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { LicensePlate } from "../../components/LicensePlate";
 import { Loading } from "../../design/primitives/Loading";
@@ -19,6 +19,10 @@ function dateBoundary(value: string, nextDay: boolean) {
 export function AdminProviderHistoryPage() {
   const [data, setData] = useState<AdminProviderActionHistoryPage>();
   const [expandedId, setExpandedId] = useState<string>();
+  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Record<string,string>>({});
+  const [savingId, setSavingId] = useState<string>();
+  const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -30,7 +34,10 @@ export function AdminProviderHistoryPage() {
   const [origin, setOrigin] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  useEffect(() => { void getAdminProviderProducts().then(setProducts).catch(() => setProducts([])); }, []);
+  useEffect(() => {
+    void getAdminProviderProducts().then(setProducts).catch(() => setProducts([]));
+    void getUsers().then(setUsers).catch(() => setError("Gebruikers konden niet worden geladen."));
+  }, []);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -41,7 +48,7 @@ export function AdminProviderHistoryPage() {
       .catch((reason: unknown) => { if (active) { setData(undefined); setError(reason instanceof Error ? `Historie kon niet worden geladen: ${reason.message}` : "Historie kon niet worden geladen."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [page, appliedSearch, productId, state, origin, fromDate, toDate]);
+  }, [page, appliedSearch, productId, state, origin, fromDate, toDate, reload]);
   return <div className="admin-provider">
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
