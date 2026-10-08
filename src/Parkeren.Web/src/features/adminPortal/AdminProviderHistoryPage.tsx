@@ -33,6 +33,7 @@ export function AdminProviderHistoryPage() {
   const [state, setState] = useState("");
   const [origin, setOrigin] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [oldestFirst, setOldestFirst] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   useEffect(() => {
@@ -44,12 +45,12 @@ export function AdminProviderHistoryPage() {
     setLoading(true);
     setError("");
     getAdminProviderActionHistory({page, pageSize: 25, search: appliedSearch, providerProductId: productId, state, origin,
-      from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true), assignedUserId})
+      from: dateBoundary(fromDate, false), until: dateBoundary(toDate, true), assignedUserId, oldestFirst})
       .then(result => { if (active) setData(result); })
       .catch((reason: unknown) => { if (active) { setData(undefined); setError(reason instanceof Error ? `Historie kon niet worden geladen: ${reason.message}` : "Historie kon niet worden geladen."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, reload]);
+  }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, oldestFirst, reload]);
   async function saveAssignment(actionId:string, userId:string|null) {
     setSavingId(actionId);
     setError("");
@@ -100,6 +101,13 @@ export function AdminProviderHistoryPage() {
             onChange={event => { setPage(1); setAssignedUserId(event.target.value); }}>
             <option value="">Alle gebruikers</option>
             {users.map(user => <option key={user.id} value={user.id}>{user.username}</option>)}
+          </select>
+        </label>
+        <label>Sortering
+          <select className="admin-table__control" aria-label="Sortering" value={oldestFirst ? "asc" : "desc"}
+            onChange={event => { setPage(1); setOldestFirst(event.target.value === "asc"); }}>
+            <option value="desc">Nieuwste eerst</option>
+            <option value="asc">Oudste eerst</option>
           </select>
         </label>
         <label>Van
