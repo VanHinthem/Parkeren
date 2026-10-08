@@ -204,6 +204,42 @@ public sealed class ParkingBudgetCalculatorTests
         Assert.Equal(TimeSpan.Zero, usage.UsedPaidDuration);
     }
 
+    [Fact]
+    public void Action_based_budget_clips_at_local_new_year_boundary()
+    {
+        // The 2027 Amsterdam year begins at 2026-12-31 23:00 UTC.
+        var yearStart = new DateTimeOffset(2026, 12, 31, 23, 0, 0, TimeSpan.Zero);
+        var yearEnd = new DateTimeOffset(2027, 12, 31, 23, 0, 0, TimeSpan.Zero);
+        var actionStart = yearStart.AddHours(-4);
+        var actionEnd = yearStart.AddHours(11);
+        var action = CompletedAction(Guid.NewGuid(), actionStart, actionEnd);
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(yearStart, yearEnd, 1500),
+            new[] { action }, new[] { Rules(yearStart.AddDays(-2)) });
+
+        // Friday 1 January, 09:00-11:00 local; previous year's time is excluded.
+        Assert.Equal(TimeSpan.FromHours(2), usage.UsedPaidDuration);
+    }
+
+    [Theory]
+    [InlineData(2026, 3, 29, 0, 30, 2)]
+    [InlineData(2026, 10, 25, 0, 30, 1)]
+    public void Action_based_budget_uses_amsterdam_paid_windows_across_dst(
+        int year, int month, int day, int hour, int minute, int expectedHours)
+    {
+        var transition = new DateTimeOffset(year, month, day, hour, minute, 0, TimeSpan.Zero);
+        var end = new DateTimeOffset(year, month, day + 1, 9, 0, 0, TimeSpan.Zero);
+        var action = CompletedAction(Guid.NewGuid(), transition, end);
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(transition.AddDays(-1), end.AddHours(1), 1500),
+            new[] { action }, new[] { Rules(transition.AddDays(-2)) });
+
+        // Sunday is free in Oss. Monday's 09:00 local start follows the DST offset.
+        Assert.Equal(TimeSpan.FromHours(expectedHours), usage.UsedPaidDuration);
+    }
+
     private static Visit CompletedVisit(DateTimeOffset start, DateTimeOffset end)
     {
         var visit = new Visit(
