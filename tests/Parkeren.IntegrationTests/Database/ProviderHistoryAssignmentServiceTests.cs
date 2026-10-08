@@ -103,6 +103,52 @@ public sealed class ProviderHistoryAssignmentServiceTests(PostgreSqlFixture fixt
         }
     }
     [Fact]
+    public async Task Inactive_admin_cannot_assign_historical_action_or_create_audit()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var admin = new User(Guid.NewGuid(), $"inactive-{suffix}",
+            $"INACTIVE-{suffix}", "hash", UserRole.Admin);
+        admin.Deactivate();
+        var plate = $"IA{suffix[..6].ToUpperInvariant()}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var start = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
+        var action = ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), $"inactive-action-{suffix}", "history-product",
+            "OSS Zone J", vehicle.Id, ProviderActionAssignment.Unassigned,
+            start, start.AddMinutes(30), 0.25m, "COMPLETED", start.AddHours(1));
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(admin);
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var service = new ProviderHistoryAssignmentService(db, TimeProvider.System);
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    service.AssignAsync(action.Id, admin.Id, null, token));
+                Assert.False(await db.AdminAuditEvents.AnyAsync(
+                    x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                         x.TargetId == action.Id.ToString("D"), token));
+            }
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(token);
+            await cleanup.Users.Where(x => x.Id == admin.Id).ExecuteDeleteAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task Visitor_cannot_assign_historical_action_or_create_audit()
     {
         var token = TestContext.Current.CancellationToken;
