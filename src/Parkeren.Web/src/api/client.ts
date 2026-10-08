@@ -231,6 +231,29 @@ export async function getAdminProviderDiscrepancies(includeResolved=false){
   ));
 }
 
+export type AdminProviderActionHistoryRow={
+  id:string;providerActionId:string|null;visitId:string|null;providerProductId:string|null;
+  licensePlate:string|null;actualStartAt:string|null;actualEndAt:string|null;
+  providerCostAmount:number|null;state:string;origin:string;assignedUserId:string|null;
+  assignmentSource:string;historyStatus:string;
+};
+export type AdminProviderActionHistoryPage={
+  items:AdminProviderActionHistoryRow[];page:number;pageSize:number;totalCount:number;
+};
+export type AdminProviderActionHistoryFilter={
+  page:number;pageSize:number;search?:string;providerProductId?:string;
+  state?:string;origin?:string;
+};
+export async function getAdminProviderActionHistory(filter:AdminProviderActionHistoryFilter){
+  const params=new URLSearchParams({page:String(filter.page),pageSize:String(filter.pageSize)});
+  if(filter.search)params.set("search",filter.search);
+  if(filter.providerProductId)params.set("providerProductId",filter.providerProductId);
+  if(filter.state)params.set("state",filter.state);
+  if(filter.origin)params.set("origin",filter.origin);
+  return json<AdminProviderActionHistoryPage>(
+    await apiFetch("/api/admin/provider/actions?"+params.toString()));
+}
+
 export type AdminProviderProduct={
   id:string;
   providerProductId:string;
