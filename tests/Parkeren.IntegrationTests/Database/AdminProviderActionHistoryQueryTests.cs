@@ -52,6 +52,12 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             Assert.Single(second.Items);
             Assert.Equal(actions[1].Id, first.Items[0].Id);
             Assert.Equal(actions[0].Id, second.Items[0].Id);
+            var oldest = await query.GetAsync(new AdminProviderActionHistoryFilter(
+                Page: 1, PageSize: 1, ProviderProductId: product,
+                OldestFirst: true), ct);
+            Assert.Equal(2, oldest.TotalCount);
+            Assert.Equal(actions[0].Id, Assert.Single(oldest.Items).Id);
+
             Assert.Equal(plate, first.Items[0].LicensePlate);
             Assert.All(first.Items.Concat(second.Items), row =>
                 Assert.Equal(product, row.ProviderProductId));
