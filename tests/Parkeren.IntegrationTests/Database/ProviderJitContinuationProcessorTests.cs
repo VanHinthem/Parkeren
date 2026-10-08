@@ -28,8 +28,8 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
         var parkingProvider = new TwoParkMockProvider(http);
 
-        var now = DateTimeOffset.UtcNow;
-        now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+        // Keep the synthetic full-day paid window away from the midnight boundary.
+        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddHours(10), TimeSpan.Zero);
         (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
         var boundary = now.AddMinutes(4);
         var startAt = boundary.AddHours(-4);
@@ -116,6 +116,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             });
             var services = new ServiceCollection();
             services.AddInfrastructure(configuration);
+            services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
             services.AddSingleton<IParkingProvider>(parkingProvider);
             services.AddLogging();
             await using var provider = services.BuildServiceProvider();
@@ -227,4 +228,9 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 .ExecuteDeleteAsync(cancellationToken);
         }
     }
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
 }
