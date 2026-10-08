@@ -49,6 +49,18 @@ export function AdminProviderHistoryPage() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [page, appliedSearch, productId, state, origin, fromDate, toDate, reload]);
+  async function saveAssignment(actionId:string, userId:string|null) {
+    setSavingId(actionId);
+    setError("");
+    try {
+      await assignAdminProviderActionUser(actionId, userId);
+      setReload(value => value + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Toewijzing kon niet worden opgeslagen.");
+    } finally {
+      setSavingId(undefined);
+    }
+  }
   return <div className="admin-provider">
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
