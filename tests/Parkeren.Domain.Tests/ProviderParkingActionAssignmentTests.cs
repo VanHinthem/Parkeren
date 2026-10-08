@@ -62,4 +62,26 @@ public sealed class ProviderParkingActionAssignmentTests
         Assert.Throws<InvalidOperationException>(() =>
             action.AssignHistoricalUser(ProviderActionAssignment.Manual(Guid.NewGuid())));
     }
+    [Fact]
+    public void Import_attribution_cannot_be_initialized_twice_or_overwrite_manual_assignment()
+    {
+        var start = DateTimeOffset.UtcNow.AddDays(-1);
+        var action = new ProviderParkingAction(Guid.NewGuid(), null, start, start.AddHours(1));
+        var vehicleId = Guid.NewGuid();
+        var assignedUserId = Guid.NewGuid();
+        action.SetImportedAttribution(ProviderActionOrigin.Imported, vehicleId,
+            ProviderActionAssignment.Unassigned, start);
+        action.AssignHistoricalUser(ProviderActionAssignment.Manual(assignedUserId));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            action.SetImportedAttribution(ProviderActionOrigin.Imported, Guid.NewGuid(),
+                ProviderActionAssignment.Unassigned, start.AddMinutes(1)));
+
+        Assert.Equal(vehicleId, action.VehicleId);
+        Assert.Equal(assignedUserId, action.AssignedUserId);
+        Assert.Equal(ProviderActionAssignmentSource.ManuallyAssigned, action.AssignmentSource);
+        Assert.Equal(start, action.FirstObservedAt);
+    }
+
+
 }

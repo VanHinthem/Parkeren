@@ -132,6 +132,8 @@ public sealed class ProviderParkingAction
     {
         if (origin == ProviderActionOrigin.Managed)
             throw new ArgumentException("Import attribution requires an imported or external origin.", nameof(origin));
+        if (Origin != ProviderActionOrigin.Managed || FirstObservedAt.HasValue || LastSyncedAt.HasValue)
+            throw new InvalidOperationException("Import attribution is already initialized.");
         if (VisitId.HasValue || State != ProviderActionState.Planned || ProviderActionId is not null)
             throw new InvalidOperationException("Import attribution can only be initialized on an unstarted action without a Visit.");
         if (vehicleId == Guid.Empty)
