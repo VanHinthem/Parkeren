@@ -44,11 +44,12 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
 
         var total = await actions.CountAsync(cancellationToken);
         var offset = (long)(filter.Page - 1) * filter.PageSize;
+        var ordered = filter.OldestFirst
+            ? actions.OrderBy(x => x.ActualStartAt ?? x.PlannedStartAt).ThenBy(x => x.Id)
+            : actions.OrderByDescending(x => x.ActualStartAt ?? x.PlannedStartAt).ThenByDescending(x => x.Id);
         List<AdminProviderActionHistoryRow> rows = offset >= total
             ? []
-            : await actions.OrderByDescending(x => x.ActualStartAt ?? x.PlannedStartAt)
-                .ThenByDescending(x => x.Id)
-                .Skip((int)offset).Take(filter.PageSize)
+            : await ordered.Skip((int)offset).Take(filter.PageSize)
                 .Select(x => new AdminProviderActionHistoryRow(
                     x.Id, x.ProviderActionId, x.VisitId, x.ProviderProductId,
                     db.Vehicles.Where(v => v.Id == (x.VehicleId ?? db.Visits.Where(visit => visit.Id == x.VisitId)
