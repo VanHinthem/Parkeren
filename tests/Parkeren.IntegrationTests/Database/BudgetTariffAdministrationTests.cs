@@ -545,6 +545,61 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Admin_budget_includes_imported_provider_action_without_visit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = new ParkingProviderProduct(Guid.NewGuid(), $"IMPORT-{suffix}",
+            "Imported budget test", "TEST", "Test", $"LOC-{suffix}",
+            new DateTimeOffset(2026, 9, 28, 7, 0, 0, TimeSpan.Zero));
+        var periodStart = new DateTimeOffset(2026, 9, 28, 0, 0, 0, TimeSpan.Zero);
+        var budget = new ParkingBudgetPeriod(Guid.NewGuid(), periodStart,
+            periodStart.AddDays(1), TimeSpan.FromHours(10));
+        budget.AssignProviderProduct(product.Id);
+        var plate = $"IB{suffix[..6].ToUpperInvariant()}";
+        var vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
+        var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        var action = ProviderParkingAction.ImportCompleted(Guid.NewGuid(),
+            $"import-budget-{suffix}", product.ProviderProductId, product.Location,
+            vehicle.Id, ProviderActionAssignment.Unassigned, start,
+            start.AddHours(1), 0.25m, "COMPLETED", start.AddHours(2));
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ParkingBudgetPeriods.Add(budget);
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using var administration = CreateAdministration();
+            var usage = await administration.Service.GetBudgetUsageAsync(
+                admin.Id, budget.Id, start.AddHours(3), ct);
+
+            Assert.NotNull(usage);
+            Assert.True(usage.IsComplete);
+            Assert.Equal(60, usage.UsedPaidDurationMinutes);
+            Assert.Equal(540, usage.RemainingPaidDurationMinutes);
+        }
+        finally
+        {
+            await using (var cleanup = fixture.CreateDbContext())
+            {
+                await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id).ExecuteDeleteAsync(ct);
+                await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
+                await cleanup.ParkingBudgetPeriods.Where(x => x.Id == budget.Id).ExecuteDeleteAsync(ct);
+                await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(ct);
+            }
+            await CleanupAsync(admin.Id, [], [], ct);
+        }
+    }
+
     private async Task ResetCalculationStateAsync(CancellationToken ct)
     {
         await ClearVisitsAsync(ct);
