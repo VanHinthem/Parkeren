@@ -68,6 +68,28 @@ public sealed class ParkingBudgetCalculatorTests
     }
 
     [Fact]
+    public void Historical_budget_baseline_marks_reached_thresholds_without_repeating_existing_ones()
+    {
+        var usage = CreateUsage(100, 95);
+
+        var thresholds = ParkingBudgetWarningEvaluator.GetHistoricalBaselineThresholds(
+            usage, [75, 90, 100], [75]);
+
+        Assert.Equal(new[] { 90 }, thresholds);
+    }
+
+    [Fact]
+    public void Historical_budget_baseline_never_acknowledges_future_thresholds()
+    {
+        var usage = CreateUsage(100, 70);
+
+        var thresholds = ParkingBudgetWarningEvaluator.GetHistoricalBaselineThresholds(
+            usage, [75, 90], []);
+
+        Assert.Empty(thresholds);
+    }
+
+    [Fact]
     public void Budget_warning_returns_none_for_zero_budget()
     {
         var usage = CreateUsage(0, 0);
