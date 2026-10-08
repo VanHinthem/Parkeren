@@ -14,7 +14,8 @@ public sealed class ProviderActionAttributionPersistenceTests(PostgreSqlFixture 
     {
         var token = TestContext.Current.CancellationToken;
         var suffix = Guid.NewGuid().ToString("N");
-        var now = DateTimeOffset.UtcNow.AddHours(-2);
+        var currentTime = DateTimeOffset.UtcNow.AddHours(-2);
+        var now = currentTime.AddTicks(-(currentTime.Ticks % 10)); // PostgreSQL timestamp precision: microseconds.
         var user = new User(Guid.NewGuid(), $"history-{suffix}", $"HISTORY-{suffix}", "hash", UserRole.Visitor);
         var actor = new User(Guid.NewGuid(), $"history-actor-{suffix}",
             $"HISTORY-ACTOR-{suffix}", "hash", UserRole.Admin);
