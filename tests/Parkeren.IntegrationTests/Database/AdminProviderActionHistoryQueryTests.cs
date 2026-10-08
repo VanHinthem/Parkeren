@@ -112,6 +112,7 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             await using var cleanup = fixture.CreateDbContext();
             await cleanup.ProviderParkingActions.Where(x => x.Id == managed.Id || x.Id == imported.Id)
                 .ExecuteDeleteAsync(ct);
+            await cleanup.DeleteVisitSchedulerAuditEventsAsync(ct, visit.Id);
             await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == owner.Id || x.Id == assignee.Id)
