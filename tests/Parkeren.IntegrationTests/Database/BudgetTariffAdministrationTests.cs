@@ -559,6 +559,10 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         var budget = new ParkingBudgetPeriod(Guid.NewGuid(), periodStart,
             periodStart.AddDays(1), TimeSpan.FromHours(10));
         budget.AssignProviderProduct(product.Id);
+        var rule = new ParkingRuleSet(Guid.NewGuid(), DateTimeOffset.UnixEpoch,
+            null, TimeSpan.FromHours(4),
+            [new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0))]);
+        rule.AssignProviderProduct(product.Id);
         var plate = $"IB{suffix[..6].ToUpperInvariant()}";
         var vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
         var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
@@ -573,6 +577,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             {
                 seed.ParkingProviderProducts.Add(product);
                 seed.ParkingBudgetPeriods.Add(budget);
+                seed.ParkingRuleSets.Add(rule);
                 seed.Vehicles.Add(vehicle);
                 seed.ProviderParkingActions.Add(action);
                 await seed.SaveChangesAsync(ct);
@@ -593,6 +598,8 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
             {
                 await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id).ExecuteDeleteAsync(ct);
                 await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
+                await cleanup.PaidWindows.Where(x => x.ParkingRuleSetId == rule.Id).ExecuteDeleteAsync(ct);
+                await cleanup.ParkingRuleSets.Where(x => x.Id == rule.Id).ExecuteDeleteAsync(ct);
                 await cleanup.ParkingBudgetPeriods.Where(x => x.Id == budget.Id).ExecuteDeleteAsync(ct);
                 await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(ct);
             }
