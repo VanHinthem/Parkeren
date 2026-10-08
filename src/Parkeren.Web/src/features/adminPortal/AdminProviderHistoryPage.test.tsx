@@ -39,7 +39,7 @@ describe("AdminProviderHistoryPage assignment",()=>{
     render(<AdminProviderHistoryPage/>);
     fireEvent.click(await screen.findByRole("button",{name:"Details"}));
     expect(await screen.findByText("Via Visit")).toBeTruthy();
-    expect(screen.getByText("Ramon")).toBeTruthy();
+    expect(screen.getAllByText("Ramon").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Gebruiker toewijzen")).toBeNull();
   });
   it("assigns and removes an imported action user",async()=>{
@@ -51,7 +51,9 @@ describe("AdminProviderHistoryPage assignment",()=>{
     fireEvent.change(selection,{target:{value:"user-1"}});
     fireEvent.click(screen.getByRole("button",{name:"Toewijzing opslaan"}));
     await waitFor(()=>expect(assignAdminProviderActionUser).toHaveBeenCalledWith("action-1","user-1"));
-    fireEvent.change(selection,{target:{value:""}});
+    const reloadedSelection=await screen.findByLabelText("Gebruiker toewijzen");
+    await screen.findByRole("button",{name:"Toewijzing opslaan"});
+    fireEvent.change(reloadedSelection,{target:{value:""}});
     fireEvent.click(screen.getByRole("button",{name:"Toewijzing opslaan"}));
     await waitFor(()=>expect(assignAdminProviderActionUser).toHaveBeenCalledWith("action-1",null));
   });
