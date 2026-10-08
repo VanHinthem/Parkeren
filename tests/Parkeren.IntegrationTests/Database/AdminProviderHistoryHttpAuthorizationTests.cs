@@ -33,7 +33,7 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
 
         try
         {
-            await using var factory = new WebApplicationFactory<global::Program>()
+            await using var factory = new WebApplicationFactory<Parkeren.Api.WebPushOptions>()
                 .WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
