@@ -9,7 +9,9 @@ public sealed record AdminProviderActionHistoryFilter(
     string? ProviderProductId = null,
     ProviderActionState? State = null,
     ProviderActionOrigin? Origin = null,
-    Guid? AssignedUserId = null);
+    Guid? AssignedUserId = null,
+    DateTimeOffset? From = null,
+    DateTimeOffset? Until = null);
 
 public sealed record AdminProviderActionHistoryRow(
     Guid Id,
