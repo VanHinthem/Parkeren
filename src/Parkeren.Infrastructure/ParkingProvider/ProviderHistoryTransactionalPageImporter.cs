@@ -27,6 +27,13 @@ public sealed class ProviderHistoryTransactionalPageImporter(
         ProviderHistoryImportPlan.Prepare(page);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Serialize imports for the same product, including its first page when
+        // the checkpoint row does not yet exist. The lock is released at commit/rollback.
+        await db.Database.SqlQueryRaw<int>(
+            "SELECT 1 AS \"Value\" FROM pg_advisory_xact_lock(hashtextextended({0}, 0))",
+            providerProductId.Trim()).SingleAsync(cancellationToken);
+
         var checkpoint = await checkpoints.GetOrCreateAsync(
             providerProductId, page.PageSize, cancellationToken);
         if (checkpoint.NextPageNumber != page.PageNumber)
