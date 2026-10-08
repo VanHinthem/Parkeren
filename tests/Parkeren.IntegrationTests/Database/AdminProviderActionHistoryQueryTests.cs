@@ -143,8 +143,9 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
         var start = new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero);
         var openAction = Import($"open-{suffix}", $"product-{suffix}", vehicle.Id, start);
         var resolvedAction = Import($"resolved-{suffix}", $"product-{suffix}", vehicle.Id, start.AddHours(1));
+        var product = new ParkingProviderProduct(Guid.NewGuid(), $"discrepancy-{suffix}", "History test", null, null, "OSS_J", start);
         var open = new ProviderDiscrepancy(Guid.NewGuid(), $"open-{suffix}",
-            ProviderDiscrepancyType.ProviderActionStatusMismatch, Guid.NewGuid(),
+            ProviderDiscrepancyType.ProviderActionStatusMismatch, product.Id,
             start.AddDays(1), providerParkingActionId: openAction.Id);
         var resolved = new ProviderDiscrepancy(Guid.NewGuid(), $"resolved-{suffix}",
             ProviderDiscrepancyType.ProviderActionStatusMismatch, Guid.NewGuid(),
@@ -156,6 +157,7 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             {
                 seed.Vehicles.Add(vehicle);
                 seed.ProviderParkingActions.AddRange(openAction, resolvedAction);
+                seed.ParkingProviderProducts.Add(product);
                 seed.ProviderDiscrepancies.AddRange(open, resolved);
                 await seed.SaveChangesAsync(ct);
             }
@@ -176,6 +178,7 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             await cleanup.ProviderParkingActions.Where(x => x.Id == openAction.Id || x.Id == resolvedAction.Id)
                 .ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(ct);
         }
     }
 
