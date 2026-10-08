@@ -5,7 +5,7 @@ using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class ProviderContinuationStartMutationGuard(ParkerenDbContext dbContext)
+internal sealed class ProviderContinuationStartMutationGuard(ParkerenDbContext dbContext, TimeProvider timeProvider)
     : IProviderContinuationStartMutationGuard
 {
     public async Task<bool> CanStartAsync(Guid visitId, CancellationToken cancellationToken = default)
@@ -31,7 +31,7 @@ internal sealed class ProviderContinuationStartMutationGuard(ParkerenDbContext d
             unresolved[0].Status == ProviderOperationStatus.InProgress &&
             unresolved[0].ProviderParkingActionId is Guid actionId)
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = timeProvider.GetUtcNow();
             allowed = await dbContext.ProviderParkingActions.AsNoTracking().AnyAsync(
                 x => x.Id == actionId && x.VisitId == visitId &&
                      x.State == ProviderActionState.Starting &&
