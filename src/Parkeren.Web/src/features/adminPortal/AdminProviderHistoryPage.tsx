@@ -32,6 +32,7 @@ export function AdminProviderHistoryPage() {
   const [selectedUsers, setSelectedUsers] = useState<Record<string,string>>({});
   const [savingId, setSavingId] = useState<string>();
   const [audit, setAudit] = useState<Record<string,AdminProviderAssignmentAuditEntry[]>>({});
+  const [auditErrors, setAuditErrors] = useState<Record<string,boolean>>({});
   const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -65,11 +66,12 @@ export function AdminProviderHistoryPage() {
   async function toggleDetails(actionId:string) {
     if (expandedId === actionId) { setExpandedId(undefined); return; }
     setExpandedId(actionId);
+    setAuditErrors(current => ({...current,[actionId]:false}));
     try {
       const entries = await getAdminProviderAssignmentHistory(actionId);
       setAudit(current => ({...current,[actionId]:entries}));
     } catch {
-      setError("Toewijzingshistorie kon niet worden geladen.");
+      setAuditErrors(current => ({...current,[actionId]:true}));
     }
   }
   async function saveAssignment(actionId:string, userId:string|null) {
@@ -80,6 +82,7 @@ export function AdminProviderHistoryPage() {
       setReload(value => value + 1);
       const entries = await getAdminProviderAssignmentHistory(actionId);
       setAudit(current => ({...current,[actionId]:entries}));
+      setAuditErrors(current => ({...current,[actionId]:false}));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Toewijzing kon niet worden opgeslagen.");
     } finally {
@@ -185,7 +188,8 @@ export function AdminProviderHistoryPage() {
               </dl>
               {item.origin !== "Managed" && <div>
                 <h3>Toewijzingshistorie</h3>
-                {audit[item.id] === undefined ? <p>Historie laden…</p> :
+                {auditErrors[item.id] ? <p>Toewijzingshistorie kon niet worden geladen. Sluit en open de details opnieuw om het nogmaals te proberen.</p> :
+                  audit[item.id] === undefined ? <p>Historie laden…</p> :
                   audit[item.id].length === 0 ? <p>Geen handmatige wijzigingen.</p> :
                   <ul>{audit[item.id].map(entry => <li key={entry.id}>
                     {formatAdminDateTime(entry.createdAt)} · {entry.actorUsername ?? entry.actorUserId} · {assignmentChange(entry.contextJson, users)}
