@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.Visits;
+using Parkeren.Domain.Users;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
@@ -20,6 +21,12 @@ public sealed class ProviderHistoryAssignmentService(ParkerenDbContext db, TimeP
         var action = await db.ProviderParkingActions.SingleAsync(x => x.Id == actionId, cancellationToken);
         if (action.Origin == ProviderActionOrigin.Managed)
             throw new InvalidOperationException("Managed provider action attribution cannot be changed.");
+
+        var isAdmin = await db.Users.AnyAsync(
+            x => x.Id == actorUserId && x.Role == UserRole.Admin &&
+                 x.Status == UserStatus.Active, cancellationToken);
+        if (!isAdmin)
+            throw new InvalidOperationException("An active administrator is required to assign historical actions.");
 
         if (assignedUserId.HasValue && !await db.Users.AnyAsync(x => x.Id == assignedUserId.Value, cancellationToken))
             throw new InvalidOperationException("Assigned user does not exist.");
