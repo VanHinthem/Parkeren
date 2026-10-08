@@ -37,7 +37,7 @@ internal static class ProviderHistoryBudgetBaseline
             var actions = await db.ProviderParkingActions.AsNoTracking()
                 .Where(x =>
                     (x.ProviderProductId == externalProductId ||
-                     (x.VisitId.HasValue && db.Visits.Any(v =>
+                     (x.ProviderProductId == null && x.VisitId.HasValue && db.Visits.Any(v =>
                          v.Id == x.VisitId.Value && v.ProviderProductId == product.Value))) &&
                     (x.State == ProviderActionState.Completed || x.State == ProviderActionState.Stopped) &&
                     x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
