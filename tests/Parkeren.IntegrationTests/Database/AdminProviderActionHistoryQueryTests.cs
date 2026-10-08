@@ -148,7 +148,7 @@ public sealed class AdminProviderActionHistoryQueryTests(PostgreSqlFixture fixtu
             ProviderDiscrepancyType.ProviderActionStatusMismatch, product.Id,
             start.AddDays(1), providerParkingActionId: openAction.Id);
         var resolved = new ProviderDiscrepancy(Guid.NewGuid(), $"resolved-{suffix}",
-            ProviderDiscrepancyType.ProviderActionStatusMismatch, Guid.NewGuid(),
+            ProviderDiscrepancyType.ProviderActionStatusMismatch, product.Id,
             start.AddDays(1), providerParkingActionId: resolvedAction.Id);
         resolved.Resolve(start.AddDays(2));
         try
