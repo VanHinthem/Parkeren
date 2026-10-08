@@ -1,0 +1,65 @@
+name: ${COMPOSE_PROJECT_NAME:-parkeren-dev}
+services:
+  web:
+    image: node:24-alpine
+    working_dir: /workspace/src/Parkeren.Web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    restart: unless-stopped
+    environment:
+      PARKEREN_APP_VARIANT: dev
+      PARKEREN_API_PROXY_TARGET: http://api:8080
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: parkeren-dev.vanhinthem.nl
+    ports:
+      - "${PARKEREN_WEB_PORT:-5084}:5173"
+    volumes:
+      - ./source:/workspace
+      - node_modules:/workspace/src/Parkeren.Web/node_modules
+    depends_on:
+      - api
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    command: dotnet watch --project src/Parkeren.Api/Parkeren.Api.csproj run --no-launch-profile --urls http://0.0.0.0:8080
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+      ConnectionStrings__Parkeren: Host=db;Port=5432;Database=parkeren_dev;Username=parkeren;Password=${PARKEREN_DB_PASSWORD:?required}
+      ParkingProvider__Type: TwoParkMock
+      ParkingProvider__BaseUrl: http://two-park-mock:8080
+      BootstrapAdmin__Username: ${PARKEREN_BOOTSTRAP_ADMIN_USERNAME:-}
+      BootstrapAdmin__Pin: ${PARKEREN_BOOTSTRAP_ADMIN_PIN:-}
+    volumes:
+      - ./source:/workspace
+      - nuget_packages:/root/.nuget/packages
+    depends_on:
+      db:
+        condition: service_healthy
+      two-park-mock:
+        condition: service_started
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parkeren_dev
+      POSTGRES_USER: parkeren
+      POSTGRES_PASSWORD: ${PARKEREN_DB_PASSWORD:?required}
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parkeren -d parkeren_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  two-park-mock:
+    image: ghcr.io/vanhinthem/parkeren-two-park-mock:${PARKEREN_MOCK_IMAGE_TAG:-acc}
+    restart: unless-stopped
+    environment:
+      TwoParkMock__StatePath: /data/actions.json
+    volumes:
+      - mock_data:/data
+volumes:
+  node_modules:
+  nuget_packages:
+  db_data:
+  mock_data:
