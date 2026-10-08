@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IProviderProductCatalogService, ProviderProductCatalogService>();
         services.AddScoped<IProviderDiscrepancyService, ProviderDiscrepancyService>();
         services.AddScoped<IProviderHistoryExistingActionStore, ProviderHistoryExistingActionStore>();
+        services.AddScoped<IProviderHistoryNewActionStore, ProviderHistoryNewActionStore>();
         services.AddScoped<IVisitCapacityClaimer, PostgresVisitCapacityClaimer>();
         services.AddScoped<IVisitSchedulerWorkClaimer, PostgresVisitSchedulerWorkClaimer>();
         services.AddScoped<IVisitSchedulerWorkProcessor, VisitSchedulerWorkProcessor>();
