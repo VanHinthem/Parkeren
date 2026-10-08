@@ -1064,6 +1064,32 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapGet("/api/admin/provider/actions", async (
+    int? page,
+    int? pageSize,
+    string? search,
+    string? providerProductId,
+    ProviderActionState? state,
+    ProviderActionOrigin? origin,
+    Guid? assignedUserId,
+    IAdminProviderActionHistoryQuery history,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+    if (page is < 1 || pageSize is < 1 or > 100)
+        return Results.BadRequest("Page must be positive and page size between 1 and 100.");
+
+    return Results.Ok(await history.GetAsync(
+        new AdminProviderActionHistoryFilter(page ?? 1, pageSize ?? 25, search,
+            providerProductId, state, origin, assignedUserId), cancellationToken));
+});
+
 app.MapGet("/api/admin/provider/discrepancies", async (
     bool includeResolved,
     IProviderDiscrepancyService discrepancyService,
