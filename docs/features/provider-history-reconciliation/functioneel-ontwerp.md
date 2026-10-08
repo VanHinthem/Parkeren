@@ -39,7 +39,14 @@ Eenmalig bestaande 2Park-parkeeractiehistorie importeren en daarna provideractie
 9. Alle toewijzingswijzigingen moeten achteraf traceerbaar zijn (oud, nieuw, bron, actor, tijdstip).
 10. Ontbrekend kenteken of andere onvolledige providerinformatie mag geen foutieve automatische gebruikerskoppeling veroorzaken.
 
-## Beheerpagina Provideracties
+## Navigatie en pagina-indeling
+- Onder het bestaande beheeronderdeel **Provider & reconciliatie** komt een derde, afzonderlijke subpagina **Historie**.
+- De bestaande subpagina's **Provider** en **Reconciliatie** blijven behouden.
+- De nieuwe pagina **Historie** bevat het volledige overzicht van provideracties en de bijbehorende historie-import, synchronisatie en gebruikerstoewijzing.
+- Integreer de nieuwe subpagina in de bestaande navigatie-, route- en autorisatiestructuur; maak geen extra los hoofdmenu.
+- De uiteindelijke URL/route volgt de huidige beheerrouteconventies.
+
+## Beheerpagina Historie (provideracties)
 - Toon alle acties: managed, imported en extern waargenomen.
 - Kolommen: datum, kenteken, product, start/einde, duur, kosten, status, herkomst, gekoppelde gebruiker, toewijzingsbron en sync-/conflictstatus.
 - Filters: datum/periode, kenteken, gebruiker, product, status, oorsprong, (niet-)toegewezen, toewijzingsbron, discrepanties.
