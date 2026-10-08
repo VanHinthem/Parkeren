@@ -1,4 +1,3 @@
-name: ${COMPOSE_PROJECT_NAME:-parkeren-dev}
 services:
   branch-controller:
     image: alpine/git:2.49.1
