@@ -1097,6 +1097,38 @@ app.MapGet("/api/admin/provider/actions", async (
             providerProductId, state, origin, assignedUserId, from, until, oldestFirst ?? false, hasOpenDiscrepancy), cancellationToken));
 });
 
+app.MapGet("/api/admin/provider/actions/{actionId:guid}/assignment-history", async (
+    Guid actionId,
+    ParkerenDbContext db,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+    if (!await db.ProviderParkingActions.AnyAsync(x => x.Id == actionId, cancellationToken))
+        return Results.NotFound();
+
+    var events = await db.AdminAuditEvents.AsNoTracking()
+        .Where(x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                    x.TargetId == actionId.ToString("D") &&
+                    x.Action == ProviderActionAssignmentAudit.ActionName)
+        .OrderByDescending(x => x.CreatedAt)
+        .ThenByDescending(x => x.Id)
+        .Select(x => new
+        {
+            x.Id, x.CreatedAt, x.ActorUserId,
+            ActorUsername = db.Users.Where(u => u.Id == x.ActorUserId)
+                .Select(u => u.Username).FirstOrDefault(),
+            x.ContextJson
+        })
+        .ToListAsync(cancellationToken);
+    return Results.Ok(events);
+});
+
 app.MapPut("/api/admin/provider/actions/{actionId:guid}/assignment", async (
     Guid actionId,
     ProviderActionAssignmentRequest request,
