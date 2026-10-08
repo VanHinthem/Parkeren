@@ -102,4 +102,59 @@ public sealed class ProviderHistoryAssignmentServiceTests(PostgreSqlFixture fixt
             await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id).ExecuteDeleteAsync(token);
         }
     }
+    [Fact]
+    public async Task Visitor_cannot_assign_historical_action_or_create_audit()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var plate = $"AV{suffix[..6].ToUpperInvariant()}";
+        var visitor = new User(Guid.NewGuid(), $"visitor-{suffix}",
+            $"VISITOR-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var start = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
+        var action = ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), $"visitor-action-{suffix}", "history-product",
+            "OSS Zone J", vehicle.Id, ProviderActionAssignment.Unassigned,
+            start, start.AddMinutes(30), 0.25m, "COMPLETED", start.AddHours(1));
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(visitor);
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var service = new ProviderHistoryAssignmentService(db, TimeProvider.System);
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    service.AssignAsync(action.Id, visitor.Id, visitor.Id, token));
+            }
+
+            await using (var check = fixture.CreateDbContext())
+            {
+                var saved = await check.ProviderParkingActions.AsNoTracking()
+                    .SingleAsync(x => x.Id == action.Id, token);
+                Assert.Null(saved.AssignedUserId);
+                Assert.Equal(ProviderActionAssignmentSource.Unassigned, saved.AssignmentSource);
+                Assert.False(await check.AdminAuditEvents.AnyAsync(
+                    x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                         x.TargetId == action.Id.ToString("D"), token));
+            }
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.Users.Where(x => x.Id == visitor.Id)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
 }
