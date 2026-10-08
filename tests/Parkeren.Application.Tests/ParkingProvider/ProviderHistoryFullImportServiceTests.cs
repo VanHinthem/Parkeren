@@ -43,6 +43,8 @@ public sealed class ProviderHistoryFullImportServiceTests
             string productId, ProviderActionHistoryRecord record,
             DateTimeOffset observedAt, CancellationToken cancellationToken = default)
         {
+            if (Inserted.Contains(record.ProviderActionId))
+                return Task.FromResult(ProviderHistoryNewActionResult.AlreadyExists);
             Inserted.Add(record.ProviderActionId);
             return Task.FromResult(ProviderHistoryNewActionResult.Inserted);
         }
@@ -77,6 +79,27 @@ public sealed class ProviderHistoryFullImportServiceTests
         Assert.Equal("Simulated provider history failure.", exception.Message);
         Assert.Equal([0, 1], reader.Pages);
         Assert.Equal(["action-0"], store.Inserted);
+    }
+
+    [Fact]
+    public async Task Restart_after_failed_page_reuses_existing_actions_without_duplicates()
+    {
+        var reader = new HistoryReader { FailAtPage = 1 };
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
+
+        Assert.Equal(["action-0"], store.Inserted);
+
+        reader.FailAtPage = null;
+        var summary = await service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["action-0", "action-1", "action-2"], store.Inserted);
+        Assert.Equal([0, 1, 0, 1, 2], reader.Pages);
+        Assert.Equal(new ProviderHistoryImportSummary(2, 0, 0, 1), summary);
     }
 
     [Fact]
