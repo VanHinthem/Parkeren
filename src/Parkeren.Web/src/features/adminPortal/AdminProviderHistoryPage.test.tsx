@@ -42,6 +42,22 @@ describe("AdminProviderHistoryPage assignment",()=>{
     expect(screen.getAllByText("Ramon").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Gebruiker toewijzen")).toBeNull();
   });
+  it("passes status, origin, user and discrepancy filters to the history API",async()=>{
+    setup("Imported");
+    render(<AdminProviderHistoryPage/>);
+    await screen.findByRole("button",{name:"Details"});
+    fireEvent.change(screen.getByLabelText("Status"),{target:{value:"Completed"}});
+    fireEvent.change(screen.getByLabelText("Herkomst"),{target:{value:"Imported"}});
+    fireEvent.change(screen.getByLabelText("Gebruiker"),{target:{value:"user-1"}});
+    fireEvent.change(screen.getByLabelText("Afwijking"),{target:{value:"open"}});
+    fireEvent.change(screen.getByLabelText("Sortering"),{target:{value:"asc"}});
+    await waitFor(()=>expect(getAdminProviderActionHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state:"Completed",origin:"Imported",assignedUserId:"user-1",
+        hasOpenDiscrepancy:true,oldestFirst:true,page:1
+      })
+    ));
+  });
   it("assigns and removes an imported action user",async()=>{
     setup("Imported");
     vi.mocked(assignAdminProviderActionUser).mockResolvedValue({changed:true});
