@@ -88,6 +88,42 @@ public sealed class ProviderParkingAction
         return action;
     }
 
+    /// <summary>
+    /// Refreshes authoritative facts for a completed action imported from provider history.
+    /// Never changes vehicle, user attribution, Visit or managed action lifecycle.
+    /// </summary>
+    public void RefreshImportedHistory(
+        DateTimeOffset actualStartAt,
+        DateTimeOffset actualEndAt,
+        decimal? providerCostAmount,
+        string providerStatus,
+        DateTimeOffset observedAt)
+    {
+        if (Origin is not (ProviderActionOrigin.Imported or ProviderActionOrigin.External)
+            || VisitId is not null
+            || State != ProviderActionState.Completed)
+            throw new InvalidOperationException("Only completed external history actions without a Visit can be refreshed.");
+        if (Health != ProviderActionHealth.Healthy)
+            throw new InvalidOperationException("An unhealthy provider action cannot be refreshed.");
+        if (actualEndAt < actualStartAt)
+            throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        if (providerCostAmount is < 0m)
+            throw new ArgumentOutOfRangeException(nameof(providerCostAmount));
+        if (string.IsNullOrWhiteSpace(providerStatus))
+            throw new ArgumentException("Provider status is required.", nameof(providerStatus));
+        if (LastSyncedAt.HasValue && observedAt < LastSyncedAt.Value)
+            throw new ArgumentOutOfRangeException(nameof(observedAt), "Sync observation cannot predate the last sync.");
+
+        ActualStartAt = actualStartAt;
+        ActualEndAt = actualEndAt;
+        ProviderCostAmount = providerCostAmount;
+        ProviderStatus = providerStatus.Trim();
+        HistoryStatus = providerCostAmount.HasValue
+            ? ProviderHistoryStatus.Reconciled
+            : ProviderHistoryStatus.Incomplete;
+        LastSyncedAt = observedAt;
+    }
+
     public void SetImportedAttribution(
         ProviderActionOrigin origin,
         Guid vehicleId,
