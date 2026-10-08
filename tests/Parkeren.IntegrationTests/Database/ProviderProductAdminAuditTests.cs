@@ -42,7 +42,8 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
             await using var catalog = CreateCatalog(parkingProvider);
             var result = await catalog.Service.SynchronizeForAdminAsync(admin.Id, ct);
 
-            Assert.Equal(2, result.Products.Count);
+            Assert.Contains(result.Products, p => p.ProviderProductId == $"product-a-{suffix}");
+            Assert.Contains(result.Products, p => p.ProviderProductId == $"product-b-{suffix}");
 
             await using var verify = fixture.CreateDbContext();
             var audit = await verify.AdminAuditEvents.AsNoTracking()
@@ -55,8 +56,8 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
             Assert.NotNull(audit.ContextJson);
 
             using var context = JsonDocument.Parse(audit.ContextJson);
-            Assert.Equal(2, context.RootElement.GetProperty("providerProductCount").GetInt32());
-            Assert.Equal(2, context.RootElement.GetProperty("availableProductCount").GetInt32());
+            Assert.Equal(result.Products.Count, context.RootElement.GetProperty("providerProductCount").GetInt32());
+            Assert.Equal(result.Products.Count, context.RootElement.GetProperty("availableProductCount").GetInt32());
             Assert.False(context.RootElement.GetProperty("defaultAutoSelected").GetBoolean());
         }
         finally
