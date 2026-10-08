@@ -78,7 +78,8 @@ internal sealed class ProviderContinuationStartStore(
             startAt,
             endAt,
             persistedVisit.ProviderProductExternalId,
-            persistedVisit.ProviderLocation);
+            persistedVisit.ProviderLocation,
+            persistedVisit.VehicleId);
         var operation = new ProviderOperation(Guid.NewGuid(), operationId, visit.Id, nextAction.Id,
             ProviderOperationType.ContinueStart);
         nextAction.MarkStarting();
@@ -187,7 +188,8 @@ internal sealed class ProviderContinuationStartStore(
             previous.PlannedEndAt.AddSeconds(1),
             newEndAt,
             persistedVisit.ProviderProductExternalId,
-            persistedVisit.ProviderLocation);
+            persistedVisit.ProviderLocation,
+            persistedVisit.VehicleId);
         var operation = new ProviderOperation(
             Guid.NewGuid(), operationId, persistedVisit.Id, nextAction.Id,
             ProviderOperationType.ContinueStart);
