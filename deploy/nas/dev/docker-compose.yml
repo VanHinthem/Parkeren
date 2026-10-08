@@ -56,6 +56,7 @@ services:
     environment:
       PARKEREN_APP_VARIANT: dev
       PARKEREN_API_PROXY_TARGET: http://api:8080
+      PARKEREN_HMR_HOST: parkeren-dev.vanhinthem.nl
       CHOKIDAR_USEPOLLING: "true"
       __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: parkeren-dev.vanhinthem.nl
     ports:
