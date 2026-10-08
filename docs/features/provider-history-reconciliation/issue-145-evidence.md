@@ -44,3 +44,31 @@ Using the existing **real provider test environment** and credentials kept outsi
 - Avoid relying exclusively on a permanent `maxindex` cache for incremental sync.
 - Keep history-reader and active-action-reader responsibilities distinct.
 - Do not mark #145 complete until read-only live verification or explicit documented acceptance of remaining assumptions.
+
+
+## 2026-10-08 — Live 2Park response supplied by owner
+
+Evidence provenance: direct JSON response supplied in project conversation. Personal identifiers are **not reproduced** in this repository document.
+
+### Confirmed from this sample
+- Provider status is OK/SUCCESS.
+- `data.startindex = "0"`, `data.stopindex = "9"`, `data.maxindex = "24"`.
+- Ten actions were supplied; all have `atn_id`, `atn_state = "COMPLETED"`, and `atn_chained = "NO"`.
+- Each of the ten actions has `MBR_IDENT`, `TIMESTART`, `TIMEEND`, `LOCATION`, `COST`, and `CURRENCY_DESC` in `atn_parameters`.
+- Timestamps are local strings in `dd-MM-yyyy HH:mm:ss` format; `LOCATION` is a human-readable zone description; `CURRENCY_DESC` has a euro symbol.
+- All ten supplied actions have dates from late September through early October 2026 and complete time intervals.
+
+### Important divergence from current code
+- Reader `GetActionHistoryPageAsync` calculates `startIndex = pageNumber * pageSize + 1`; live sample indicates zero is a valid starting index. This is evidence of a **possible first-record skip**, not proof of omission until a controlled `startindex=0` vs `startindex=1` query comparison.
+- The current `HasMore` implementation assumes `TotalCount = maxindex`. A value of 24 may be the inclusive last index (25 records) rather than the count (24); confirm with last-page requests.
+- `TwoParkActionHistoryParser` drops `MBR_IDENT` and `LOCATION` despite their availability in the raw data.
+
+### Still unverified
+- Whether `maxindex` represents last zero-based index, count, or a provider-specific index convention.
+- Whether `startindex=0,stopindex=9` returns the same/next records as `startindex=1,stopindex=10`.
+- Which status/chained variants appear outside completed stand-alone records.
+- Whether all older history, multiple products, missing fields or externally stopped actions follow the same structure.
+- Whether historical paid-hour accounting matches rule-based reconstruction.
+
+### Next safe validation
+Request the next history page (`startindex=10,stopindex=19`) and final page (`startindex=20,stopindex=24`) if these ranges are accepted, plus controlled boundary comparison for the first page; record only redacted action identifiers and counts. Do not commit raw history containing license plates.
