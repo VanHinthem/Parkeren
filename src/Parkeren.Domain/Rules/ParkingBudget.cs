@@ -211,6 +211,17 @@ public sealed class ParkingBudgetWarningState
 
 public static class ParkingBudgetWarningEvaluator
 {
+    /// <summary>
+    /// Returns thresholds already reached by imported history that should be
+    /// recorded as a baseline, without creating retrospective notifications.
+    /// The caller persists these thresholds; this method has no side effects.
+    /// </summary>
+    public static IReadOnlyList<int> GetHistoricalBaselineThresholds(
+        ParkingBudgetUsage usage,
+        IEnumerable<int> thresholds,
+        IEnumerable<int> alreadyRecordedThresholds) =>
+        GetNewlyReachedThresholds(usage, thresholds, alreadyRecordedThresholds);
+
     public static IReadOnlyList<int> GetNewlyReachedThresholds(
         ParkingBudgetUsage usage,
         IEnumerable<int> thresholds,
