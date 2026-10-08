@@ -1,0 +1,38 @@
+name: Generate environment PWA icons (temporary)
+
+on:
+  push:
+    branches:
+      - feature/environment-pwa-icon-colors
+    paths:
+      - scripts/generate-environment-icons.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/environment-pwa-icon-colors
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate PNG color variants
+        run: |
+          python -m pip install Pillow
+          python scripts/generate-environment-icons.py
+      - name: Commit generated PNG files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/Parkeren.Web/public/pwa-192x192-acc.png src/Parkeren.Web/public/pwa-512x512-acc.png
+          git add src/Parkeren.Web/public/pwa-192x192-dev.png src/Parkeren.Web/public/pwa-512x512-dev.png
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(icons): distinguish ACC and DEV PWA colors'
+            git push origin HEAD:feature/environment-pwa-icon-colors
+          fi
