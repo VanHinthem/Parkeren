@@ -61,7 +61,7 @@ internal sealed class ProviderHistoryNewActionStore(ParkerenDbContext dbContext)
             .ToListAsync(cancellationToken);
         var assignment = ProviderActionAssignment.InferFromVehicleUsers(userIds);
 
-        var action = ProviderParkingAction.ImportCompleted(
+        var action = Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(
             Guid.NewGuid(), id, productId, record.Location, vehicle.Id, assignment,
             record.ActualStartAt, record.ActualEndAt, record.ProviderCostAmount,
             record.Status, observedAt);
