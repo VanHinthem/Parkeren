@@ -607,6 +607,48 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Budget_usage_excludes_wrong_product_even_when_action_has_matching_visit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = await CreateAdminAsync(ct);
+        await ResetCalculationStateAsync(ct);
+        var from = new DateTimeOffset(2026, 9, 28, 0, 0, 0, TimeSpan.Zero);
+        var validStart = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        CompletedVisitSeed? wrong = null;
+        CompletedVisitSeed? legacy = null;
+        Guid? budgetId = null;
+
+        try
+        {
+            wrong = await CreateCompletedVisitAsync(validStart, validStart.AddHours(1),
+                ct, providerProductId: "OTHER-PRODUCT");
+            legacy = await CreateCompletedVisitAsync(validStart.AddHours(1),
+                validStart.AddHours(2), ct);
+
+            await using var administration = CreateAdministration();
+            var result = await administration.Service.CreateBudgetPeriodAsync(
+                admin.Id, from, from.AddDays(1), 600, ct);
+            Assert.Equal(AdminBudgetPeriodCreateOutcome.Created, result.Outcome);
+            budgetId = result.Period!.Id;
+
+            var usage = await administration.Service.GetBudgetUsageAsync(
+                admin.Id, budgetId, from.AddHours(12), ct);
+            Assert.NotNull(usage);
+            Assert.True(usage.IsComplete);
+            Assert.Equal(60, usage.UsedPaidDurationMinutes);
+            Assert.Equal(540, usage.RemainingPaidDurationMinutes);
+        }
+        finally
+        {
+            if (wrong is not null)
+                await CleanupVisitorAsync(wrong.UserId, wrong.VehicleId, ct);
+            if (legacy is not null)
+                await CleanupVisitorAsync(legacy.UserId, legacy.VehicleId, ct);
+            await CleanupAsync(admin.Id, budgetId is null ? [] : [budgetId.Value], [], ct);
+        }
+    }
+
     private async Task ResetCalculationStateAsync(CancellationToken ct)
     {
         await ClearVisitsAsync(ct);
@@ -653,7 +695,8 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         DateTimeOffset? actionStartAt = null,
         DateTimeOffset? actionEndAt = null,
         bool historyIncomplete = false,
-        decimal? providerHistoryCost = null)
+        decimal? providerHistoryCost = null,
+        string? providerProductId = null)
     {
         var suffix = Guid.NewGuid().ToString("N");
         var visitor = new User(Guid.NewGuid(), $"visitor-{suffix}", $"VISITOR-{suffix}", "hash", UserRole.Visitor);
@@ -671,7 +714,7 @@ public sealed class BudgetTariffAdministrationTests(PostgreSqlFixture fixture)
         visit.Activate();
         visit.BeginStopping();
         visit.Complete(end);
-        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end);
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id, start, end, providerProductId);
         action.MarkStarting();
         action.MarkActive($"provider-{Guid.NewGuid():N}", actionStartAt ?? start);
         action.MarkCompleted(actionEndAt ?? end);
