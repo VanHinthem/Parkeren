@@ -179,3 +179,23 @@
     flex-direction:column;
   }
 }
+
+/* History filters use the same shared admin controls, aligned on their bottom edge. */
+.admin-provider__history-filters{
+  align-items:flex-end;
+  flex-wrap:wrap;
+}
+.admin-provider__history-filters>label{
+  display:grid;
+  gap:.3rem;
+  font-size:.82rem;
+  font-weight:600;
+}
+.admin-provider__history-filters>input,
+.admin-provider__history-filters>select{
+  flex:1 1 10rem;
+  width:auto;
+}
+.admin-provider__history-filters>button{
+  min-height:2.35rem;
+}
