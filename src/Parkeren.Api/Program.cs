@@ -13,6 +13,7 @@ using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Notifications;
 using System.Threading.RateLimiting;
 using System.Text.Json.Serialization;
@@ -1094,6 +1095,32 @@ app.MapGet("/api/admin/provider/actions", async (
             providerProductId, state, origin, assignedUserId, from, until), cancellationToken));
 });
 
+app.MapPut("/api/admin/provider/actions/{actionId:guid}/assignment", async (
+    Guid actionId,
+    ProviderActionAssignmentRequest request,
+    ProviderHistoryAssignmentService assignment,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.Forbid();
+
+    try
+    {
+        var changed = await assignment.AssignAsync(
+            actionId, authenticated.User.Id, request.UserId, cancellationToken);
+        return Results.Ok(new { changed });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+});
+
 app.MapGet("/api/admin/provider/discrepancies", async (
     bool includeResolved,
     IProviderDiscrepancyService discrepancyService,
@@ -2118,6 +2145,8 @@ public sealed record StopVisitRequest(Guid OperationId);
 public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset? DesiredEndAt);
 
 public partial class Program;
+
+public sealed record ProviderActionAssignmentRequest(Guid? UserId);
 
 public sealed record PushSubscriptionRequest(string Endpoint, string P256dh, string Auth);
 public sealed record PushSubscriptionDeleteRequest(string Endpoint);
