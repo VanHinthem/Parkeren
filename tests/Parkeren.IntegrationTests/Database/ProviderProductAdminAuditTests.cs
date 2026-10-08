@@ -57,7 +57,7 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
 
             using var context = JsonDocument.Parse(audit.ContextJson);
             Assert.Equal(result.Products.Count, context.RootElement.GetProperty("providerProductCount").GetInt32());
-            Assert.Equal(result.Products.Count, context.RootElement.GetProperty("availableProductCount").GetInt32());
+            Assert.Equal(2, context.RootElement.GetProperty("availableProductCount").GetInt32());
             Assert.False(context.RootElement.GetProperty("defaultAutoSelected").GetBoolean());
         }
         finally
