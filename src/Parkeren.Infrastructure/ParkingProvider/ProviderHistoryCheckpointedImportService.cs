@@ -1,3 +1,4 @@
+using Parkeren.Domain.ParkingProvider;
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Infrastructure.Persistence;
 using Parkeren.Application.ParkingProvider;
@@ -13,11 +14,13 @@ public sealed class ProviderHistoryCheckpointedImportService(
     ProviderHistoryTransactionalPageImporter pages,
     IProviderHistorySyncStateStore checkpoints,
     TimeProvider timeProvider,
-    ParkerenDbContext db)
+    ParkerenDbContext db,
+    ProviderHistorySyncRunStore runs)
 {
     public async Task<ProviderHistoryImportSummary> ImportAsync(
         string providerProductId, int pageSize,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ProviderHistorySyncRunMode mode = ProviderHistorySyncRunMode.Incremental)
     {
         if (string.IsNullOrWhiteSpace(providerProductId))
             throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
@@ -37,7 +40,7 @@ public sealed class ProviderHistoryCheckpointedImportService(
             if (!acquired)
                 throw new InvalidOperationException("A provider history sync is already running for this product.");
 
-            return await ImportLockedAsync(key, pageSize, cancellationToken);
+            return await ImportLockedAsync(key, pageSize, mode, cancellationToken);
         }
         finally
         {
@@ -52,7 +55,31 @@ public sealed class ProviderHistoryCheckpointedImportService(
     }
 
     private async Task<ProviderHistoryImportSummary> ImportLockedAsync(
-        string providerProductId, int pageSize, CancellationToken cancellationToken)
+        string providerProductId, int pageSize, ProviderHistorySyncRunMode mode,
+        CancellationToken cancellationToken)
+    {
+        var runId = await runs.StartAsync(
+            providerProductId, mode, timeProvider.GetUtcNow(), cancellationToken);
+        try
+        {
+            return await ExecuteRunAsync(providerProductId, pageSize, runId, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            try { await runs.CancelAsync(runId, timeProvider.GetUtcNow(), CancellationToken.None); }
+            catch (Exception) { /* Preserve cancellation. */ }
+            throw;
+        }
+        catch (Exception ex)
+        {
+            try { await runs.FailAsync(runId, timeProvider.GetUtcNow(), ex.Message, CancellationToken.None); }
+            catch (Exception) { /* Preserve original sync failure. */ }
+            throw;
+        }
+    }
+
+    private async Task<ProviderHistoryImportSummary> ExecuteRunAsync(
+        string providerProductId, int pageSize, Guid runId, CancellationToken cancellationToken)
     {
         var progress = await checkpoints.GetOrCreateAsync(
             providerProductId, pageSize, cancellationToken);
@@ -85,11 +112,15 @@ public sealed class ProviderHistoryCheckpointedImportService(
                 refreshed += result.Refreshed;
                 skipped += result.SkippedManaged;
                 existing += result.AlreadyExists;
+                await runs.RecordPageAsync(runId, page.Records.Count,
+                    result.Inserted, result.Refreshed,
+                    result.SkippedManaged + result.AlreadyExists, cancellationToken);
 
                 if (!page.HasMore)
                 {
                     await checkpoints.RecordSyncCompletedAsync(
                         providerProductId, timeProvider.GetUtcNow(), cancellationToken);
+                    await runs.CompleteAsync(runId, timeProvider.GetUtcNow(), cancellationToken);
                     return new ProviderHistoryImportSummary(inserted, refreshed, skipped, existing);
                 }
 
