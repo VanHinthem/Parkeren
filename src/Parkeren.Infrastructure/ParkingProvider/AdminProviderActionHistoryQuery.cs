@@ -35,7 +35,9 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
             actions = actions.Where(x =>
                 (x.ProviderActionId != null && EF.Functions.ILike(x.ProviderActionId, "%" + search + "%")) ||
                 (x.VehicleId.HasValue && db.Vehicles.Any(v =>
-                    v.Id == x.VehicleId.Value && EF.Functions.ILike(v.NormalizedLicensePlate, "%" + search + "%"))));
+                    v.Id == x.VehicleId.Value && EF.Functions.ILike(v.NormalizedLicensePlate, "%" + search + "%"))) ||
+                (x.VehicleId == null && x.VisitId.HasValue && db.Visits.Any(visit => visit.Id == x.VisitId.Value &&
+                    db.Vehicles.Any(v => v.Id == visit.VehicleId && EF.Functions.ILike(v.NormalizedLicensePlate, "%" + search + "%")))));
         }
 
         var total = await actions.CountAsync(cancellationToken);
@@ -47,7 +49,8 @@ internal sealed class AdminProviderActionHistoryQuery(ParkerenDbContext db)
                 .Skip((int)offset).Take(filter.PageSize)
                 .Select(x => new AdminProviderActionHistoryRow(
                     x.Id, x.ProviderActionId, x.VisitId, x.ProviderProductId,
-                    db.Vehicles.Where(v => v.Id == x.VehicleId)
+                    db.Vehicles.Where(v => v.Id == (x.VehicleId ?? db.Visits.Where(visit => visit.Id == x.VisitId)
+                        .Select(visit => (Guid?)visit.VehicleId).FirstOrDefault()))
                         .Select(v => v.NormalizedLicensePlate).FirstOrDefault(),
                     x.ActualStartAt, x.ActualEndAt, x.ProviderCostAmount,
                     x.State, x.Origin, x.AssignedUserId, x.AssignmentSource,
