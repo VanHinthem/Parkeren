@@ -9,11 +9,12 @@ import { AdminProviderSubnav } from "./AdminProviderSubnav";
 import "./adminFieldPresentation.css";
 import "./AdminProvider.css";
 
-function assignmentChange(contextJson:string|null) {
+function assignmentChange(contextJson:string|null, users:UserSummary[]) {
   if (!contextJson) return "Toewijzing gewijzigd";
   try {
     const change = JSON.parse(contextJson) as {PreviousUserId?:string|null;NewUserId?:string|null};
-    return `${change.PreviousUserId ?? "Niet toegewezen"} → ${change.NewUserId ?? "Niet toegewezen"}`;
+    const name = (id:string|null|undefined) => id ? users.find(user => user.id === id)?.username ?? id : "Niet toegewezen";
+    return `${name(change.PreviousUserId)} → ${name(change.NewUserId)}`;
   } catch { return "Toewijzing gewijzigd"; }
 }
 
@@ -187,7 +188,7 @@ export function AdminProviderHistoryPage() {
                 {audit[item.id] === undefined ? <p>Historie laden…</p> :
                   audit[item.id].length === 0 ? <p>Geen handmatige wijzigingen.</p> :
                   <ul>{audit[item.id].map(entry => <li key={entry.id}>
-                    {formatAdminDateTime(entry.createdAt)} · {entry.actorUsername ?? entry.actorUserId} · {assignmentChange(entry.contextJson)}
+                    {formatAdminDateTime(entry.createdAt)} · {entry.actorUsername ?? entry.actorUserId} · {assignmentChange(entry.contextJson, users)}
                   </li>)}</ul>}
               </div>}
               {item.origin !== "Managed" && <div className="admin-provider__toolbar">
