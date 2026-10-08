@@ -36,13 +36,11 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
             await using var factory = new WebApplicationFactory<Parkeren.Api.WebPushOptions>()
                 .WithWebHostBuilder(builder =>
                 {
+                    // Minimal hosting registers infrastructure during Program startup.
+                    // Host settings must be available before those registrations run.
                     builder.UseEnvironment("Development");
-                    builder.ConfigureAppConfiguration((_, config) =>
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            ["ConnectionStrings:Parkeren"] = fixture.ConnectionString,
-                            ["ParkingProvider:Type"] = "TwoParkMock"
-                        }));
+                    builder.UseSetting("ConnectionStrings:Parkeren", fixture.ConnectionString);
+                    builder.UseSetting("ParkingProvider:Type", "TwoParkMock");
                     builder.ConfigureServices(services =>
                         services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>());
                 });
