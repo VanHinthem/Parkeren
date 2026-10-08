@@ -62,24 +62,22 @@ internal sealed class BudgetWarningService(
 
         foreach (var period in periods)
         {
-            var visits = await dbContext.Visits.AsNoTracking()
-                .Where(x => x.ProviderProductId == period.ProviderProductId &&
-                            x.Status == VisitStatus.Completed &&
-                            x.ActualEndAt.HasValue &&
-                            x.Id != completedVisit.Id &&
-                            ((x.StartAt < period.ValidUntil && x.ActualEndAt.Value > period.ValidFrom) ||
-                             dbContext.ProviderParkingActions.Any(action =>
-                                 action.VisitId == x.Id &&
-                                 action.ActualStartAt.HasValue &&
-                                 action.ActualEndAt.HasValue &&
-                                 action.ActualStartAt.Value < period.ValidUntil &&
-                                 action.ActualEndAt.Value > period.ValidFrom)))
-                .ToListAsync(cancellationToken);
-            visits.Add(completedVisit);
+            // Historical actions use the provider's string product id, while
+            // budget periods and Visits use the internal product Guid.
+            var providerProductId = await dbContext.ParkingProviderProducts.AsNoTracking()
+                .Where(x => x.Id == period.ProviderProductId)
+                .Select(x => x.ProviderProductId)
+                .SingleAsync(cancellationToken);
 
-            var visitIds = visits.Select(x => x.Id).ToArray();
             var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
-                .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+                .Where(x =>
+                    (x.ProviderProductId == providerProductId ||
+                     (x.VisitId.HasValue && dbContext.Visits.Any(v =>
+                         v.Id == x.VisitId.Value && v.ProviderProductId == period.ProviderProductId))) &&
+                    x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
+                    x.ActualStartAt.Value < period.ValidUntil &&
+                    x.ActualEndAt.Value > period.ValidFrom &&
+                    (x.State == ProviderActionState.Completed || x.State == ProviderActionState.Stopped))
                 .ToListAsync(cancellationToken);
             if (providerActionOverride is not null)
             {
@@ -90,7 +88,7 @@ internal sealed class BudgetWarningService(
                     providerActions.Add(providerActionOverride);
             }
 
-            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, providerActions, ruleSets);
+            var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(period, providerActions, ruleSets);
             var alreadyNotified = await dbContext.ParkingBudgetWarningStates
                 .Where(x => x.ParkingBudgetPeriodId == period.Id)
                 .Select(x => x.ThresholdPercentage)
