@@ -1,7 +1,7 @@
 # Issue #145 — 2Park history evidence and open verification
 
 Date: 2026-10-08
-Status: repository evidence collected; live provider validation pending.
+Status: repository evidence collected; live provider field sample received; pagination is previously validated and deliberately out of scope.
 Issue: https://github.com/VanHinthem/Parkeren/issues/145
 
 ## Evidence located
@@ -28,7 +28,7 @@ Issue: https://github.com/VanHinthem/Parkeren/issues/145
 | Provider ID uniqueness across different products | Unverified |
 | Natural completion, external stop, and in-flight status formats | Unverified |
 
-## Proposed next evidence step
+## Previously planned evidence step (superseded for pagination)
 
 Using the existing **real provider test environment** and credentials kept outside GitHub:
 1. Make read-only `get_action_history.json` requests for the configured product. Never send start/stop mutations.
@@ -72,3 +72,7 @@ Evidence provenance: direct JSON response supplied in project conversation. Pers
 
 ### Next safe validation
 Request the next history page (`startindex=10,stopindex=19`) and final page (`startindex=20,stopindex=24`) if these ranges are accepted, plus controlled boundary comparison for the first page; record only redacted action identifiers and counts. Do not commit raw history containing license plates.
+
+## Decision — 2026-10-08: pagination is frozen
+
+The repository owner confirmed that history pagination has already been verified and documented in earlier work. **Do not change page numbering, maxindex handling, or pagination tests under issue #145.** The newly provided JSON is evidence for the action fields and not authorization to revise existing pagination behavior. Earlier concerns in this document about index 0 and maxindex are superseded by this explicit decision. The next code slice is strictly limited to parsing `MBR_IDENT` and `LOCATION`, extending the history DTO, and adding focused tests without altering pagination.
