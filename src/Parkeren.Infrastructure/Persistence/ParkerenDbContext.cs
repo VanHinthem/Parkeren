@@ -38,7 +38,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<VisitSchedulerAuditEvent> VisitSchedulerAuditEvents => Set<VisitSchedulerAuditEvent>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
     public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
-    public DbSet<ProviderHistorySyncState> ProviderHistorySyncStates => Set<ProviderHistorySyncState>();
     public DbSet<ProviderDiscrepancy> ProviderDiscrepancies => Set<ProviderDiscrepancy>();
     public DbSet<AdminAuditEvent> AdminAuditEvents => Set<AdminAuditEvent>();
     private int nextAuditEventOrder = 1;
@@ -616,17 +615,6 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasOne<ParkingProviderProduct>().WithMany().HasForeignKey(x => x.ProviderProductId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<ProviderHistorySyncState>(entity =>
-        {
-            entity.ToTable("provider_history_sync_states");
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.ProviderProductId).HasMaxLength(100).IsRequired();
-            entity.Property(x => x.PageSize).IsRequired();
-            entity.Property(x => x.NextPageNumber).IsRequired();
-            entity.Property(x => x.LastError).HasMaxLength(1000);
-            entity.HasIndex(x => x.ProviderProductId).IsUnique();
         });
 
         modelBuilder.Entity<ProviderParkingAction>(entity =>
