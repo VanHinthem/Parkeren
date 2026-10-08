@@ -24,7 +24,7 @@ services:
             current="$(git -C /workspace rev-parse HEAD 2>/dev/null || true)"
             if [ "$current" != "$target" ]; then
               git -C /workspace reset --hard "$target"
-              git -C /workspace clean -fd
+              git -C /workspace clean -fd -e node_modules/ -e bin/ -e obj/
               echo "DEV deployed $branch at $target"
             fi
           else
@@ -33,6 +33,11 @@ services:
           sleep "$interval"
         done
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /workspace/.git/parkeren-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
     environment:
       PARKEREN_ACTIVE_BRANCH: ${PARKEREN_ACTIVE_BRANCH:?Set active GitHub branch}
       PARKEREN_GIT_POLL_SECONDS: ${PARKEREN_GIT_POLL_SECONDS:-15}
@@ -54,7 +59,10 @@ services:
       - ./source:/workspace
       - node_modules:/workspace/src/Parkeren.Web/node_modules
     depends_on:
-      - api
+      api:
+        condition: service_started
+      branch-controller:
+        condition: service_healthy
   api:
     image: mcr.microsoft.com/dotnet/sdk:10.0
     working_dir: /workspace
@@ -72,6 +80,8 @@ services:
       - ./source:/workspace
       - nuget_packages:/root/.nuget/packages
     depends_on:
+      branch-controller:
+        condition: service_healthy
       db:
         condition: service_healthy
       two-park-mock:
