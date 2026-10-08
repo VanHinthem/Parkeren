@@ -121,7 +121,7 @@ jobs:
           PARKEREN_BUILD_ID: ${{ github.sha }}
           PARKEREN_APP_VARIANT: production
         run: npm run build && npm run check:pwa
-      - name: Build and check development PWA
+      - name: Build and check acceptance PWA
         env:
           PARKEREN_BUILD_ID: ${{ github.sha }}
           PARKEREN_APP_VARIANT: dev
@@ -199,7 +199,7 @@ jobs:
           build-args: |
             PARKEREN_BUILD_ID=${{ github.sha }}
             PARKEREN_APP_VERSION=dev
-            PARKEREN_APP_VARIANT=dev
+            PARKEREN_APP_VARIANT=acc
           labels: |
             org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
       - name: Build TwoPark mock image
