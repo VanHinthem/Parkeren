@@ -254,8 +254,8 @@ public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture
             store.InsertIfMissingAsync("product-1", record, start.AddHours(1), token));
 
         Assert.False(await db.ProviderParkingActions.AnyAsync(x => x.ProviderActionId == actionId, token));
-        Assert.Empty(db.ChangeTracker.Entries<Vehicle>()
-            .Where(x => x.State == EntityState.Added));
+        Assert.DoesNotContain(db.ChangeTracker.Entries<Vehicle>(),
+            x => x.State == EntityState.Added);
     }
 
 }
