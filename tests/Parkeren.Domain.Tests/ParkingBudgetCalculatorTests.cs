@@ -172,6 +172,38 @@ public sealed class ParkingBudgetCalculatorTests
         Assert.Equal(TimeSpan.FromHours(1), usage.UsedPaidDuration);
     }
 
+    [Fact]
+    public void Action_based_budget_includes_imported_without_visit_and_deduplicates_overlap()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+        var imported = ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), "history-1", "product-1", null, Guid.NewGuid(),
+            ProviderActionAssignment.Unassigned, start, start.AddHours(2),
+            0.5m, "COMPLETED", start.AddHours(3));
+        var managed = CompletedAction(Guid.NewGuid(), start.AddHours(1), start.AddHours(3));
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            period, new[] { imported, managed, imported }, new[] { rules });
+
+        Assert.Equal(TimeSpan.FromHours(3), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Action_based_budget_ignores_unfinished_actions()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var ongoing = new ProviderParkingAction(
+            Guid.NewGuid(), Guid.NewGuid(), start, start.AddHours(2));
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(start.Date, start.Date.AddDays(1), 100),
+            new[] { ongoing }, new[] { Rules(start.AddDays(-1)) });
+
+        Assert.Equal(TimeSpan.Zero, usage.UsedPaidDuration);
+    }
+
     private static Visit CompletedVisit(DateTimeOffset start, DateTimeOffset end)
     {
         var visit = new Visit(
