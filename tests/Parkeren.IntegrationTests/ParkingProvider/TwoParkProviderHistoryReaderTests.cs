@@ -143,7 +143,7 @@ public sealed class TwoParkProviderHistoryReaderTests
               "data": {
                 "startindex": "{{startIndex}}",
                 "stopindex": "{{actualStop}}",
-                "maxindex": "{{shortFinalPage ? 24 : 21}}",
+                "maxindex": "{{(shortFinalPage ? 24 : 21)}}",
                 "actions": [{{actionJson}}]
               }
             }
