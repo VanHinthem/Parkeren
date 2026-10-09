@@ -19,17 +19,19 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 {
     [Theory]
-    [InlineData("scheduled", false)]
-    [InlineData("scheduled", true)]
-    [InlineData("active", false)]
-    [InlineData("active", true)]
-    [InlineData("missing", false)]
-    [InlineData("stopped", false)]
-    [InlineData("start-mismatch", false)]
-    [InlineData("end-mismatch", false)]
+    [InlineData("scheduled", false, false)]
+    [InlineData("scheduled", true, false)]
+    [InlineData("active", false, false)]
+    [InlineData("active", true, false)]
+    [InlineData("missing", false, false)]
+    [InlineData("stopped", false, false)]
+    [InlineData("start-mismatch", false, false)]
+    [InlineData("end-mismatch", false, false)]
+    [InlineData("scheduled", true, true)] // Open-ended Visit survives a free gap and keeps future continuation.
     public async Task Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap(
         string providerReadback,
-        bool includeFurtherPaidPeriod)
+        bool includeFurtherPaidPeriod,
+        bool openEnded)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
@@ -86,8 +88,10 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             vehicle.Id,
             user.Id,
             startAt,
-            desiredEndAt,
-            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true),
+            openEnded ? null : desiredEndAt,
+            openEnded
+                ? new EffectiveParkingPolicySnapshot(null, null, true)
+                : new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true),
             product.Id,
             product.ProviderProductId,
             product.Location);
@@ -283,11 +287,21 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                     .ToListAsync(cancellationToken);
                 Assert.Equal(VisitSchedulerWorkStatus.Completed,
                     workItems.Single(x => x.Id == work.Id).Status);
-                var terminalWork = Assert.Single(workItems, x =>
+                var terminalWorks = workItems.Where(x =>
                     x.Type == VisitSchedulerWorkType.StopVisit &&
-                    x.Status == VisitSchedulerWorkStatus.Pending);
-                Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
-                Assert.Equal(desiredEndAt, terminalWork.DueAt);
+                    x.Status == VisitSchedulerWorkStatus.Pending).ToArray();
+                if (openEnded)
+                {
+                    Assert.Empty(terminalWorks);
+                    Assert.Equal(VisitStatus.Active, recoveredVisit.Status);
+                    Assert.Null(recoveredVisit.DesiredEndAt);
+                }
+                else
+                {
+                    var terminalWork = Assert.Single(terminalWorks);
+                    Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
+                    Assert.Equal(desiredEndAt, terminalWork.DueAt);
+                }
                 var continuationWork = workItems.Where(x =>
                     x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
                     (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed)).ToArray();
