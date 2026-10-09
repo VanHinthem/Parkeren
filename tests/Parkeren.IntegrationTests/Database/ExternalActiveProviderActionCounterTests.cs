@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.ParkingProvider;
+using Parkeren.Application.ParkingProvider;
 using Parkeren.Infrastructure.ParkingProvider;
 
 namespace Parkeren.IntegrationTests.Database;
@@ -48,6 +49,71 @@ public sealed class ExternalActiveProviderActionCounterTests(PostgreSqlFixture f
             await cleanup.ProviderDiscrepancies.Where(x => x.Id == discrepancy.Id)
                 .ExecuteDeleteAsync(ct);
             await cleanup.ProviderParkingActions.Where(x => x.Id == managed.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Importing_completed_external_history_releases_its_capacity_reservation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var productId = $"history-capacity-{suffix}";
+        var providerActionId = $"history-external-{suffix}";
+        var plate = $"EC{suffix[..6].ToUpperInvariant()}";
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(), productId, "History capacity", "182", "Oss", "OSS_J", start);
+        var discrepancy = new ProviderDiscrepancy(
+            Guid.NewGuid(), $"external-provider-action:{product.Id:N}:{providerActionId}",
+            ProviderDiscrepancyType.ExternalProviderAction, product.Id, start,
+            providerActionId: providerActionId, providerStatus: "ACTIVE",
+            providerStartAt: start, providerEndAt: start.AddHours(1));
+        var history = new ProviderActionHistoryRecord(
+            providerActionId, "COMPLETED", start, start.AddMinutes(40),
+            0.30m, "EUR", plate, "OSS_J");
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ProviderDiscrepancies.Add(discrepancy);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var before = fixture.CreateDbContext())
+                Assert.Equal(1, await new ExternalActiveProviderActionCounter(before).CountAsync(ct));
+
+            await using (var import = fixture.CreateDbContext())
+            {
+                await using var transaction = await import.Database.BeginTransactionAsync(ct);
+                Assert.Equal(ProviderHistoryNewActionResult.Inserted,
+                    await new ProviderHistoryNewActionStore(import)
+                        .InsertIfMissingAsync(productId, history, start.AddHours(2), ct));
+                await transaction.CommitAsync(ct);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(0, await new ExternalActiveProviderActionCounter(verify).CountAsync(ct));
+            Assert.Equal(ProviderDiscrepancyStatus.Resolved,
+                (await verify.ProviderDiscrepancies.AsNoTracking()
+                    .SingleAsync(x => x.Id == discrepancy.Id, ct)).Status);
+            var saved = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.ProviderActionId == providerActionId, ct);
+            Assert.Null(saved.VisitId);
+            Assert.Equal(Parkeren.Domain.Visits.ProviderActionOrigin.Imported, saved.Origin);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderDiscrepancies.Where(x => x.Id == discrepancy.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.ProviderActionId == providerActionId)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
                 .ExecuteDeleteAsync(ct);
             await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
                 .ExecuteDeleteAsync(ct);
