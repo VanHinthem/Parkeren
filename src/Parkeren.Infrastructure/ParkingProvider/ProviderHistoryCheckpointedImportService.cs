@@ -20,7 +20,8 @@ public sealed class ProviderHistoryCheckpointedImportService(
     public async Task<ProviderHistoryImportSummary> ImportAsync(
         string providerProductId, int pageSize,
         CancellationToken cancellationToken = default,
-        ProviderHistorySyncRunMode mode = ProviderHistorySyncRunMode.Incremental)
+        ProviderHistorySyncRunMode mode = ProviderHistorySyncRunMode.Incremental,
+        Guid? reservedRunId = null)
     {
         if (string.IsNullOrWhiteSpace(providerProductId))
             throw new ArgumentException("Provider product id is required.", nameof(providerProductId));
@@ -40,7 +41,7 @@ public sealed class ProviderHistoryCheckpointedImportService(
             if (!acquired)
                 throw new InvalidOperationException("A provider history sync is already running for this product.");
 
-            return await ImportLockedAsync(key, pageSize, mode, cancellationToken);
+            return await ImportLockedAsync(key, pageSize, mode, cancellationToken, reservedRunId);
         }
         finally
         {
@@ -56,10 +57,19 @@ public sealed class ProviderHistoryCheckpointedImportService(
 
     private async Task<ProviderHistoryImportSummary> ImportLockedAsync(
         string providerProductId, int pageSize, ProviderHistorySyncRunMode mode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? reservedRunId)
     {
-        var runId = await runs.StartAsync(
+        var runId = reservedRunId ?? await runs.StartAsync(
             providerProductId, mode, timeProvider.GetUtcNow(), cancellationToken);
+        if (reservedRunId is not null)
+        {
+            var reserved = await db.ProviderHistorySyncRuns.AsNoTracking()
+                .SingleAsync(x => x.Id == runId, cancellationToken);
+            if (reserved.ProviderProductId != providerProductId ||
+                reserved.Mode != mode ||
+                reserved.Status != ProviderHistorySyncRunStatus.Running)
+                throw new InvalidOperationException("Reserved history sync run does not match the requested import.");
+        }
         try
         {
             return await ExecuteRunAsync(providerProductId, pageSize, runId, cancellationToken);
