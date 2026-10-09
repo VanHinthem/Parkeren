@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { assignAdminProviderActionUser, getAdminProviderAssignmentHistory, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type AdminProviderAssignmentAuditEntry, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage } from "../../api/client";
+import { assignAdminProviderActionUser, getAdminProviderHistorySyncStatus, startAdminProviderHistorySync, getAdminProviderAssignmentHistory, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type AdminProviderAssignmentAuditEntry, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage, type AdminProviderHistorySyncStatus } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { LicensePlate } from "../../components/LicensePlate";
 import { Loading } from "../../design/primitives/Loading";
@@ -27,6 +27,10 @@ function dateBoundary(value: string, nextDay: boolean) {
 
 export function AdminProviderHistoryPage() {
   const [data, setData] = useState<AdminProviderActionHistoryPage>();
+  const [syncStatus, setSyncStatus] = useState<AdminProviderHistorySyncStatus>();
+  const [syncProductId, setSyncProductId] = useState("");
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncError, setSyncError] = useState("");
   const [expandedId, setExpandedId] = useState<string>();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<Record<string,string>>({});
@@ -63,6 +67,26 @@ export function AdminProviderHistoryPage() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, oldestFirst, discrepancyFilter, reload]);
+  useEffect(() => {
+    let active = true;
+    getAdminProviderHistorySyncStatus()
+      .then(status => { if (active) setSyncStatus(status); })
+      .catch(() => { if (active) setSyncError("Synchronisatiestatus kon niet worden geladen."); });
+    return () => { active = false; };
+  }, []);
+  async function startSync() {
+    if (!syncProductId || syncBusy) return;
+    setSyncBusy(true);
+    setSyncError("");
+    try {
+      await startAdminProviderHistorySync(syncProductId);
+      setSyncStatus(await getAdminProviderHistorySyncStatus());
+    } catch (reason) {
+      setSyncError(reason instanceof Error ? reason.message : "Synchronisatie kon niet worden gestart.");
+    } finally {
+      setSyncBusy(false);
+    }
+  }
   async function toggleDetails(actionId:string) {
     if (expandedId === actionId) { setExpandedId(undefined); return; }
     setExpandedId(actionId);
@@ -93,6 +117,37 @@ export function AdminProviderHistoryPage() {
     <AdminProviderSubnav current="history" />
     <section className="admin-provider__panel">
       <h2>Provideractiehistorie</h2>
+      <div className="admin-provider__panel">
+        <h3>Historie synchroniseren</h3>
+        <div className="admin-provider__toolbar">
+          <label>Providerproduct
+            <select className="admin-table__control" aria-label="Product voor synchronisatie"
+              value={syncProductId} onChange={event => setSyncProductId(event.target.value)}>
+              <option value="">Kies een product</option>
+              {products.map(product => <option key={product.id} value={product.providerProductId}>{product.name}</option>)}
+            </select>
+          </label>
+          <Button variant="secondary" disabled={!syncProductId || syncBusy ||
+            syncStatus?.runs.some(run => run.providerProductId === syncProductId && run.status === "Running")}
+            onClick={() => void startSync()}>
+            {syncBusy ? "Starten…" : "Synchroniseren"}
+          </Button>
+        </div>
+        {syncError && <Alert tone="danger">{syncError}</Alert>}
+        {syncStatus && <div>
+          <p>Laatste synchronisatieruns</p>
+          {syncStatus.runs.length === 0 ? <p>Nog geen synchronisaties uitgevoerd.</p> :
+            <div className="admin-table-wrap"><table className="admin-table">
+              <thead><tr><th>Product</th><th>Gestart</th><th>Status</th><th>Gelezen</th><th>Toegevoegd</th><th>Bijgewerkt</th></tr></thead>
+              <tbody>{syncStatus.runs.slice(0, 5).map(run => <tr key={run.id}>
+                <td>{products.find(product => product.providerProductId === run.providerProductId)?.name ?? run.providerProductId}</td>
+                <td>{formatAdminDateTime(run.startedAt)}</td>
+                <td>{run.status}</td>
+                <td>{run.readCount}</td><td>{run.insertedCount}</td><td>{run.refreshedCount}</td>
+              </tr>)}</tbody>
+            </table></div>}
+        </div>}
+      </div>
       <form className="admin-provider__toolbar admin-provider__history-filters" onSubmit={event => {
         event.preventDefault();
         setPage(1);
