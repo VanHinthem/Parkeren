@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
@@ -70,6 +71,27 @@ public sealed class ProviderHistoryNewActionStore(ParkerenDbContext dbContext)
         // Database unique indexes remain authoritative under concurrent imports:
         // a racing writer fails safely rather than creating duplicate actions.
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Once an external provider action has been safely imported, the external
+        // discrepancy is no longer actionable. Keep this in the page transaction.
+        var localProductId = await dbContext.ParkingProviderProducts.AsNoTracking()
+            .Where(x => x.ProviderProductId == productId)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (localProductId is Guid localId)
+        {
+            var discrepancyKey = $"external-provider-action:{localId:N}:{id}";
+            var discrepancy = await dbContext.ProviderDiscrepancies
+                .SingleOrDefaultAsync(x => x.Key == discrepancyKey &&
+                    x.Type == ProviderDiscrepancyType.ExternalProviderAction &&
+                    x.Status == ProviderDiscrepancyStatus.Open, cancellationToken);
+            if (discrepancy is not null)
+            {
+                discrepancy.Resolve(observedAt >= discrepancy.LastObservedAt
+                    ? observedAt : discrepancy.LastObservedAt);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
         return ProviderHistoryNewActionResult.Inserted;
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.ParkingProvider;
@@ -10,6 +11,63 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture)
 {
+    [Fact]
+    public async Task Import_resolves_existing_external_provider_action_discrepancy()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var providerId = $"external-history-{suffix}";
+        var productId = $"external-history-product-{suffix}";
+        var plate = $"EH{suffix[..6].ToUpperInvariant()}";
+        var started = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(), productId, "History test", null, null, "OSS_J", started);
+        var discrepancy = new ProviderDiscrepancy(
+            Guid.NewGuid(), $"external-provider-action:{product.Id:N}:{providerId}",
+            ProviderDiscrepancyType.ExternalProviderAction, product.Id, started,
+            providerActionId: providerId);
+        var record = new ProviderActionHistoryRecord(
+            providerId, "COMPLETED", started, started.AddMinutes(30),
+            0.45m, "EUR", plate, "OSS_J");
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ProviderDiscrepancies.Add(discrepancy);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var import = fixture.CreateDbContext())
+            {
+                await using var transaction = await import.Database.BeginTransactionAsync(ct);
+                Assert.Equal(ProviderHistoryNewActionResult.Inserted,
+                    await new ProviderHistoryNewActionStore(import)
+                        .InsertIfMissingAsync(productId, record, started.AddHours(1), ct));
+                await transaction.CommitAsync(ct);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var saved = await verify.ProviderDiscrepancies.AsNoTracking()
+                .SingleAsync(x => x.Id == discrepancy.Id, ct);
+            Assert.Equal(ProviderDiscrepancyStatus.Resolved, saved.Status);
+            Assert.Equal(started.AddHours(1), saved.ResolvedAt);
+            var action = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.ProviderActionId == providerId, ct);
+            Assert.Equal(ProviderActionOrigin.Imported, action.Origin);
+            Assert.Null(action.VisitId);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderDiscrepancies.Where(x => x.Id == discrepancy.Id).ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.ProviderActionId == providerId).ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate).ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id).ExecuteDeleteAsync(ct);
+        }
+    }
+
     [Fact]
     public async Task Repeated_import_creates_one_action_and_one_inactive_vehicle()
     {
