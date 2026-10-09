@@ -10,6 +10,63 @@ namespace Parkeren.IntegrationTests.Database;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fixture)
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Provider_history_does_not_mutate_managed_active_or_reconciling_actions(bool reconciling)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var actionId = $"managed-active-{suffix}";
+        var product = $"history-safe-{suffix}";
+        var start = new DateTimeOffset(2026, 10, 9, 9, 0, 0, TimeSpan.Zero);
+        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(),
+            start, start.AddHours(1), product);
+        action.MarkStarting();
+        action.MarkActive(actionId, start, "ACTIVE");
+        if (reconciling)
+        {
+            action.BeginStopping();
+            action.MarkUnknown();
+            action.BeginReconciliation();
+        }
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            var fromHistory = new ProviderActionHistoryRecord(
+                actionId, "COMPLETED", start, start.AddMinutes(40), 1.25m, "EUR");
+            await using (var import = fixture.CreateDbContext())
+            {
+                var result = await new ProviderHistoryExistingActionStore(import)
+                    .ApplyIfExistingAsync(product, fromHistory, start.AddHours(2), ct);
+                Assert.Equal(ProviderHistoryExistingActionResult.SkippedManaged, result);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var saved = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == action.Id, ct);
+            Assert.Equal(action.State, saved.State);
+            Assert.Equal(action.Health, saved.Health);
+            Assert.Equal(start, saved.ActualStartAt);
+            Assert.Null(saved.ActualEndAt);
+            Assert.Null(saved.ProviderCostAmount);
+            Assert.Equal("ACTIVE", saved.ProviderStatus);
+            Assert.Equal(action.VisitId, saved.VisitId);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
     [Fact]
     public async Task Repeat_import_updates_provider_facts_but_preserves_manual_user()
     {
