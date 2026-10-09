@@ -75,13 +75,16 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
     }
 
-    [Fact]
-    public async Task Saving_open_ended_friday_evening_visit_schedules_saturday_morning_coverage()
+    [Theory]
+    [InlineData(2026, 10, 9, 10, 10)] // Friday evening -> Saturday morning
+    [InlineData(2026, 10, 11, 12, 10)] // Free Sunday evening -> Monday morning
+    public async Task Saving_open_ended_evening_visit_schedules_next_paid_morning_coverage(
+        int year, int month, int startDay, int paidDay)
     {
         var ct = TestContext.Current.CancellationToken;
         await ClearVisitStateAsync(ct);
 
-        var startAt = new DateTimeOffset(2026, 10, 9, 18, 16, 0, TimeSpan.Zero); // Friday 20:16 Amsterdam
+        var startAt = new DateTimeOffset(year, month, startDay, 18, 16, 0, TimeSpan.Zero); // 20:16 Amsterdam
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"overnight-{suffix}", $"OVERNIGHT-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"ON{suffix[..6]}", $"ON{suffix[..6]}", null);
@@ -101,7 +104,11 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
             DateTimeOffset.UnixEpoch,
             null,
             TimeSpan.FromHours(4),
-            new[] { new PaidWindow(DayOfWeek.Saturday, new TimeOnly(9, 0), new TimeOnly(20, 0)) });
+            new[]
+            {
+                new PaidWindow(DayOfWeek.Monday, new TimeOnly(9, 0), new TimeOnly(20, 0)),
+                new PaidWindow(DayOfWeek.Saturday, new TimeOnly(9, 0), new TimeOnly(20, 0))
+            });
 
         await using (var seed = fixture.CreateDbContext())
         {
@@ -128,7 +135,7 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
                  x.Status == VisitSchedulerWorkStatus.Pending,
             ct);
 
-        Assert.Equal(new DateTimeOffset(2026, 10, 10, 6, 55, 0, TimeSpan.Zero), work.DueAt);
+        Assert.Equal(new DateTimeOffset(year, month, paidDay, 6, 55, 0, TimeSpan.Zero), work.DueAt);
         Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
     }
 
