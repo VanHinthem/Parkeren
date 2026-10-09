@@ -94,7 +94,7 @@ public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fi
             visit.Complete(start.AddHours(1));
         }
 
-        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id,
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), visit.Id,
             start, start.AddHours(1), product);
         action.MarkStarting();
         action.MarkActive(providerId, start, "ACTIVE");
