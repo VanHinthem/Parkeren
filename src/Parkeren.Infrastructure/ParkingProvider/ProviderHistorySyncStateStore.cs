@@ -43,6 +43,15 @@ public sealed class ProviderHistorySyncStateStore(ParkerenDbContext db)
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task RestartTraversalAsync(
+        string providerProductId, DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await FindAsync(providerProductId, cancellationToken);
+        state.RestartTraversal(observedAt);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task RecordSyncCompletedAsync(
         string providerProductId, DateTimeOffset observedAt,
         CancellationToken cancellationToken = default)

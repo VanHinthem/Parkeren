@@ -16,6 +16,10 @@ public interface IProviderHistorySyncStateStore
         string providerProductId, int pageNumber, DateTimeOffset observedAt,
         CancellationToken cancellationToken = default);
 
+    Task RestartTraversalAsync(
+        string providerProductId, DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default);
+
     Task RecordSyncCompletedAsync(
         string providerProductId, DateTimeOffset observedAt,
         CancellationToken cancellationToken = default);

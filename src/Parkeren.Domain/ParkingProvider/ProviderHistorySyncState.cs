@@ -46,6 +46,13 @@ public sealed class ProviderHistorySyncState
         LastError = null;
     }
 
+    public void RestartTraversal(DateTimeOffset observedAt)
+    {
+        NextPageNumber = 0;
+        LastAttemptAt = observedAt;
+        LastError = null;
+    }
+
     public void RecordSyncCompleted(DateTimeOffset observedAt)
     {
         LastSuccessfulSyncAt = observedAt;

@@ -49,6 +49,44 @@ public sealed class ProviderHistorySyncStateStoreTests(PostgreSqlFixture fixture
         }
     }
     [Fact]
+    public async Task Restart_traversal_resets_only_checkpoint_and_preserves_success_timestamp()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var product = $"restart-{Guid.NewGuid():N}";
+        var initial = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero);
+        var restarted = initial.AddMinutes(10);
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistorySyncStateStore(db);
+                await store.GetOrCreateAsync(product, 10, token);
+                await store.RecordSyncCompletedAsync(product, initial, token);
+                await store.RecordPageCompletedAsync(product, 0, initial.AddMinutes(5), token);
+                await store.RecordFailureAsync(product, initial.AddMinutes(6), "temporary", token);
+                await store.RestartTraversalAsync(product, restarted, token);
+            }
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistorySyncStateStore(db);
+                var state = await store.GetOrCreateAsync(product, 10, token);
+                Assert.Equal(0, state.NextPageNumber);
+                Assert.Equal(10, state.PageSize);
+                Assert.Equal(initial, state.LastSuccessfulSyncAt);
+                Assert.Equal(restarted, state.LastAttemptAt);
+                Assert.Null(state.LastError);
+                await store.RecordPageCompletedAsync(product, 0, restarted, token);
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateDbContext();
+            await db.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task Failure_is_persisted_and_subsequent_completion_clears_error()
     {
         var token = TestContext.Current.CancellationToken;
