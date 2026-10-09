@@ -36,6 +36,40 @@ public sealed class ProviderParkingActionImportTests
     }
 
     [Fact]
+    public void Import_without_vehicle_keeps_completed_history_and_remains_unassigned()
+    {
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var end = start.AddMinutes(30);
+
+        var action = ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), "action-no-plate", "product-1", "OSS_J",
+            null, ProviderActionAssignment.Unassigned,
+            start, end, 0.75m, "COMPLETED", end.AddMinutes(1));
+
+        Assert.Null(action.VehicleId);
+        Assert.Null(action.AssignedUserId);
+        Assert.Equal(ProviderActionAssignmentSource.Unassigned, action.AssignmentSource);
+        Assert.Null(action.VisitId);
+        Assert.Equal(ProviderActionOrigin.Imported, action.Origin);
+        Assert.Equal(ProviderActionState.Completed, action.State);
+        Assert.Equal(start, action.ActualStartAt);
+        Assert.Equal(end, action.ActualEndAt);
+        Assert.Equal(0.75m, action.ProviderCostAmount);
+    }
+
+    [Fact]
+    public void Import_without_vehicle_cannot_infer_user()
+    {
+        var start = DateTimeOffset.UtcNow.AddHours(-1);
+        var user = Guid.NewGuid();
+
+        Assert.Throws<ArgumentException>(() => ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), "action-invalid-attribution", "product-1", null,
+            null, ProviderActionAssignment.InferFromVehicleUsers([user]),
+            start, start.AddMinutes(10), 0.25m, "COMPLETED", start.AddHours(1)));
+    }
+
+    [Fact]
     public void Import_without_cost_remains_incomplete()
     {
         var start = DateTimeOffset.UtcNow.AddHours(-1);

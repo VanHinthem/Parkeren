@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { previewVisitStart, type StartVisitPreview, type VehicleSummary } from "../api/client";
 import { Card } from "../design/primitives/Card";
+import { LicensePlate } from "./LicensePlate";
 import { createDefaultVisitEndAt, isVisitEndAtAllowed, VisitEndTimeField } from "./VisitEndTimeField";
 import "./StartVisitCard.css";
 
@@ -136,11 +137,17 @@ export function StartVisitCard({
       {vehicles.length>1
         ? <label className="start-visit__field">
             <span>Auto</span>
-            <select value={vehicle?.id??""} onChange={event=>setSelectedVehicleId(event.target.value)} disabled={starting||disabled}>
-              {vehicles.map(item=><option key={item.id} value={item.id}>{item.licensePlate}</option>)}
-            </select>
+            <span className="start-visit__vehicle-picker">
+              <LicensePlate value={vehicle?.licensePlate??""}/>
+              <span className="start-visit__vehicle-chevron" aria-hidden="true">▾</span>
+              <select aria-label="Auto kiezen" value={vehicle?.id??""}
+                onChange={event=>setSelectedVehicleId(event.target.value)}
+                disabled={starting||disabled}>
+                {vehicles.map(item=><option key={item.id} value={item.id}>{item.licensePlate}</option>)}
+              </select>
+            </span>
           </label>
-        : vehicle?<strong className="start-visit__vehicle">{vehicle.licensePlate}</strong>:null}
+        : vehicle?<div className="start-visit__vehicle"><LicensePlate value={vehicle.licensePlate}/></div>:null}
 
       <VisitEndTimeField
         startAt={startAt}

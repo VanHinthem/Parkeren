@@ -294,26 +294,39 @@ public sealed class ProviderHistoryNewActionStoreTests(PostgreSqlFixture fixture
         }
     }
 
-    [Fact]
-    public async Task Missing_plate_rejects_import_without_creating_action_or_vehicle()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task Missing_plate_imports_unassigned_action(string? plate)
     {
-        var token = TestContext.Current.CancellationToken;
-        var suffix = Guid.NewGuid().ToString("N");
-        var actionId = $"no-plate-{suffix}";
+        var ct = TestContext.Current.CancellationToken;
+        var id = $"no-plate-{Guid.NewGuid():N}";
         var start = new DateTimeOffset(2026, 10, 7, 16, 0, 0, TimeSpan.Zero);
-        var record = new ProviderActionHistoryRecord(
-            actionId, "COMPLETED", start, start.AddMinutes(10),
-            0.15m, "EUR", null, "OSS Zone J");
-
-        await using var db = fixture.CreateDbContext();
-        var store = new ProviderHistoryNewActionStore(db);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            store.InsertIfMissingAsync("product-1", record, start.AddHours(1), token));
-
-        Assert.False(await db.ProviderParkingActions.AnyAsync(x => x.ProviderActionId == actionId, token));
-        Assert.DoesNotContain(db.ChangeTracker.Entries<Vehicle>(),
-            x => x.State == EntityState.Added);
+        var record = new ProviderActionHistoryRecord(id, "COMPLETED", start,
+            start.AddMinutes(10), 0.15m, "EUR", plate, "OSS_J");
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                var store = new ProviderHistoryNewActionStore(db);
+                Assert.Equal(ProviderHistoryNewActionResult.Inserted,
+                    await store.InsertIfMissingAsync("product-1", record, start.AddHours(1), ct));
+                Assert.Equal(ProviderHistoryNewActionResult.AlreadyExists,
+                    await store.InsertIfMissingAsync("product-1", record, start.AddHours(2), ct));
+            }
+            await using var verify = fixture.CreateDbContext();
+            var action = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.ProviderActionId == id, ct);
+            Assert.Null(action.VehicleId);
+            Assert.Null(action.AssignedUserId);
+            Assert.Equal(ProviderActionAssignmentSource.Unassigned, action.AssignmentSource);
+            Assert.Equal(0.15m, action.ProviderCostAmount);
+        }
+        finally
+        {
+            await using var db = fixture.CreateDbContext();
+            await db.ProviderParkingActions.Where(x => x.ProviderActionId == id).ExecuteDeleteAsync(ct);
+        }
     }
-
 }

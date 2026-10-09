@@ -19,7 +19,7 @@ public sealed class ProviderHistoryCheckpointResumeTests(PostgreSqlFixture fixtu
             start, start.AddMinutes(10), 0.2m, "EUR", plate);
         var second = first with { ProviderActionId = $"second-{suffix}", ActualStartAt = start.AddMinutes(20),
             ActualEndAt = start.AddMinutes(30) };
-        var bad = second with { LicensePlate = null };
+        var bad = second with { Status = "ACTIVE" };
 
         try
         {
