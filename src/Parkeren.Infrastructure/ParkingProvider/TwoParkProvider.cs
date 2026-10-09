@@ -234,16 +234,50 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
         historyMaxIndexByProduct[providerProductId] = pageMaxIndex;
 
-        // Live 2Park has returned 21..23 for a 21..24 request while index 24
-        // remained retrievable on its own. Recover only an omitted terminal
-        // index; do not change the established normal page ranges.
+        // A short terminal page can omit an action at its leading boundary.
+        // Probe one preceding index only when the final range has room for
+        // an overlapping record without exceeding the public page size.
         var actions = historyPage.Actions.ToList();
-        if (stopIndex == pageMaxIndex &&
-            historyPage.StopIndex is int actualStop &&
-            actualStop >= startIndex - 1 &&
-            actualStop < stopIndex)
+        var actualStop = historyPage.StopIndex;
+        if (pageNumber > 0 && stopIndex == pageMaxIndex &&
+            stopIndex - startIndex + 1 < pageSize &&
+            actualStop is int reportedStop && reportedStop < stopIndex)
         {
-            for (var index = actualStop + 1; index <= stopIndex; index++)
+            var overlapStart = startIndex - 1;
+            using var overlapData = await PostAsync("get_action_history.json",
+                new Dictionary<string, string>
+                {
+                    ["product_id"] = providerProductId,
+                    ["locale"] = Locale,
+                    ["startindex"] = overlapStart.ToString(CultureInfo.InvariantCulture),
+                    ["stopindex"] = stopIndex.ToString(CultureInfo.InvariantCulture)
+                }, cancellationToken);
+            var overlap = TwoParkActionHistoryParser.Parse(overlapData.RootElement);
+            if (overlap.MaxIndex != pageMaxIndex ||
+                overlap.StartIndex != overlapStart ||
+                overlap.StopIndex is not int overlapStop ||
+                overlapStop < reportedStop ||
+                overlapStop > stopIndex ||
+                overlap.Actions.Count > pageSize)
+                throw new JsonException("2Park history overlapping terminal page could not be verified.");
+
+            foreach (var action in overlap.Actions)
+            {
+                if (!actions.Any(x => string.Equals(
+                        x.ProviderActionId, action.ProviderActionId, StringComparison.Ordinal)))
+                    actions.Add(action);
+            }
+            actualStop = overlapStop;
+        }
+
+        // Only retry an individually addressable terminal index if even the
+        // overlapping read still reports a short range.
+        if (stopIndex == pageMaxIndex &&
+            actualStop is int verifiedStop &&
+            verifiedStop >= startIndex - 1 &&
+            verifiedStop < stopIndex)
+        {
+            for (var index = verifiedStop + 1; index <= stopIndex; index++)
             {
                 using var tailData = await PostAsync("get_action_history.json",
                     new Dictionary<string, string>
@@ -259,13 +293,14 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                     tail.StopIndex != index ||
                     tail.Actions.Count != 1)
                     throw new JsonException("2Park history terminal index could not be verified.");
-                // Provider stopindex metadata can understate the last action
-                // already present in the range. Never introduce a duplicate ID.
                 if (!actions.Any(x => string.Equals(
                         x.ProviderActionId, tail.Actions[0].ProviderActionId, StringComparison.Ordinal)))
                     actions.Add(tail.Actions[0]);
             }
         }
+
+        if (actions.Count > pageSize)
+            throw new JsonException("2Park history terminal page exceeds the requested page size.");
 
         var records = actions
             .Where(x => x.StartLocal.HasValue && x.EndLocal.HasValue)

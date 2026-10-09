@@ -55,8 +55,8 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Theory]
-    [InlineData(false, 4)]
-    [InlineData(true, 3)]
+    [InlineData(false, 5)]
+    [InlineData(true, 4)]
     public async Task Last_page_preserves_provider_maxindex_when_response_ends_before_requested_stop(
         bool terminalIdAlreadyPresent, int expectedCount)
     {
@@ -71,7 +71,7 @@ public sealed class TwoParkProviderHistoryReaderTests
         var last = await provider.GetActionHistoryPageAsync(
             "product-1", 2, 10, TestContext.Current.CancellationToken);
 
-        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (24, 24) }, handler.RequestedRanges);
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (20, 24), (24, 24) }, handler.RequestedRanges);
         Assert.Equal(10, first.Records.Count);
         Assert.Equal(10, second.Records.Count);
         Assert.Equal(expectedCount, last.Records.Count);
@@ -82,7 +82,7 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
-    public async Task Live_boundary_shape_has_23_normal_ids_but_24_with_overlapping_reference()
+    public async Task Live_boundary_shape_recovers_24_unique_ids_with_overlapping_terminal_page()
     {
         var handler = new HistoryHandler(liveBoundaryShape: true);
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
@@ -95,19 +95,13 @@ public sealed class TwoParkProviderHistoryReaderTests
         var standardIds = first.Records.Concat(second.Records).Concat(last.Records)
             .Select(x => x.ProviderActionId).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(23, standardIds.Count);
+        Assert.Equal(24, standardIds.Count);
         Assert.False(last.HasMore);
-
-        // Read the overlapping boundary directly as a diagnostic. A fresh
-        // provider is not needed: only a read-only HTTP request is added.
-        var overlap = await handler.ReadRangeAsync(20, 24, ct);
-        var referenceIds = first.Records.Concat(second.Records)
-            .Select(x => x.ProviderActionId)
-            .Concat(overlap)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Equal(24, referenceIds.Count);
-        Assert.Single(referenceIds.Except(standardIds));
+        Assert.Equal(5, last.Records.Count);
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (20, 24) },
+            handler.RequestedRanges);
+        Assert.Contains("action-21", standardIds);
+        Assert.Contains("action-24", standardIds);
     }
 
     [Fact]
