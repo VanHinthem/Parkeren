@@ -54,6 +54,38 @@ public sealed class ProviderHistoryRunLockTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Background_workers_cannot_claim_the_same_reserved_run_simultaneously()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var runId = Guid.NewGuid().ToString("D");
+        const string claimSql =
+            "SELECT pg_try_advisory_lock(hashtextextended({0}, 2)) AS \"Value\"";
+        const string releaseSql =
+            "SELECT pg_advisory_unlock(hashtextextended({0}, 2)) AS \"Value\"";
+
+        await using var first = fixture.CreateDbContext();
+        await using var second = fixture.CreateDbContext();
+        await first.Database.OpenConnectionAsync(ct);
+        await second.Database.OpenConnectionAsync(ct);
+
+        var firstAcquired = await first.Database.SqlQueryRaw<bool>(claimSql, runId).SingleAsync(ct);
+        Assert.True(firstAcquired);
+        try
+        {
+            Assert.False(await second.Database.SqlQueryRaw<bool>(claimSql, runId).SingleAsync(ct));
+        }
+        finally
+        {
+            Assert.True(await first.Database.SqlQueryRaw<bool>(releaseSql, runId)
+                .SingleAsync(CancellationToken.None));
+        }
+
+        Assert.True(await second.Database.SqlQueryRaw<bool>(claimSql, runId).SingleAsync(ct));
+        Assert.True(await second.Database.SqlQueryRaw<bool>(releaseSql, runId)
+            .SingleAsync(CancellationToken.None));
+    }
+
     private static ProviderHistoryCheckpointedImportService CreateService(
         Parkeren.Infrastructure.Persistence.ParkerenDbContext db, IProviderActionHistoryReader reader)
     {
