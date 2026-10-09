@@ -8,6 +8,53 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ExternalActiveProviderActionCounterTests(PostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task Excludes_external_discrepancy_when_provider_action_is_already_managed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var productId = $"external-overlap-{suffix}";
+        var providerActionId = $"managed-{suffix}";
+        var product = new ParkingProviderProduct(
+            Guid.NewGuid(), productId, "Test product", "182", "Oss",
+            "OSS_J", DateTimeOffset.UtcNow);
+        var start = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var managed = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), null, start, start.AddHours(1), productId);
+        managed.MarkStarting();
+        managed.MarkActive(providerActionId, start, "ACTIVE");
+        var discrepancy = new ProviderDiscrepancy(
+            Guid.NewGuid(), $"external-managed-{suffix}",
+            ProviderDiscrepancyType.ExternalProviderAction, product.Id, start,
+            providerActionId: providerActionId, providerStatus: "ACTIVE",
+            providerStartAt: start);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.ParkingProviderProducts.Add(product);
+                seed.ProviderParkingActions.Add(managed);
+                seed.ProviderDiscrepancies.Add(discrepancy);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using var db = fixture.CreateDbContext();
+            Assert.Equal(0, await new ExternalActiveProviderActionCounter(db)
+                .CountAsync(ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderDiscrepancies.Where(x => x.Id == discrepancy.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.Id == managed.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Counts_distinct_open_active_external_actions_only()
     {
         var ct = TestContext.Current.CancellationToken;
