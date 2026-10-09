@@ -150,6 +150,7 @@ public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fi
             await using var cleanup = fixture.CreateDbContext();
             await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id).ExecuteDeleteAsync(ct);
+            await cleanup.VisitSchedulerAuditEvents.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(ct);
             await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
             await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
