@@ -1090,6 +1090,29 @@ app.MapPost("/api/admin/provider-history/sync", async (
             new { run.Id, run.ProviderProductId, run.Status });
 });
 
+app.MapPost("/api/admin/provider-history/sync/{runId:guid}/cancel", async (
+    Guid runId,
+    ProviderHistorySyncRunCanceller canceller,
+    ParkerenDbContext db,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var cancelled = await canceller.TryCancelAsync(runId, cancellationToken);
+    if (cancelled is null)
+        return Results.NotFound(new { error = "Synchronisatierun niet gevonden." });
+    if (!cancelled.Value)
+        return Results.Conflict(new { error = "De synchronisatierun is al afgerond of wordt momenteel uitgevoerd." });
+
+    return Results.Ok(new { runId, status = "Cancelled" });
+});
+
 app.MapGet("/api/admin/provider-history/sync-status", async (
     string? providerProductId,
     ParkerenDbContext db,
