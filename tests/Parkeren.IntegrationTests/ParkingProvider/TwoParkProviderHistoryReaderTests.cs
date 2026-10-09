@@ -40,6 +40,21 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task History_only_validation_uses_authentication_and_read_only_history_endpoints()
+    {
+        var handler = new HistoryHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        await provider.GetActionHistoryPageAsync("product-1", 0, 10, TestContext.Current.CancellationToken);
+        await provider.GetActionHistoryPageAsync("product-1", 1, 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            ["check_credentials.json", "get_action_history.json", "get_action_history.json"],
+            handler.RequestedEndpoints);
+    }
+
+    [Fact]
     public async Task Http_success_with_provider_error_status_throws_typed_provider_exception()
     {
         using var http = new HttpClient(new HistoryHandler(returnProviderError: true))
@@ -71,12 +86,15 @@ public sealed class TwoParkProviderHistoryReaderTests
     private sealed class HistoryHandler(bool returnProviderError = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
+        public List<string> RequestedEndpoints { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath.TrimStart('/');
+            if (path is not null)
+                RequestedEndpoints.Add(path);
             if (path == "check_credentials.json")
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"OK\"}},\"data\":{}}");
 
