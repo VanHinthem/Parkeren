@@ -54,10 +54,13 @@ public sealed class TwoParkProviderHistoryReaderTests
             handler.RequestedEndpoints);
     }
 
-    [Fact]
-    public async Task Last_page_preserves_provider_maxindex_when_response_ends_before_requested_stop()
+    [Theory]
+    [InlineData(false, 4)]
+    [InlineData(true, 3)]
+    public async Task Last_page_preserves_provider_maxindex_when_response_ends_before_requested_stop(
+        bool terminalIdAlreadyPresent, int expectedCount)
     {
-        var handler = new HistoryHandler(shortFinalPage: true);
+        var handler = new HistoryHandler(shortFinalPage: true, terminalIdAlreadyPresent: terminalIdAlreadyPresent);
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
         var provider = CreateProvider(http);
 
@@ -71,10 +74,11 @@ public sealed class TwoParkProviderHistoryReaderTests
         Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (24, 24) }, handler.RequestedRanges);
         Assert.Equal(10, first.Records.Count);
         Assert.Equal(10, second.Records.Count);
-        Assert.Equal(4, last.Records.Count);
+        Assert.Equal(expectedCount, last.Records.Count);
         Assert.Equal(24, last.TotalCount);
         Assert.False(last.HasMore);
-        Assert.Contains(last.Records, x => x.ProviderActionId == "action-24");
+        Assert.Equal(expectedCount, last.Records.Select(x => x.ProviderActionId).Distinct().Count());
+        Assert.Contains(last.Records, x => x.ProviderActionId == (terminalIdAlreadyPresent ? "action-23" : "action-24"));
     }
 
     [Fact]
@@ -106,7 +110,7 @@ public sealed class TwoParkProviderHistoryReaderTests
         return new TwoParkProvider(http, configuration);
     }
 
-    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false) : HttpMessageHandler
+    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
         public List<string> RequestedEndpoints { get; } = [];
@@ -135,7 +139,8 @@ public sealed class TwoParkProviderHistoryReaderTests
 
             var actualStop = Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
-                .Select(CreateActionJson);
+                .Select(index => CreateActionJson(
+                    terminalIdAlreadyPresent && startIndex == 24 ? 23 : index));
             var actionJson = string.Join(",", actions);
             var response = $$"""
             {

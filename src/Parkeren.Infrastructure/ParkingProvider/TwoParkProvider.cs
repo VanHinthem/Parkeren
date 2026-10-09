@@ -259,7 +259,11 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                     tail.StopIndex != index ||
                     tail.Actions.Count != 1)
                     throw new JsonException("2Park history terminal index could not be verified.");
-                actions.Add(tail.Actions[0]);
+                // Provider stopindex metadata can understate the last action
+                // already present in the range. Never introduce a duplicate ID.
+                if (!actions.Any(x => string.Equals(
+                        x.ProviderActionId, tail.Actions[0].ProviderActionId, StringComparison.Ordinal)))
+                    actions.Add(tail.Actions[0]);
             }
         }
 
