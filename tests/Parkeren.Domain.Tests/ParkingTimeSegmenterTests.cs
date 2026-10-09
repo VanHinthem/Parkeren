@@ -17,4 +17,22 @@ public sealed class ParkingTimeSegmenterTests
         Assert.All(segments, x => Assert.False(x.IsPaid));
         Assert.Equal(TimeSpan.FromHours(2), segments.Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start)));
     }
+    [Fact]
+    public void Friday_evening_through_monday_morning_has_no_sunday_provider_coverage()
+    {
+        var start = new DateTimeOffset(2026, 10, 9, 18, 17, 0, TimeSpan.Zero); // Friday 20:17 Amsterdam
+        var end = new DateTimeOffset(2026, 10, 12, 9, 0, 0, TimeSpan.Zero); // Monday 11:00 Amsterdam
+
+        var segments = ParkingTimeSegmenter.Segment(start, end, Rules());
+        var paid = segments.Where(segment => segment.IsPaid).ToArray();
+
+        Assert.Equal(2, paid.Length);
+        Assert.Equal(new DateTimeOffset(2026, 10, 10, 7, 0, 0, TimeSpan.Zero), paid[0].Start);
+        Assert.Equal(new DateTimeOffset(2026, 10, 10, 18, 0, 0, TimeSpan.Zero), paid[0].End);
+        Assert.Equal(new DateTimeOffset(2026, 10, 12, 7, 0, 0, TimeSpan.Zero), paid[1].Start);
+        Assert.Equal(end, paid[1].End);
+        Assert.Equal(TimeSpan.FromHours(13), paid.Aggregate(TimeSpan.Zero,
+            (total, segment) => total + (segment.End - segment.Start)));
+    }
+
 }
