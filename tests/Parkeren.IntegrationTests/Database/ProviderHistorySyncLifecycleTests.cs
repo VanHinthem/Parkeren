@@ -139,6 +139,63 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Reserved_run_resumes_at_checkpoint_after_worker_restart()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"restart-sync-{Guid.NewGuid():N}";
+        var readPages = new List<int>();
+        var reader = new Reader((page, token) =>
+        {
+            readPages.Add(page);
+            return Task.FromResult(new ProviderActionHistoryPage([], page, 10, 0));
+        });
+
+        try
+        {
+            Guid runId;
+            await using (var initial = fixture.CreateDbContext())
+            {
+                var run = await new ProviderHistorySyncRunStarter(initial, TimeProvider.System)
+                    .TryStartAsync(product, ProviderHistorySyncRunMode.Manual, ct);
+                Assert.NotNull(run);
+                runId = run.Id;
+
+                var checkpoints = new ProviderHistorySyncStateStore(initial);
+                await checkpoints.GetOrCreateAsync(product, 10, ct);
+                await checkpoints.RecordPageCompletedAsync(product, 0, TimeProvider.System.GetUtcNow(), ct);
+                // Simulate a process crash after committing page 0 but before
+                // marking the reserved run completed.
+            }
+
+            await using (var restarted = fixture.CreateDbContext())
+            {
+                var executor = new ProviderHistoryReservedRunExecutor(
+                    restarted, CreateService(restarted, reader),
+                    new ProviderHistorySyncRunStore(restarted), TimeProvider.System);
+                await executor.ExecuteAsync(runId, ct);
+            }
+
+            Assert.Equal([1], readPages);
+            await using var verify = fixture.CreateDbContext();
+            var runStatus = await verify.ProviderHistorySyncRuns.AsNoTracking()
+                .Where(x => x.Id == runId).Select(x => x.Status).SingleAsync(ct);
+            Assert.Equal(ProviderHistorySyncRunStatus.Succeeded, runStatus);
+            var checkpoint = await verify.ProviderHistorySyncStates.AsNoTracking()
+                .SingleAsync(x => x.ProviderProductId == product, ct);
+            Assert.Equal(0, checkpoint.NextPageNumber);
+            Assert.NotNull(checkpoint.LastSuccessfulSyncAt);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Successful_history_import_records_budget_baseline_without_notifications()
     {
         var token = TestContext.Current.CancellationToken;
