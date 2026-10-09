@@ -41,7 +41,7 @@ def main():
             {"email": email, "password": password, "locale": "nl_NL"})
     # Inspect adjacent pages and deliberately overlapping ranges. All requests
     # are read-only. Compare IDs in memory; never print their actual values.
-    ranges = [(1, 10), (11, 20), (21, 24), (20, 21), (21, 22), (23, 24), (24, 24)]
+    ranges = [(1, 10), (11, 20), (20, 24), (21, 24), (24, 24)]
     pages = []
     for first, last in ranges:
         root = request(opener, "get_action_history.json",
@@ -61,10 +61,15 @@ def main():
             "_ids": set(ids),
         })
 
-    # The first three requests are intended to be non-overlapping.
-    primary = pages[:3]
-    primary_ids = [item for page in primary for item in page["_ids"]]
-    primary_overlap = len(primary_ids) - len(set(primary_ids))
+    # The reference ranges overlap at index 20. Count that expected overlap
+    # separately, then check whether range 21-24 or singleton 24 reveals
+    # an ID not already present in the reference union.
+    reference = pages[:3]
+    reference_ids = [item for page in reference for item in page["_ids"]]
+    reference_union = set(reference_ids)
+    reference_duplicates = len(reference_ids) - len(reference_union)
+    suspicious = pages[3]["_ids"]
+    terminal = pages[4]["_ids"]
     comparisons = []
     for index, page in enumerate(pages):
         for other in pages[index + 1:]:
@@ -76,9 +81,18 @@ def main():
     print(json.dumps({
         "success": True,
         "pages": [{k: v for k, v in page.items() if k != "_ids"} for page in pages],
-        "primary_pages": {
-            "unique_action_ids": len(set(primary_ids)),
-            "duplicate_ids_across_nonoverlapping_ranges": primary_overlap
+        "reference_ranges": {
+            "ranges": [page["range"] for page in reference],
+            "unique_action_ids": len(reference_union),
+            "overlap_occurrences": reference_duplicates,
+            "all_have_ids": all(page["missing_id_count"] == 0 for page in reference)
+        },
+        "boundary_check": {
+            "21-24_unique_ids": len(suspicious),
+            "21-24_ids_in_reference": len(suspicious & reference_union),
+            "21-24_ids_missing_from_reference": len(suspicious - reference_union),
+            "24-24_ids_in_reference": len(terminal & reference_union),
+            "24-24_ids_already_in_21-24": len(terminal & suspicious)
         },
         "overlap_checks": comparisons,
         "note": "Shared IDs in intentionally overlapping ranges are expected; "
