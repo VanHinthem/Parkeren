@@ -5391,10 +5391,12 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         services.AddInfrastructure(configuration);
         await using var provider = services.BuildServiceProvider();
 
+        Guid extensionOperationId;
         await using (var scope = provider.CreateAsyncScope())
         {
             var preparation = await scope.ServiceProvider.GetRequiredService<IProviderExtendStore>()
                 .PrepareAttemptAsync(visit, action, Guid.NewGuid(), extendedEnd, cancellationToken);
+            extensionOperationId = preparation.Operation.Id;
             await scope.ServiceProvider.GetRequiredService<IProviderExtendResultStore>()
                 .RecordConfirmedAsync(
                     preparation,
@@ -5407,7 +5409,7 @@ public sealed class ParkerenDbContextTests(PostgreSqlFixture fixture)
         await using var verifyContext = fixture.CreateDbContext();
         var notificationEvent = await verifyContext.NotificationEvents.SingleAsync(
             x => x.Type == NotificationEventType.ProviderContinuationSucceeded &&
-                 x.AggregateId == visit.Id,
+                 x.AggregateId == extensionOperationId,
             cancellationToken);
         var notifications = await verifyContext.Notifications
             .Where(x => x.SourceEventId == notificationEvent.Id)
