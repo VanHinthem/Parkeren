@@ -41,29 +41,31 @@ public sealed class ProviderHistoryNewActionStore(ParkerenDbContext dbContext)
 
         var plate = string.IsNullOrWhiteSpace(record.LicensePlate)
             ? null : Vehicle.NormalizeLicensePlate(record.LicensePlate);
-        if (string.IsNullOrEmpty(plate))
-            throw new InvalidOperationException($"Provider history action {id} has no usable license plate.");
-
-        var vehicle = await dbContext.Vehicles.SingleOrDefaultAsync(
-            x => x.NormalizedLicensePlate == plate, cancellationToken);
-        if (vehicle is null)
+        Guid? vehicleId = null;
+        var assignment = ProviderActionAssignment.Unassigned;
+        if (!string.IsNullOrEmpty(plate))
         {
-            vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
-            dbContext.Vehicles.Add(vehicle);
+            var vehicle = await dbContext.Vehicles.SingleOrDefaultAsync(
+                x => x.NormalizedLicensePlate == plate, cancellationToken);
+            if (vehicle is null)
+            {
+                vehicle = Vehicle.FromProviderHistory(Guid.NewGuid(), plate);
+                dbContext.Vehicles.Add(vehicle);
+            }
+
+            vehicleId = vehicle.Id;
+            // Infer a user only when the history action has an identifiable vehicle.
+            var userIds = await dbContext.UserVehicles.AsNoTracking()
+                .Where(x => x.VehicleId == vehicle.Id)
+                .Select(x => x.UserId)
+                .Distinct()
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            assignment = ProviderActionAssignment.InferFromVehicleUsers(userIds);
         }
 
-        // A plate is not proof of a driver. Inference is made once at insertion,
-        // from current distinct explicit user-vehicle links, not on later syncs.
-        var userIds = await dbContext.UserVehicles.AsNoTracking()
-            .Where(x => x.VehicleId == vehicle.Id)
-            .Select(x => x.UserId)
-            .Distinct()
-            .Take(2)
-            .ToListAsync(cancellationToken);
-        var assignment = ProviderActionAssignment.InferFromVehicleUsers(userIds);
-
         var action = Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(
-            Guid.NewGuid(), id, productId, record.Location, vehicle.Id, assignment,
+            Guid.NewGuid(), id, productId, record.Location, vehicleId, assignment,
             record.ActualStartAt, record.ActualEndAt, record.ProviderCostAmount,
             record.Status, observedAt);
 

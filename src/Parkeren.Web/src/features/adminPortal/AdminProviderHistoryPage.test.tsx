@@ -38,6 +38,16 @@ function setup(origin:"Managed"|"Imported"){
 }
 
 describe("AdminProviderHistoryPage assignment",()=>{
+  it("labels an imported action without a license plate as unknown",async()=>{
+    setup("Imported");
+    vi.mocked(getAdminProviderActionHistory).mockResolvedValue({
+      items:[{...action("Imported",null),licensePlate:null}],page:1,pageSize:25,totalCount:1
+    });
+    render(<AdminProviderHistoryPage/>);
+    expect(await screen.findByText("Kenteken onbekend")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button",{name:"Details"}));
+    expect((await screen.findAllByText("Niet toegewezen")).length).toBeGreaterThan(0);
+  });
   it("shows visit user without manual assignment for managed actions",async()=>{
     setup("Managed");
     render(<AdminProviderHistoryPage/>);

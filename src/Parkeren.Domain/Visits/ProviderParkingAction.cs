@@ -54,7 +54,7 @@ public sealed class ProviderParkingAction
         string providerActionId,
         string providerProductId,
         string? providerLocation,
-        Guid vehicleId,
+        Guid? vehicleId,
         ProviderActionAssignment assignment,
         DateTimeOffset actualStartAt,
         DateTimeOffset actualEndAt,
@@ -170,7 +170,7 @@ public sealed class ProviderParkingAction
 
     public void SetImportedAttribution(
         ProviderActionOrigin origin,
-        Guid vehicleId,
+        Guid? vehicleId,
         ProviderActionAssignment assignment,
         DateTimeOffset observedAt)
     {
@@ -181,7 +181,9 @@ public sealed class ProviderParkingAction
         if (VisitId.HasValue || State != ProviderActionState.Planned || ProviderActionId is not null)
             throw new InvalidOperationException("Import attribution can only be initialized on an unstarted action without a Visit.");
         if (vehicleId == Guid.Empty)
-            throw new ArgumentException("A vehicle id is required.", nameof(vehicleId));
+            throw new ArgumentException("Vehicle id must be non-empty when supplied.", nameof(vehicleId));
+        if (vehicleId is null && assignment.Source != ProviderActionAssignmentSource.Unassigned)
+            throw new ArgumentException("History without a vehicle must initially be unassigned.", nameof(assignment));
         ArgumentNullException.ThrowIfNull(assignment);
         if (assignment.Source == ProviderActionAssignmentSource.Confirmed)
             throw new ArgumentException("Imported actions cannot have confirmed app attribution.", nameof(assignment));

@@ -17,7 +17,7 @@ public sealed class ProviderHistoryRollbackTests(PostgreSqlFixture fixture)
         var start = DateTimeOffset.UnixEpoch.AddDays(20000);
         var good = new ProviderActionHistoryRecord($"good-{key}", "COMPLETED",
             start, start.AddMinutes(10), 0.2m, "EUR", plate);
-        var bad = good with { ProviderActionId = $"bad-{key}", LicensePlate = null };
+        var bad = good with { ProviderActionId = $"bad-{key}", Status = "ACTIVE" };
 
         await using (var db = fixture.CreateDbContext())
         {
