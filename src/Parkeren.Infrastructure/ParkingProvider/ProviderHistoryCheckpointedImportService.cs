@@ -80,6 +80,11 @@ public sealed class ProviderHistoryCheckpointedImportService(
             catch (Exception) { /* Preserve cancellation. */ }
             throw;
         }
+        catch (OperationCanceledException) when (reservedRunId is not null)
+        {
+            // Host shutdown: preserve the reserved run and its page checkpoint.
+            throw;
+        }
         catch (Exception ex)
         {
             try { await runs.FailAsync(runId, timeProvider.GetUtcNow(), ex.Message, CancellationToken.None); }
