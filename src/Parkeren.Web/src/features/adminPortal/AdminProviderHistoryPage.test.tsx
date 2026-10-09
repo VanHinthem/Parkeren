@@ -46,7 +46,7 @@ describe("AdminProviderHistoryPage assignment",()=>{
     render(<AdminProviderHistoryPage/>);
     expect(await screen.findByText("Kenteken onbekend")).toBeTruthy();
     fireEvent.click(screen.getByRole("button",{name:"Details"}));
-    expect(await screen.findByText("Niet toegewezen")).toBeTruthy();
+    expect((await screen.findAllByText("Niet toegewezen")).length).toBeGreaterThan(0);
   });
   it("shows visit user without manual assignment for managed actions",async()=>{
     setup("Managed");
