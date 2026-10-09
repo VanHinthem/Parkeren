@@ -539,8 +539,10 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
         await ClearVisitStateAsync(ct);
     }
 
-    [Fact]
-    public async Task Manual_stop_keeps_manual_reason_and_supplied_actual_end()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Manual_stop_keeps_reason_and_cancels_future_overnight_coverage(bool openEnded)
     {
         var ct = TestContext.Current.CancellationToken;
         await ClearVisitStateAsync(ct);
@@ -558,15 +560,19 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             vehicle.Id,
             user.Id,
             startAt,
-            desiredEndAt,
-            new EffectiveParkingPolicySnapshot(null, TimeSpan.FromHours(8), true));
+            openEnded ? null : desiredEndAt,
+            new EffectiveParkingPolicySnapshot(null, openEnded ? null : TimeSpan.FromHours(8), true));
         visit.Activate();
+        var futureWork = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage,
+            startAt.AddDays(1));
 
         await using (var seed = fixture.CreateDbContext())
         {
             seed.Users.Add(user);
             seed.Vehicles.Add(vehicle);
             seed.Visits.Add(visit);
+            seed.VisitSchedulerWork.Add(futureWork);
             await seed.SaveChangesAsync(ct);
         }
 
@@ -589,6 +595,8 @@ public sealed class VisitTerminalStopExecutionTests(PostgreSqlFixture fixture)
             var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
 
             Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
+            Assert.Equal(VisitSchedulerWorkStatus.Cancelled,
+                (await verify.VisitSchedulerWork.SingleAsync(x => x.Id == futureWork.Id, ct)).Status);
             Assert.Equal(VisitEndReason.ManualStop, persistedVisit.EndReason);
             Assert.NotNull(persistedVisit.ActualEndAt);
             Assert.InRange(
