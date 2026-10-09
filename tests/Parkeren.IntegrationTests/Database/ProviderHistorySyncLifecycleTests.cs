@@ -287,6 +287,20 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
             return Task.FromResult(new ProviderActionHistoryPage([record], 0, 10, 1));
         });
 
+        // Reimport and provider-side corrections must not produce visits or
+        // retrospective notification events, inbox items, or push deliveries.
+        int initialVisits;
+        int initialEvents;
+        int initialNotifications;
+        int initialPushDeliveries;
+        await using (var baseline = fixture.CreateDbContext())
+        {
+            initialVisits = await baseline.Visits.CountAsync(ct);
+            initialEvents = await baseline.NotificationEvents.CountAsync(ct);
+            initialNotifications = await baseline.Notifications.CountAsync(ct);
+            initialPushDeliveries = await baseline.PushDeliveries.CountAsync(ct);
+        }
+
         try
         {
             await using (var seed = fixture.CreateDbContext())
@@ -341,6 +355,10 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
             Assert.Equal(1, await verify.AdminAuditEvents.CountAsync(
                 x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
                      x.TargetId == actionId.ToString("D"), ct));
+            Assert.Equal(initialVisits, await verify.Visits.CountAsync(ct));
+            Assert.Equal(initialEvents, await verify.NotificationEvents.CountAsync(ct));
+            Assert.Equal(initialNotifications, await verify.Notifications.CountAsync(ct));
+            Assert.Equal(initialPushDeliveries, await verify.PushDeliveries.CountAsync(ct));
             Assert.Equal(3, await verify.ProviderHistorySyncRuns.CountAsync(
                 x => x.ProviderProductId == product &&
                      x.Status == ProviderHistorySyncRunStatus.Succeeded, ct));
