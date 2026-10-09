@@ -139,6 +139,59 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Completed_manual_import_can_be_requested_again_without_creating_duplicate_runs()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"manual-repeat-{Guid.NewGuid():N}";
+        var readPages = new List<int>();
+        var reader = new Reader((page, token) =>
+        {
+            readPages.Add(page);
+            return Task.FromResult(new ProviderActionHistoryPage([], page, 10, 0));
+        });
+
+        try
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                Guid runId;
+                await using (var reserve = fixture.CreateDbContext())
+                {
+                    var run = await new ProviderHistorySyncRunStarter(reserve, TimeProvider.System)
+                        .TryStartAsync(product, ProviderHistorySyncRunMode.Manual, ct);
+                    Assert.NotNull(run);
+                    runId = run.Id;
+                }
+
+                await using var execution = fixture.CreateDbContext();
+                await new ProviderHistoryReservedRunExecutor(
+                    execution, CreateService(execution, reader),
+                    new ProviderHistorySyncRunStore(execution), TimeProvider.System)
+                    .ExecuteAsync(runId, ct);
+            }
+
+            Assert.Equal([0, 0], readPages);
+            await using var verify = fixture.CreateDbContext();
+            var runs = await verify.ProviderHistorySyncRuns.AsNoTracking()
+                .Where(x => x.ProviderProductId == product).ToListAsync(ct);
+            Assert.Equal(2, runs.Count);
+            Assert.All(runs, run =>
+            {
+                Assert.Equal(ProviderHistorySyncRunMode.Manual, run.Mode);
+                Assert.Equal(ProviderHistorySyncRunStatus.Succeeded, run.Status);
+            });
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Shutdown_cancellation_preserves_reserved_run_for_restart()
     {
         var ct = TestContext.Current.CancellationToken;
