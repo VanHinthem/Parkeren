@@ -98,9 +98,16 @@ public sealed class ProviderHistoryCheckpointedImportService(
     {
         var progress = await checkpoints.GetOrCreateAsync(
             providerProductId, pageSize, cancellationToken);
-        var pageNumber = progress.NextPageNumber;
-        var effectivePageSize = progress.PageSize;
         var observedAt = timeProvider.GetUtcNow();
+        // A previous traversal may have used different provider index positions.
+        // Restart the read from page zero under the per-product advisory lock;
+        // previously imported action IDs remain idempotent in storage.
+        if (progress.NextPageNumber > 0)
+        {
+            await checkpoints.RestartTraversalAsync(providerProductId, observedAt, cancellationToken);
+        }
+        var pageNumber = 0;
+        var effectivePageSize = progress.PageSize;
         var inserted = 0;
         var refreshed = 0;
         var skipped = 0;
