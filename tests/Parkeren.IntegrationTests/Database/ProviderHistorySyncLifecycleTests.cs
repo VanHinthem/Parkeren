@@ -387,6 +387,58 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Historical_import_of_more_than_five_actions_does_not_consume_visit_capacity()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = $"history-capacity-{suffix}";
+        var plate = $"HC{suffix[..6].ToUpperInvariant()}";
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var records = Enumerable.Range(0, 6)
+            .Select(index => new ProviderActionHistoryRecord(
+                $"history-capacity-{index}-{suffix}", "COMPLETED",
+                start.AddHours(index), start.AddHours(index).AddMinutes(20),
+                0.10m, "EUR", plate, "OSS_J"))
+            .ToArray();
+        var reader = new Reader((page, _) =>
+        {
+            Assert.Equal(0, page);
+            return Task.FromResult(new ProviderActionHistoryPage(records, 0, 10, 6));
+        });
+
+        int visitsBefore;
+        await using (var baseline = fixture.CreateDbContext())
+            visitsBefore = await baseline.Visits.CountAsync(ct);
+
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                var result = await CreateService(db, reader).ImportAsync(product, 10, ct);
+                Assert.Equal(6, result.Inserted);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(6, await verify.ProviderParkingActions.CountAsync(
+                x => x.ProviderProductId == product && x.VisitId == null, ct));
+            Assert.Equal(visitsBefore, await verify.Visits.CountAsync(ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            var ids = records.Select(x => x.ProviderActionId).ToArray();
+            await cleanup.ProviderParkingActions.Where(x => ids.Contains(x.ProviderActionId))
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Shutdown_cancellation_preserves_reserved_run_for_restart()
     {
         var ct = TestContext.Current.CancellationToken;
