@@ -384,6 +384,73 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task Planned_provider_end_disappearing_from_current_actions_preserves_overnight_visit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var remoteProduct = new ProviderProduct("visitor", "Overnight product", "OSS_J");
+        var localProduct = await GetOrCreateProductAsync(remoteProduct, ct);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"overnight-recovery-{suffix}", $"OVERNIGHT-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"OR-{suffix}", $"OR{suffix}".ToUpperInvariant(), null);
+        var startAt = DateTimeOffset.UtcNow.AddMinutes(-45);
+        var plannedEndAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var nextPrecheckAt = DateTimeOffset.UtcNow.AddHours(12);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            startAt, null, new EffectiveParkingPolicySnapshot(null, null, true),
+            localProduct.Id, remoteProduct.Id, remoteProduct.Location);
+        visit.Activate();
+
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(
+            Guid.NewGuid(), visit.Id, startAt, plannedEndAt,
+            remoteProduct.Id, remoteProduct.Location);
+        action.MarkStarting();
+        action.MarkActive($"ended-{suffix}", startAt, "active");
+        var nextWork = new VisitSchedulerWork(
+            Guid.NewGuid(), visit.Id, VisitSchedulerWorkType.ContinueProviderCoverage, nextPrecheckAt);
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                seed.ProviderParkingActions.Add(action);
+                seed.VisitSchedulerWork.Add(nextWork);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await RunProviderCheckAsync(new StaticParkingProvider(remoteProduct, []), ct);
+
+            await using var verify = fixture.CreateDbContext();
+            var savedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+            Assert.Equal(VisitStatus.Active, savedVisit.Status);
+            Assert.Equal(VisitHealth.Healthy, savedVisit.Health);
+            var savedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
+            Assert.Equal(ProviderActionState.Completed, savedAction.State);
+            Assert.Equal(ProviderHistoryStatus.Pending, savedAction.HistoryStatus);
+            Assert.NotNull(savedAction.ActualEndAt);
+            Assert.InRange(
+                (savedAction.ActualEndAt.Value - plannedEndAt).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
+            Assert.Equal(VisitSchedulerWorkStatus.Pending,
+                (await verify.VisitSchedulerWork.SingleAsync(x => x.Id == nextWork.Id, ct)).Status);
+            Assert.Contains(await verify.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ToListAsync(ct),
+                x => x.Type == VisitSchedulerWorkType.ReconcileProviderAction &&
+                     x.ProviderParkingActionId == action.Id);
+            Assert.Empty(await verify.ProviderDiscrepancies.Where(x =>
+                x.ProviderParkingActionId == action.Id &&
+                x.Status == ProviderDiscrepancyStatus.Open).ToListAsync(ct));
+        }
+        finally
+        {
+            await CleanupVisitAsync(visit.Id, user.Id, vehicle.Id, ct);
+        }
+    }
+
     private async Task<ParkingProviderProduct> GetOrCreateProductAsync(
         ProviderProduct remoteProduct,
         CancellationToken cancellationToken)
