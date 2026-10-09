@@ -85,6 +85,62 @@ public sealed class ProviderHistoryPeriodicSyncRunSchedulerTests(PostgreSqlFixtu
     }
 
     [Fact]
+    public async Task Failed_incremental_import_waits_before_reservation_retry()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"periodic-retry-{Guid.NewGuid():N}";
+        var now = DateTimeOffset.UtcNow;
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                var state = new ProviderHistorySyncState(Guid.NewGuid(), product, 10);
+                state.RecordSyncCompleted(now.AddHours(-1));
+                state.RecordFailure(now.AddMinutes(-1), "Temporary provider failure");
+                seed.ProviderHistorySyncStates.Add(state);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var scheduler = new ProviderHistoryPeriodicSyncRunScheduler(
+                    db, new ProviderHistorySyncRunStarter(db, TimeProvider.System),
+                    TimeProvider.System);
+                Assert.Equal(0, await scheduler.ReserveDueRunsAsync(ct));
+                Assert.False(await db.ProviderHistorySyncRuns
+                    .AnyAsync(x => x.ProviderProductId == product, ct));
+            }
+
+            await using (var retry = fixture.CreateDbContext())
+            {
+                var state = await retry.ProviderHistorySyncStates
+                    .SingleAsync(x => x.ProviderProductId == product, ct);
+                state.RecordFailure(now.AddMinutes(-16), "Earlier provider failure");
+                await retry.SaveChangesAsync(ct);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var scheduler = new ProviderHistoryPeriodicSyncRunScheduler(
+                    db, new ProviderHistorySyncRunStarter(db, TimeProvider.System),
+                    TimeProvider.System);
+                Assert.Equal(1, await scheduler.ReserveDueRunsAsync(ct));
+                var run = await db.ProviderHistorySyncRuns.AsNoTracking()
+                    .SingleAsync(x => x.ProviderProductId == product, ct);
+                Assert.Equal(ProviderHistorySyncRunMode.Incremental, run.Mode);
+            }
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Concurrent_schedulers_reserve_only_one_incremental_run()
     {
         var ct = TestContext.Current.CancellationToken;
