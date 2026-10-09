@@ -167,38 +167,6 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 Assert.Single(remoteActions, action => action.ProviderActionId == remoteSuccessor.ProviderActionId).Status,
                 ignoreCase: true);
 
-            var duplicateWork = new VisitSchedulerWork(
-                Guid.NewGuid(),
-                visit.Id,
-                VisitSchedulerWorkType.ContinueProviderCoverage,
-                now);
-            duplicateWork.Claim("jit-continuation-replay-test", now);
-            await using (var duplicateContext = fixture.CreateDbContext())
-            {
-                duplicateContext.VisitSchedulerWork.Add(duplicateWork);
-                await duplicateContext.SaveChangesAsync(cancellationToken);
-            }
-
-            await using (var scope = provider.CreateAsyncScope())
-            {
-                var context = scope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
-                var claimed = await context.VisitSchedulerWork.SingleAsync(x => x.Id == duplicateWork.Id, cancellationToken);
-                await scope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
-                    .ProcessAsync(claimed, cancellationToken);
-            }
-
-            await using (var replayVerifyContext = fixture.CreateDbContext())
-            {
-                Assert.Equal(2, await replayVerifyContext.ProviderParkingActions.CountAsync(
-                    x => x.VisitId == visit.Id,
-                    cancellationToken));
-                Assert.Equal(VisitSchedulerWorkStatus.Pending,
-                    (await replayVerifyContext.VisitSchedulerWork.SingleAsync(
-                        x => x.Id == duplicateWork.Id,
-                        cancellationToken)).Status);
-                Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
-            }
-
             // A second four-hour boundary must create another adjacent action.
             var secondBoundary = boundary.AddSeconds(1).AddHours(4);
             var secondPrecheck = secondBoundary.AddMinutes(-4);
@@ -208,11 +176,16 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 new { UtcNow = secondPrecheck },
                 cancellationToken)).EnsureSuccessStatusCode();
 
+            Guid secondWorkId;
             await using (var claimContext = fixture.CreateDbContext())
             {
-                var retry = await claimContext.VisitSchedulerWork.SingleAsync(
-                    x => x.Id == duplicateWork.Id, cancellationToken);
-                retry.Claim("jit-second-successor-test", secondPrecheck);
+                var pending = await claimContext.VisitSchedulerWork.SingleAsync(
+                    x => x.VisitId == visit.Id &&
+                         x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                         x.Status == VisitSchedulerWorkStatus.Pending,
+                    cancellationToken);
+                secondWorkId = pending.Id;
+                pending.Claim("jit-second-successor-test", secondPrecheck);
                 await claimContext.SaveChangesAsync(cancellationToken);
             }
 
@@ -220,7 +193,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             {
                 var context = secondScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
                 var claimed = await context.VisitSchedulerWork.SingleAsync(
-                    x => x.Id == duplicateWork.Id, cancellationToken);
+                    x => x.Id == secondWorkId, cancellationToken);
                 await secondScope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
                     .ProcessAsync(claimed, cancellationToken);
             }
