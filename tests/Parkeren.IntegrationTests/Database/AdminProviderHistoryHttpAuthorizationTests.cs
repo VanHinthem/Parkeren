@@ -50,11 +50,14 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
             var historyUrl = "/api/admin/provider/actions";
             var syncStatusUrl = "/api/admin/provider-history/sync-status";
             var syncStartUrl = "/api/admin/provider-history/sync";
+            var syncCancelUrl = $"/api/admin/provider-history/sync/{Guid.NewGuid():D}/cancel";
             var auditUrl = $"/api/admin/provider/actions/{actionId:D}/assignment-history";
             var assignmentUrl = $"/api/admin/provider/actions/{actionId:D}/assignment";
 
             Assert.Equal(HttpStatusCode.Unauthorized,
                 (await http.PostAsJsonAsync(syncStartUrl, new { ProviderProductId = "history-test-product" }, ct)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await http.PostAsync(syncCancelUrl, null, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized,
                 (await http.GetAsync(syncStatusUrl, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized,
@@ -70,6 +73,8 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
 
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await http.PostAsJsonAsync(syncStartUrl, new { ProviderProductId = "history-test-product" }, ct)).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await http.PostAsync(syncCancelUrl, null, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await http.GetAsync(syncStatusUrl, ct)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
@@ -127,10 +132,21 @@ public sealed class AdminProviderHistoryHttpAuthorizationTests(PostgreSqlFixture
             Assert.Equal(HttpStatusCode.Conflict,
                 (await http.PostAsJsonAsync(url, new { ProviderProductId = productId }, ct)).StatusCode);
 
+            Guid runId;
+            await using (var lookup = fixture.CreateDbContext())
+                runId = await lookup.ProviderHistorySyncRuns.AsNoTracking()
+                    .Where(x => x.ProviderProductId == productId)
+                    .Select(x => x.Id).SingleAsync(ct);
+            var cancelUrl = $"/api/admin/provider-history/sync/{runId:D}/cancel";
+            Assert.Equal(HttpStatusCode.OK, (await http.PostAsync(cancelUrl, null, ct)).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await http.PostAsync(cancelUrl, null, ct)).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound,
+                (await http.PostAsync($"/api/admin/provider-history/sync/{Guid.NewGuid():D}/cancel", null, ct)).StatusCode);
+
             await using var verify = fixture.CreateDbContext();
             var run = Assert.Single(await verify.ProviderHistorySyncRuns.AsNoTracking()
                 .Where(x => x.ProviderProductId == productId).ToListAsync(ct));
-            Assert.Equal(Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunStatus.Running, run.Status);
+            Assert.Equal(Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunStatus.Cancelled, run.Status);
             Assert.Equal(Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunMode.Manual, run.Mode);
         }
         finally
