@@ -32,6 +32,7 @@ public sealed class ProviderHistoryPageImporter(
                 providerProductId, record, observedAt, cancellationToken);
             switch (result)
             {
+                case ProviderHistoryExistingActionResult.RefreshedManaged:
                 case ProviderHistoryExistingActionResult.RefreshedImported:
                     refreshed++;
                     break;

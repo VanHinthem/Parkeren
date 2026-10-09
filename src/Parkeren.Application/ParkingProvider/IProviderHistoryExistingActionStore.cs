@@ -4,6 +4,7 @@ public enum ProviderHistoryExistingActionResult
 {
     NotFound,
     RefreshedImported,
+    RefreshedManaged,
     SkippedManaged
 }
 
