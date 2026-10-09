@@ -24,6 +24,10 @@ internal sealed class ProviderHistorySyncWorker(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
+                // Only products with a completed initial import qualify for periodic runs.
+                // Reservations use the same cross-instance guard as manual runs.
+                var periodic = scope.ServiceProvider.GetRequiredService<ProviderHistoryPeriodicSyncRunScheduler>();
+                await periodic.ReserveDueRunsAsync(stoppingToken);
                 var pending = await db.ProviderHistorySyncRuns.AsNoTracking()
                     .Where(x => x.Status == ProviderHistorySyncRunStatus.Running)
                     .OrderBy(x => x.StartedAt)
