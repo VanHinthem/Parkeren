@@ -53,6 +53,18 @@ public sealed class TwoParkActionHistoryParserTests
         Assert.Null(page.StartIndex);
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\\"atn_id\\":\\"\\"}")]
+    public void Rejects_history_actions_without_valid_provider_id(string actionJson)
+    {
+        using var document = JsonDocument.Parse(
+            "{\\"data\\":{\\"actions\\":[" + actionJson + "]}}");
+
+        Assert.Throws<JsonException>(() =>
+            TwoParkActionHistoryParser.Parse(document.RootElement));
+    }
+
     private static TwoParkHistoryPage ParseFixture(string name)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "TestData", name);
