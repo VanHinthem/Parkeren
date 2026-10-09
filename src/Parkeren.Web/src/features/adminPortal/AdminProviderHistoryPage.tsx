@@ -258,7 +258,7 @@ export function AdminProviderHistoryPage() {
         <table className="admin-table">
           <thead><tr><th>Kenteken</th><th>Start</th><th>Product</th><th>Status</th><th>Herkomst</th><th aria-label="Acties" /></tr></thead>
           <tbody>{data.items.map(item => <Fragment key={item.id}><tr>
-            <td>{item.licensePlate ? <LicensePlate value={item.licensePlate} /> : "—"}</td>
+            <td>{item.licensePlate ? <LicensePlate value={item.licensePlate} /> : "Kenteken onbekend"}</td>
             <td>{formatAdminDateTime(item.actualStartAt)}</td>
             <td>{products.find(product => product.providerProductId === item.providerProductId)?.name ?? item.providerProductId ?? "—"}</td>
             <td>{formatAdminProviderActionStatus(item.state)}</td>
