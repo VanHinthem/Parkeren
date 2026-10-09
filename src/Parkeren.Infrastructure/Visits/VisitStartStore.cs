@@ -67,16 +67,17 @@ internal sealed class VisitStartStore(ParkerenDbContext dbContext) : IVisitStart
                     visit.StartAt + warningAfter));
             }
         }
-        if (visit.Status == VisitStatus.Active && visit.DesiredEndAt is DateTimeOffset desiredEndAt &&
+        if (visit.Status == VisitStatus.Active &&
             !await dbContext.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, cancellationToken))
         {
+            var planningEndAt = ProviderCoverageSchedule.PlanningEndAt(visit, visit.StartAt);
             var ruleSets = await dbContext.ParkingRuleSets
                 .Include(x => x.PaidWindows)
                 .Include(x => x.CalendarExceptions)
-                .Where(x => x.ValidFrom < desiredEndAt &&
+                .Where(x => x.ValidFrom < planningEndAt &&
                             (!x.ValidUntil.HasValue || x.ValidUntil.Value > visit.StartAt))
                 .ToListAsync(cancellationToken);
-            var nextPaid = ProviderCoverageSchedule.NextPaidSegment(visit.StartAt, desiredEndAt, ruleSets);
+            var nextPaid = ProviderCoverageSchedule.NextPaidSegment(visit.StartAt, planningEndAt, ruleSets);
             if (nextPaid is not null && !await dbContext.VisitSchedulerWork.AnyAsync(
                     x => x.VisitId == visit.Id && x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
                          (x.Status == VisitSchedulerWorkStatus.Pending || x.Status == VisitSchedulerWorkStatus.Claimed),
