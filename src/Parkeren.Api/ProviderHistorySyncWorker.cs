@@ -70,7 +70,10 @@ internal sealed class ProviderHistorySyncWorker(
                 stoppingToken))
                 return;
 
-            var executor = scope.ServiceProvider.GetRequiredService<ProviderHistoryReservedRunExecutor>();
+            // The importer opens and closes its own DB connection; keep the claim
+            // connection in this separate scope for the entire execution.
+            await using var executionScope = scopeFactory.CreateAsyncScope();
+            var executor = executionScope.ServiceProvider.GetRequiredService<ProviderHistoryReservedRunExecutor>();
             await executor.ExecuteAsync(runId, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
