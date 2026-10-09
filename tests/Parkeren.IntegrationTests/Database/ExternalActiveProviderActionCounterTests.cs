@@ -77,11 +77,12 @@ public sealed class ExternalActiveProviderActionCounterTests(PostgreSqlFixture f
         var duplicate = Create("duplicate", "external-A", "active");
         var second = Create("second", "external-B", "ACTIVE");
         var stopped = Create("stopped", "external-C", "STOPPED");
-        var ended = Create("ended", "external-D", "ACTIVE", observed.AddMinutes(5));
+        // Active provider records can have a planned end time.
+        var plannedEnd = Create("planned-end", "external-D", "ACTIVE", observed.AddMinutes(50));
         var unknown = Create("unknown", null, "ACTIVE");
         var resolved = Create("resolved", "external-E", "ACTIVE");
         resolved.Resolve(observed.AddMinutes(1));
-        var records = new[] { first, duplicate, second, stopped, ended, unknown, resolved };
+        var records = new[] { first, duplicate, second, stopped, plannedEnd, unknown, resolved };
 
         try
         {
@@ -93,7 +94,7 @@ public sealed class ExternalActiveProviderActionCounterTests(PostgreSqlFixture f
             }
 
             await using var verify = fixture.CreateDbContext();
-            Assert.Equal(2, await new ExternalActiveProviderActionCounter(verify)
+            Assert.Equal(3, await new ExternalActiveProviderActionCounter(verify)
                 .CountAsync(ct));
         }
         finally
