@@ -305,6 +305,12 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         if (actions.Count > pageSize)
             throw new JsonException("2Park history terminal page exceeds the requested page size.");
 
+        // Never silently lose a completed action with an invalid interval:
+        // the caller must not checkpoint an incomplete history page.
+        if (actions.Any(x => string.Equals(x.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase) &&
+            (!x.StartLocal.HasValue || !x.EndLocal.HasValue)))
+            throw new JsonException("2Park completed history action has missing or invalid timestamps.");
+
         var records = actions
             .Where(x => x.StartLocal.HasValue && x.EndLocal.HasValue)
             .Select(x => new ProviderActionHistoryRecord(

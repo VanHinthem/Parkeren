@@ -131,6 +131,18 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task Completed_action_with_missing_end_time_rejects_page_instead_of_silently_dropping_it()
+    {
+        var handler = new HistoryHandler(missingCompletedEndTime: true);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(() =>
+            provider.GetActionHistoryPageAsync("product-1", 0, 10, TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { (1, 10) }, handler.RequestedRanges);
+    }
+
+    [Fact]
     public async Task Http_success_with_provider_error_status_throws_typed_provider_exception()
     {
         using var http = new HttpClient(new HistoryHandler(returnProviderError: true))
@@ -159,7 +171,7 @@ public sealed class TwoParkProviderHistoryReaderTests
         return new TwoParkProvider(http, configuration);
     }
 
-    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false, bool liveBoundaryShape = false) : HttpMessageHandler
+    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false, bool liveBoundaryShape = false, bool missingCompletedEndTime = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
         public int? DynamicMaxIndex { get; set; }
@@ -216,6 +228,11 @@ public sealed class TwoParkProviderHistoryReaderTests
                         ? (index == 23 ? 24 : index + 1)
                         : terminalIdAlreadyPresent && startIndex == 24 ? 23 : index));
             var actionJson = string.Join(",", actions);
+            if (missingCompletedEndTime)
+                actionJson = actionJson.Replace(
+                    """{ "prr_label": "TIMEEND", "prr_value": "04-10-2026 08:41:27" }""",
+                    """{ "prr_label": "TIMEEND", "prr_value": "not-a-date" }""",
+                    StringComparison.Ordinal);
             var response = $$"""
             {
               "status": { "code": { "major": "OK", "minor": "SUCCESS" }, "message": "Gelukt" },
