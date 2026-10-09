@@ -27,7 +27,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
     [InlineData("stopped", false, false, false)]
     [InlineData("start-mismatch", false, false, false)]
     [InlineData("end-mismatch", false, false, false)]
-    [InlineData("scheduled", true, true, false, false)] // Open-ended Visit survives a free gap.
+    [InlineData("scheduled", true, true, false)] // Open-ended Visit survives a free gap.
     [InlineData("scheduled", true, true, true)] // Saturday coverage, free Sunday, then Monday continuation.
     public async Task Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap(
         string providerReadback,
