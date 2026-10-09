@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { assignAdminProviderActionUser, getAdminProviderHistorySyncStatus, startAdminProviderHistorySync, getAdminProviderAssignmentHistory, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type AdminProviderAssignmentAuditEntry, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage, type AdminProviderHistorySyncStatus } from "../../api/client";
+import { assignAdminProviderActionUser, getAdminProviderHistorySyncStatus, startAdminProviderHistorySync, cancelAdminProviderHistorySync, getAdminProviderAssignmentHistory, getAdminProviderActionHistory, getAdminProviderProducts, getUsers, type AdminProviderAssignmentAuditEntry, type UserSummary, type AdminProviderProduct, type AdminProviderActionHistoryPage, type AdminProviderHistorySyncStatus } from "../../api/client";
 import { Alert } from "../../design/primitives/Alert";
 import { LicensePlate } from "../../components/LicensePlate";
 import { Loading } from "../../design/primitives/Loading";
@@ -30,6 +30,7 @@ export function AdminProviderHistoryPage() {
   const [syncStatus, setSyncStatus] = useState<AdminProviderHistorySyncStatus>();
   const [syncProductId, setSyncProductId] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
+  const [cancellingRunId, setCancellingRunId] = useState<string>();
   const [syncError, setSyncError] = useState("");
   const [expandedId, setExpandedId] = useState<string>();
   const [users, setUsers] = useState<UserSummary[]>([]);
@@ -69,11 +70,23 @@ export function AdminProviderHistoryPage() {
   }, [page, appliedSearch, productId, state, origin, fromDate, toDate, assignedUserId, oldestFirst, discrepancyFilter, reload]);
   useEffect(() => {
     let active = true;
-    getAdminProviderHistorySyncStatus()
-      .then(status => { if (active) setSyncStatus(status); })
-      .catch(() => { if (active) setSyncError("Synchronisatiestatus kon niet worden geladen."); });
-    return () => { active = false; };
-  }, []);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function refresh() {
+      try {
+        const status = await getAdminProviderHistorySyncStatus();
+        if (active) {
+          setSyncStatus(status);
+          setSyncError("");
+          if (status.runs.some(run => run.status === "Running"))
+            timer = setTimeout(() => { void refresh(); }, 5000);
+        }
+      } catch {
+        if (active) setSyncError("Synchronisatiestatus kon niet worden geladen.");
+      }
+    }
+    void refresh();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [reload]);
   async function startSync() {
     if (!syncProductId || syncBusy) return;
     setSyncBusy(true);
@@ -81,10 +94,23 @@ export function AdminProviderHistoryPage() {
     try {
       await startAdminProviderHistorySync(syncProductId);
       setSyncStatus(await getAdminProviderHistorySyncStatus());
+      setReload(value => value + 1);
     } catch (reason) {
       setSyncError(reason instanceof Error ? reason.message : "Synchronisatie kon niet worden gestart.");
     } finally {
       setSyncBusy(false);
+    }
+  }
+  async function cancelSync(runId:string) {
+    setCancellingRunId(runId);
+    setSyncError("");
+    try {
+      await cancelAdminProviderHistorySync(runId);
+      setSyncStatus(await getAdminProviderHistorySyncStatus());
+    } catch (reason) {
+      setSyncError(reason instanceof Error ? reason.message : "Synchronisatie annuleren is mislukt.");
+    } finally {
+      setCancellingRunId(undefined);
     }
   }
   async function toggleDetails(actionId:string) {
@@ -138,12 +164,17 @@ export function AdminProviderHistoryPage() {
           <p>Laatste synchronisatieruns</p>
           {syncStatus.runs.length === 0 ? <p>Nog geen synchronisaties uitgevoerd.</p> :
             <div className="admin-table-wrap"><table className="admin-table">
-              <thead><tr><th>Product</th><th>Gestart</th><th>Status</th><th>Gelezen</th><th>Toegevoegd</th><th>Bijgewerkt</th></tr></thead>
+              <thead><tr><th>Product</th><th>Gestart</th><th>Status</th><th>Gelezen</th><th>Toegevoegd</th><th>Bijgewerkt</th><th>Acties</th></tr></thead>
               <tbody>{syncStatus.runs.slice(0, 5).map(run => <tr key={run.id}>
                 <td>{products.find(product => product.providerProductId === run.providerProductId)?.name ?? run.providerProductId}</td>
                 <td>{formatAdminDateTime(run.startedAt)}</td>
                 <td>{run.status}</td>
                 <td>{run.readCount}</td><td>{run.insertedCount}</td><td>{run.refreshedCount}</td>
+                <td>{run.status === "Running" && <Button variant="secondary"
+                  disabled={cancellingRunId === run.id}
+                  onClick={() => void cancelSync(run.id)}>
+                  {cancellingRunId === run.id ? "Annuleren…" : "Annuleren"}
+                </Button>}</td>
               </tr>)}</tbody>
             </table></div>}
         </div>}
