@@ -130,6 +130,62 @@ public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fi
             await db.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(token);
         }
     }
+    [Theory]
+    [InlineData("ACTIVE")]
+    [InlineData("STOPPING")]
+    [InlineData("FAILED")]
+    public async Task Non_completed_history_cannot_refresh_an_imported_action(string status)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var plate = $"HS{suffix[..6].ToUpperInvariant()}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var started = new DateTimeOffset(2026, 10, 9, 8, 0, 0, TimeSpan.Zero);
+        var actionId = $"non-final-{suffix}";
+        var action = Parkeren.Domain.Visits.ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), actionId, "history-product", "OSS Zone J",
+            vehicle.Id, ProviderActionAssignment.Unassigned,
+            started, started.AddMinutes(20), 0.25m, "COMPLETED", started.AddHours(1));
+        var conflicting = new ProviderActionHistoryRecord(
+            actionId, status, started.AddMinutes(1),
+            started.AddMinutes(30), 0.90m, "EUR", plate, "OSS Zone J");
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Vehicles.Add(vehicle);
+                seed.ProviderParkingActions.Add(action);
+                await seed.SaveChangesAsync(token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    new ProviderHistoryExistingActionStore(db).ApplyIfExistingAsync(
+                        "history-product", conflicting, started.AddHours(2), token));
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var saved = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == action.Id, token);
+            Assert.Equal(started, saved.ActualStartAt);
+            Assert.Equal(started.AddMinutes(20), saved.ActualEndAt);
+            Assert.Equal(0.25m, saved.ProviderCostAmount);
+            Assert.Equal("COMPLETED", saved.ProviderStatus);
+            Assert.Equal(ProviderHistoryStatus.Reconciled, saved.HistoryStatus);
+            Assert.Equal(started.AddHours(1), saved.LastSyncedAt);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
+                .ExecuteDeleteAsync(token);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
     [Fact]
     public async Task Same_action_id_from_another_product_is_rejected_without_modifying_history()
     {
