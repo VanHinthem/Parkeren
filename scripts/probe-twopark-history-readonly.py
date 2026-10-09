@@ -39,29 +39,51 @@ def main():
     opener = build_opener(HTTPCookieProcessor(CookieJar()))
     request(opener, "check_credentials.json",
             {"email": email, "password": password, "locale": "nl_NL"})
-    # A single page only. Do not modify the application's existing pagination.
-    root = request(opener, "get_action_history.json",
-                   {"product_id": product, "locale": "nl_NL",
-                    "startindex": "1", "stopindex": "10"})
-    data = root.get("data", {})
-    actions = data.get("actions", [])
-    fields = {"MBR_IDENT", "TIMESTART", "TIMEEND", "LOCATION", "COST", "CURRENCY_DESC"}
-    presence = Counter()
-    statuses = Counter()
-    for action in actions:
-        statuses[str(action.get("atn_state", "missing")).upper()] += 1
-        labels = {p.get("prr_label") for p in action.get("atn_parameters", [])}
-        presence.update(fields & labels)
+    # Inspect adjacent pages and deliberately overlapping ranges. All requests
+    # are read-only. Compare IDs in memory; never print their actual values.
+    ranges = [(1, 10), (11, 20), (21, 24), (20, 21), (21, 22), (23, 24), (24, 24)]
+    pages = []
+    for first, last in ranges:
+        root = request(opener, "get_action_history.json",
+                       {"product_id": product, "locale": "nl_NL",
+                        "startindex": str(first), "stopindex": str(last)})
+        data = root.get("data", {})
+        actions = data.get("actions", [])
+        ids = [str(a["atn_id"]) for a in actions if a.get("atn_id")]
+        pages.append({
+            "range": f"{first}-{last}",
+            "reported_start": data.get("startindex"),
+            "reported_stop": data.get("stopindex"),
+            "reported_max": data.get("maxindex"),
+            "records": len(actions),
+            "missing_id_count": len(actions) - len(ids),
+            "duplicate_ids_within_page": len(ids) - len(set(ids)),
+            "_ids": set(ids),
+        })
+
+    # The first three requests are intended to be non-overlapping.
+    primary = pages[:3]
+    primary_ids = [item for page in primary for item in page["_ids"]]
+    primary_overlap = len(primary_ids) - len(set(primary_ids))
+    comparisons = []
+    for index, page in enumerate(pages):
+        for other in pages[index + 1:]:
+            comparisons.append({
+                "ranges": [page["range"], other["range"]],
+                "shared_action_ids": len(page["_ids"] & other["_ids"])
+            })
+
     print(json.dumps({
         "success": True,
-        "records": len(actions),
-        "startindex": data.get("startindex"),
-        "stopindex": data.get("stopindex"),
-        "maxindex": data.get("maxindex"),
-        "statuses": dict(sorted(statuses.items())),
-        "field_presence_counts": {key: presence[key] for key in sorted(fields)}
+        "pages": [{k: v for k, v in page.items() if k != "_ids"} for page in pages],
+        "primary_pages": {
+            "unique_action_ids": len(set(primary_ids)),
+            "duplicate_ids_across_nonoverlapping_ranges": primary_overlap
+        },
+        "overlap_checks": comparisons,
+        "note": "Shared IDs in intentionally overlapping ranges are expected; "
+                "shared IDs in disjoint ranges indicate a potential paging issue."
     }, indent=2, ensure_ascii=False))
-
 
 if __name__ == "__main__":
     try:
