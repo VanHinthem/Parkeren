@@ -138,3 +138,29 @@ concurrency locks retain their lifecycle behavior.
 A final full traversal alone does not guarantee completeness if the provider
 changes order *during* that traversal. This separate consistency limitation
 remains for #153 and should not be described as solved by the restart rule.
+
+
+## Validation status — 2026-10-09 (after CI run 37952776045)
+
+The earlier **pending** checklist and code-review observations above are a historical
+record of the original risks, not the current implementation status. The
+following distinguishes automated verification from read-only live evidence.
+
+| Acceptance area | Current evidence | Status |
+|---|---|---|
+| Read-only 2Park history access | Owner-operated requests to `get_action_history.json`, anonymized aggregate findings above | Observed |
+| Terminal range missing an action | Mocked live-boundary shape: overlap `20–24` recovers all 24 distinct action IDs | Regression covered; repeat live validation needed |
+| Growth between separate syncs | First page refreshes `maxindex` on the same provider instance | Regression covered |
+| Interrupted import with shifted indices | The checkpoint traversal restarts from page zero under the product lock; saved actions remain idempotent | Implementation + test coverage; service-level shifting-index E2E still desirable |
+| Provider count changes between pages | Reject a changed `maxindex`, avoiding successful completion of that traversal | Regression covered |
+| Missing action ID | Reject malformed action instead of silently skipping it | Parser regression covered |
+| Completed action missing valid start/end | Reject the page rather than silently dropping the action | Reader regression covered |
+| Provider changes order without changing `maxindex` during a single traversal | Count check cannot detect this; action-ID union may still be incomplete | **Open** |
+| Reimport, corrections, assignments, budgets, capacity, notification deduplication | Existing targeted suites cover individual flows; review full E2E acceptance against #153 | **Not signed off** |
+| Real provider corrected-history / chained / incomplete variants and retention | Not established by current read-only observations | **Not observed / open** |
+| Final feature PR to `develop` | Must follow documented sign-off and green CI | **Not started** |
+
+**Release gate:** Do not infer complete real-provider correctness from mocked
+success. In particular, an unchanged `maxindex` does not establish a stable
+snapshot or action-ID ordering across pages. Keep #153 open until the remaining
+E2E scenarios and privacy-safe provider observations have been reviewed.
