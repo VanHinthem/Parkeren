@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Parkeren.Application.Visits;
+using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Users;
 using Parkeren.Domain.Vehicles;
@@ -137,6 +138,63 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
 
         Assert.Equal(new DateTimeOffset(year, month, paidDay, 6, 55, 0, TimeSpan.Zero), work.DueAt);
         Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
+    }
+
+
+    [Fact]
+    public async Task Saving_open_ended_visit_uses_only_its_provider_product_rules()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(ct);
+
+        var startAt = new DateTimeOffset(2026, 10, 9, 19, 42, 0, TimeSpan.Zero);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"product-overnight-{suffix}", $"PRODUCT-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"PC{suffix[..6]}", $"PC{suffix[..6]}", null);
+        var selectedProduct = new ParkingProviderProduct(
+            Guid.NewGuid(), $"selected-{suffix}", "Selected product", null, null, "OSS_J", startAt);
+        var otherProduct = new ParkingProviderProduct(
+            Guid.NewGuid(), $"other-{suffix}", "Other product", null, null, "OTHER", startAt);
+        var visit = new Visit(
+            Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            startAt, null, new EffectiveParkingPolicySnapshot(null, null, true),
+            selectedProduct.Id, selectedProduct.ProviderProductId, selectedProduct.Location);
+        visit.Activate();
+
+        var selectedRules = new ParkingRuleSet(
+            Guid.NewGuid(), DateTimeOffset.UnixEpoch, null, TimeSpan.FromHours(4),
+            new[] { new PaidWindow(DayOfWeek.Saturday, new TimeOnly(9, 0), new TimeOnly(20, 0)) });
+        selectedRules.AssignProviderProduct(selectedProduct.Id);
+        var otherRules = new ParkingRuleSet(
+            Guid.NewGuid(), DateTimeOffset.UnixEpoch, null, TimeSpan.FromHours(4),
+            new[] { new PaidWindow(DayOfWeek.Friday, new TimeOnly(9, 0), new TimeOnly(20, 0)) });
+        otherRules.AssignProviderProduct(otherProduct.Id);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.ParkingProviderProducts.AddRange(selectedProduct, otherProduct);
+            seed.ParkingRuleSets.AddRange(selectedRules, otherRules);
+            seed.Visits.Add(visit);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        await using var provider = BuildServices();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var persistedVisit = await scope.ServiceProvider.GetRequiredService<ParkerenDbContext>()
+                .Visits.SingleAsync(x => x.Id == visit.Id, ct);
+            await scope.ServiceProvider.GetRequiredService<IVisitStartStore>()
+                .SaveAsync(persistedVisit, ct);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var work = await verify.VisitSchedulerWork.SingleAsync(
+            x => x.VisitId == visit.Id &&
+                 x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                 x.Status == VisitSchedulerWorkStatus.Pending, ct);
+        Assert.Equal(new DateTimeOffset(2026, 10, 10, 6, 55, 0, TimeSpan.Zero), work.DueAt);
     }
 
     private ServiceProvider BuildServices()
