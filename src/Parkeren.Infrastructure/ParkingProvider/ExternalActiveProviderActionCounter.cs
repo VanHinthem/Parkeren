@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Domain.ParkingProvider;
+using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.ParkingProvider;
@@ -18,7 +19,13 @@ public sealed class ExternalActiveProviderActionCounter(ParkerenDbContext db)
                         x.ProviderActionId != null &&
                         x.ProviderStatus != null &&
                         x.ProviderStatus.ToUpper() == "ACTIVE" &&
-                        x.ProviderEndAt == null)
+                        x.ProviderEndAt == null &&
+                        !db.ProviderParkingActions.Any(action =>
+                            action.ProviderActionId == x.ProviderActionId &&
+                            action.ProviderProductId == db.ParkingProviderProducts
+                                .Where(product => product.Id == x.ProviderProductId)
+                                .Select(product => product.ProviderProductId).FirstOrDefault() &&
+                            (action.VisitId != null || action.Origin == ProviderActionOrigin.Managed)))
             .Select(x => new { x.ProviderProductId, x.ProviderActionId })
             .Distinct()
             .CountAsync(cancellationToken);
