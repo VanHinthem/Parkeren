@@ -19,19 +19,21 @@ namespace Parkeren.IntegrationTests.Database;
 public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 {
     [Theory]
-    [InlineData("scheduled", false, false)]
-    [InlineData("scheduled", true, false)]
-    [InlineData("active", false, false)]
-    [InlineData("active", true, false)]
-    [InlineData("missing", false, false)]
-    [InlineData("stopped", false, false)]
-    [InlineData("start-mismatch", false, false)]
-    [InlineData("end-mismatch", false, false)]
-    [InlineData("scheduled", true, true)] // Open-ended Visit survives a free gap and keeps future continuation.
+    [InlineData("scheduled", false, false, false)]
+    [InlineData("scheduled", true, false, false)]
+    [InlineData("active", false, false, false)]
+    [InlineData("active", true, false, false)]
+    [InlineData("missing", false, false, false)]
+    [InlineData("stopped", false, false, false)]
+    [InlineData("start-mismatch", false, false, false)]
+    [InlineData("end-mismatch", false, false, false)]
+    [InlineData("scheduled", true, true, false, false)] // Open-ended Visit survives a free gap.
+    [InlineData("scheduled", true, true, true)] // Saturday coverage, free Sunday, then Monday continuation.
     public async Task Recovery_rebuilds_scheduler_for_scheduled_successor_after_free_gap(
         string providerReadback,
         bool includeFurtherPaidPeriod,
-        bool openEnded)
+        bool openEnded,
+        bool spansFreeSunday)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var mockFactory = new WebApplicationFactory<Parkeren.TwoParkMock.Program>();
@@ -41,7 +43,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
 
         // Keep the synthetic parking windows in daytime, even when CI runs at night.
         // Use a future date so recovery does not treat scheduled work as overdue.
-        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
+        var now = spansFreeSunday
+            ? new DateTimeOffset(2026, 10, 10, 6, 56, 0, TimeSpan.Zero) // Saturday 08:56 Amsterdam
+            : new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
         (await http.PostAsJsonAsync(
             "api/test/clock/set",
             new { UtcNow = now },
@@ -49,7 +53,11 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         var nextPaidStart = now.AddMinutes(4);
         var firstPaidEnd = nextPaidStart.AddHours(-1);
         var nextPaidEnd = nextPaidStart.AddHours(1);
-        var furtherPaidStart = includeFurtherPaidPeriod ? nextPaidEnd.AddHours(1) : (DateTimeOffset?)null;
+        var furtherPaidStart = includeFurtherPaidPeriod
+            ? spansFreeSunday
+                ? new DateTimeOffset(2026, 10, 12, 7, 0, 0, TimeSpan.Zero) // Monday 09:00 Amsterdam
+                : nextPaidEnd.AddHours(1)
+            : (DateTimeOffset?)null;
         var furtherPaidEnd = furtherPaidStart?.AddHours(1);
         var startAt = firstPaidEnd.AddHours(-1);
         var desiredEndAt = (furtherPaidEnd ?? nextPaidEnd).AddHours(1);
@@ -309,6 +317,15 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 {
                     var rebuiltContinuation = Assert.Single(continuationWork);
                     Assert.Equal(furtherPaidStart!.Value.AddMinutes(-5), rebuiltContinuation.DueAt);
+                    if (spansFreeSunday)
+                    {
+                        Assert.Equal(DayOfWeek.Monday,
+                            TimeZoneInfo.ConvertTime(rebuiltContinuation.DueAt, businessZone).DayOfWeek);
+                        Assert.Equal(VisitStatus.Active, recoveredVisit.Status);
+                        Assert.Null(recoveredVisit.DesiredEndAt);
+                        Assert.DoesNotContain(actionsAfterRecovery, action =>
+                            TimeZoneInfo.ConvertTime(action.PlannedStartAt, businessZone).DayOfWeek == DayOfWeek.Sunday);
+                    }
                 }
                 else
                 {
