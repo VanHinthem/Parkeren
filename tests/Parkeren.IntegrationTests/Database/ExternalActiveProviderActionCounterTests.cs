@@ -14,7 +14,7 @@ public sealed class ExternalActiveProviderActionCounterTests(PostgreSqlFixture f
         var suffix = Guid.NewGuid().ToString("N");
         var providerId = $"external-count-{suffix}";
         var product = new ParkingProviderProduct(
-            Guid.NewGuid(), providerId, "Test product", 182, "Oss",
+            Guid.NewGuid(), providerId, "Test product", "182", "Oss",
             "OSS_J", DateTimeOffset.UtcNow);
         var observed = DateTimeOffset.UtcNow.AddMinutes(-10);
 
