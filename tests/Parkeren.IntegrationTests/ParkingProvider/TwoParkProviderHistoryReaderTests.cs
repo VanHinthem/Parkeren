@@ -55,6 +55,29 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task Last_page_preserves_provider_maxindex_when_response_ends_before_requested_stop()
+    {
+        var handler = new HistoryHandler(shortFinalPage: true);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        var first = await provider.GetActionHistoryPageAsync(
+            "product-1", 0, 10, TestContext.Current.CancellationToken);
+        var second = await provider.GetActionHistoryPageAsync(
+            "product-1", 1, 10, TestContext.Current.CancellationToken);
+        var last = await provider.GetActionHistoryPageAsync(
+            "product-1", 2, 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24) }, handler.RequestedRanges);
+        Assert.Equal(10, first.Records.Count);
+        Assert.Equal(10, second.Records.Count);
+        Assert.Equal(3, last.Records.Count);
+        Assert.Equal(24, last.TotalCount);
+        Assert.False(last.HasMore);
+        Assert.DoesNotContain(last.Records, x => x.ProviderActionId == "action-24");
+    }
+
+    [Fact]
     public async Task Http_success_with_provider_error_status_throws_typed_provider_exception()
     {
         using var http = new HttpClient(new HistoryHandler(returnProviderError: true))
@@ -83,7 +106,7 @@ public sealed class TwoParkProviderHistoryReaderTests
         return new TwoParkProvider(http, configuration);
     }
 
-    private sealed class HistoryHandler(bool returnProviderError = false) : HttpMessageHandler
+    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
         public List<string> RequestedEndpoints { get; } = [];
@@ -110,7 +133,7 @@ public sealed class TwoParkProviderHistoryReaderTests
             if (returnProviderError)
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"ERROR\",\"minor\":\"PROVIDER_FAILURE\"},\"message\":\"History unavailable\"}}");
 
-            var actualStop = Math.Min(stopIndex, 21);
+            var actualStop = Math.Min(stopIndex, shortFinalPage ? 23 : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
                 .Select(CreateActionJson);
             var actionJson = string.Join(",", actions);
@@ -120,7 +143,7 @@ public sealed class TwoParkProviderHistoryReaderTests
               "data": {
                 "startindex": "{{startIndex}}",
                 "stopindex": "{{actualStop}}",
-                "maxindex": "21",
+                "maxindex": "{{shortFinalPage ? 24 : 21}}",
                 "actions": [{{actionJson}}]
               }
             }
