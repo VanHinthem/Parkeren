@@ -55,11 +55,11 @@ public sealed class TwoParkActionHistoryParserTests
 
     [Theory]
     [InlineData("{}")]
-    [InlineData("{\\"atn_id\\":\\"\\"}")]
+    [InlineData("{\"atn_id\":\"\"}")]
     public void Rejects_history_actions_without_valid_provider_id(string actionJson)
     {
         using var document = JsonDocument.Parse(
-            "{\\"data\\":{\\"actions\\":[" + actionJson + "]}}");
+            "{\"data\":{\"actions\":[" + actionJson + "]}}");
 
         Assert.Throws<JsonException>(() =>
             TwoParkActionHistoryParser.Parse(document.RootElement));
