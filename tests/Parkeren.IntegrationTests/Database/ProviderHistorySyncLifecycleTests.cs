@@ -428,7 +428,7 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task Reserved_run_resumes_at_checkpoint_after_worker_restart()
+    public async Task Reserved_run_restarts_at_page_zero_after_worker_restart()
     {
         var ct = TestContext.Current.CancellationToken;
         var product = $"restart-sync-{Guid.NewGuid():N}";
@@ -464,7 +464,8 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                 await executor.ExecuteAsync(runId, ct);
             }
 
-            Assert.Equal([1], readPages);
+            // Replay from zero prevents missing records when provider indices shift.
+            Assert.Equal([0], readPages);
             await using var verify = fixture.CreateDbContext();
             var runStatus = await verify.ProviderHistorySyncRuns.AsNoTracking()
                 .Where(x => x.Id == runId).Select(x => x.Status).SingleAsync(ct);
