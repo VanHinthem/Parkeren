@@ -518,9 +518,23 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                 await seed.SaveChangesAsync(token);
             }
 
-            int notificationCountBefore;
+            int eventCountBefore;
+            int inboxCountBefore;
+            int pushCountBefore;
             await using (var before = fixture.CreateDbContext())
-                notificationCountBefore = await before.NotificationEvents.CountAsync(token);
+            {
+                eventCountBefore = await before.NotificationEvents.CountAsync(token);
+                inboxCountBefore = await before.Notifications.CountAsync(token);
+                pushCountBefore = await before.PushDeliveries.CountAsync(token);
+            }
+
+            async Task AssertNoRetrospectiveNotificationsAsync()
+            {
+                await using var check = fixture.CreateDbContext();
+                Assert.Equal(eventCountBefore, await check.NotificationEvents.CountAsync(token));
+                Assert.Equal(inboxCountBefore, await check.Notifications.CountAsync(token));
+                Assert.Equal(pushCountBefore, await check.PushDeliveries.CountAsync(token));
+            }
 
             await using (var db = fixture.CreateDbContext())
                 await CreateService(db, reader).ImportAsync(externalProduct, 10, token);
@@ -533,8 +547,7 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                     .Where(x => x.ParkingBudgetPeriodId == period.Id)
                     .Select(x => x.ThresholdPercentage).ToArrayAsync(token);
                 Assert.NotEmpty(thresholds);
-                Assert.Equal(notificationCountBefore,
-                    await verify.NotificationEvents.CountAsync(token));
+                await AssertNoRetrospectiveNotificationsAsync();
             }
 
             // Replaying the same history must not duplicate budget thresholds
@@ -551,8 +564,7 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
             {
                 Assert.Equal(firstBaselineCount, await repeated.ParkingBudgetWarningStates
                     .CountAsync(x => x.ParkingBudgetPeriodId == period.Id, token));
-                Assert.Equal(notificationCountBefore,
-                    await repeated.NotificationEvents.CountAsync(token));
+                await AssertNoRetrospectiveNotificationsAsync();
             }
 
             // A later provider correction updates realized paid minutes without
@@ -571,8 +583,7 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                 Assert.Equal(0.30m, action.ProviderCostAmount);
                 Assert.Equal(firstBaselineCount, await verifiedCorrection.ParkingBudgetWarningStates
                     .CountAsync(x => x.ParkingBudgetPeriodId == period.Id, token));
-                Assert.Equal(notificationCountBefore,
-                    await verifiedCorrection.NotificationEvents.CountAsync(token));
+                await AssertNoRetrospectiveNotificationsAsync();
                 Assert.Equal(1, await verifiedCorrection.ProviderParkingActions
                     .CountAsync(x => x.ProviderActionId == actionId, token));
             }
