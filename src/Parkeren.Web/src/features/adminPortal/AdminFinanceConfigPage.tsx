@@ -12,9 +12,12 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import { formatAdminDate,formatAdminDateTime,formatAdminDuration,formatAdminMoney } from "./adminFieldFormatters";
+import "./adminFieldPresentation.css";
 import "./AdminFinanceConfig.css";
 
 type Props={mode:"budgets"|"tariffs"};
+type FinancePeriod={validFrom:string;validUntil:string|null};
 
 function dateInput(date:Date){
   const pad=(value:number)=>String(value).padStart(2,"0");
@@ -26,21 +29,21 @@ function localDateTimeInput(date:Date){
   return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function formatDate(value:string|null){
-  return value?new Date(value).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"}):"doorlopend";
-}
-
-function formatMinutes(value:number){
-  const hours=value/60;
-  return Number.isInteger(hours)?`${hours} uur`:`${hours.toFixed(2)} uur`;
-}
-
 function defaultBudgetDates(){
   const now=new Date();
   return {
     from:dateInput(new Date(now.getFullYear(),0,1)),
     until:dateInput(new Date(now.getFullYear()+1,0,1))
   };
+}
+
+function financePeriodStatus(item:FinancePeriod){
+  const now=Date.now();
+  const from=new Date(item.validFrom).getTime();
+  const until=item.validUntil?new Date(item.validUntil).getTime():null;
+  if(now<from)return "Gepland";
+  if(until!==null&&now>=until)return "Historisch";
+  return "Actief";
 }
 
 export function AdminFinanceConfigPage({mode}:Props){
@@ -191,12 +194,13 @@ export function AdminFinanceConfigPage({mode}:Props){
     <Alert tone="danger">{error??"Providerproducten of financiële configuratie konden niet worden geladen."}</Alert>
   </div>;
 
+  const selectedProduct=products.find(product=>product.id===selectedProductId);
+
   return <div className="admin-finance">
-    <nav className="admin-finance__tabs" aria-label="Parkeerconfiguratie">
-      <a className="admin-finance__tab" href="/beheer/provider">Providerproducten</a>
-      <a className="admin-finance__tab" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
-      <a className={"admin-finance__tab "+(mode==="tariffs"?"active":"")} href="/beheer/configuratie/tarieven">Tarieven</a>
-      <a className={"admin-finance__tab "+(mode==="budgets"?"active":"")} href="/beheer/configuratie/budgetten">Budgetten</a>
+    <nav className="admin-subnav" aria-label="Parkeerconfiguratie">
+      <a className="admin-subnav__link" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
+      <a className={`admin-subnav__link ${mode==="tariffs"?"active":""}`} href="/beheer/configuratie/tarieven">Tarieven</a>
+      <a className={`admin-subnav__link ${mode==="budgets"?"active":""}`} href="/beheer/configuratie/budgetten">Budgetten</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
@@ -206,8 +210,8 @@ export function AdminFinanceConfigPage({mode}:Props){
       <h2>2Park-product</h2>
       {products.length===0
         ? <p>Er zijn nog geen providerproducten gesynchroniseerd. Synchroniseer ze eerst onder <a href="/beheer/provider">Provider & reconciliatie</a>.</p>
-        : <div className="admin-finance__grid">
-            <label className="admin-finance__field">
+        : <div className="admin-finance__product-grid">
+            <label className="admin-field">
               <span>Configuratie voor</span>
               <select value={selectedProductId??""} onChange={event=>setSelectedProductId(event.target.value)}>
                 {products.map(product=><option key={product.id} value={product.id}>
@@ -215,9 +219,9 @@ export function AdminFinanceConfigPage({mode}:Props){
                 </option>)}
               </select>
             </label>
-            {selectedProductId&&<div className="admin-finance__field">
-              <span>Provider-location</span>
-              <strong>{products.find(product=>product.id===selectedProductId)?.location??"—"}</strong>
+            {selectedProductId&&<div className="admin-readonly-value admin-readonly-value--field">
+              <span>Providercontext</span>
+              <strong>{selectedProduct?.location??"—"}</strong>
             </div>}
           </div>}
     </section>
@@ -228,42 +232,70 @@ export function AdminFinanceConfigPage({mode}:Props){
         <p>Budgetperioden zijn append-only en mogen niet overlappen. Voor Oss is 1500 uur de huidige bekende jaarlimiet; pas dit hier aan wanneer de regeling verandert.</p>
         <div className="admin-finance__form">
           <div className="admin-finance__grid">
-            <label className="admin-finance__field"><span>Vanaf</span><input type="date" value={budgetFrom} onChange={event=>setBudgetFrom(event.target.value)}/></label>
-            <label className="admin-finance__field"><span>Tot</span><input type="date" value={budgetUntil} onChange={event=>setBudgetUntil(event.target.value)}/></label>
-            <label className="admin-finance__field"><span>Max. betaalde uren</span><input type="number" min="0.25" step="0.25" value={budgetHours} onChange={event=>setBudgetHours(event.target.value)}/></label>
+            <label className="admin-field"><span>Vanaf</span><input type="date" value={budgetFrom} onChange={event=>setBudgetFrom(event.target.value)}/></label>
+            <label className="admin-field"><span>Tot</span><input type="date" value={budgetUntil} onChange={event=>setBudgetUntil(event.target.value)}/></label>
+            <label className="admin-field"><span>Max. betaalde uren</span><input className="admin-field__control--number" type="number" min="0.25" step="0.25" value={budgetHours} onChange={event=>setBudgetHours(event.target.value)}/></label>
           </div>
-          <div className="admin-finance__actions"><Button onClick={()=>void saveBudget()} disabled={saving||!products.find(product=>product.id===selectedProductId)?.isAvailable}>{saving?"Opslaan…":"Budgetperiode toevoegen"}</Button></div>
+          <div className="admin-finance__actions"><Button className="admin-action--compact" onClick={()=>void saveBudget()} disabled={saving||!selectedProduct?.isAvailable}>{saving?"Opslaan…":"Budgetperiode toevoegen"}</Button></div>
         </div>
       </section>
 
-      <div className="admin-finance__items">
-        {(budgets??[]).length===0?<section className="admin-finance__item"><p className="admin-finance__empty">Er zijn nog geen budgetperioden geconfigureerd.</p></section>:null}
-        {(budgets??[]).map(item=><article className="admin-finance__item" key={item.id}>
-          <div className="admin-finance__item-head"><div><h3>{formatDate(item.validFrom)} → {formatDate(item.validUntil)}</h3><small>{item.id}</small></div></div>
-          <div className="admin-finance__facts"><span className="admin-finance__badge">{formatMinutes(item.maximumPaidDurationMinutes)}</span></div>
-        </article>)}
-      </div>
+      <section className="admin-finance__panel">
+        <h2>Budgethistorie</h2>
+        {(budgets??[]).length===0
+          ? <p className="admin-finance__empty">Er zijn nog geen budgetperioden geconfigureerd.</p>
+          : <div className="admin-table-wrap">
+              <table className="admin-table admin-table--fixed admin-finance__budget-table">
+                <thead><tr><th>Vanaf</th><th>Tot</th><th className="admin-duration admin-duration--table">Max. betaalde tijd</th><th>Status</th></tr></thead>
+                <tbody>
+                  {(budgets??[]).map(item=>{
+                    const status=financePeriodStatus(item);
+                    return <tr key={item.id}>
+                      <td>{formatAdminDate(item.validFrom)}</td>
+                      <td>{formatAdminDate(item.validUntil,"Doorlopend")}</td>
+                      <td className="admin-duration admin-duration--table">{formatAdminDuration(item.maximumPaidDurationMinutes)}</td>
+                      <td><span className={`admin-status ${status==="Actief"?"admin-status--active":""}`}>{status}</span></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>}
+      </section>
     </>:<>
       <section className="admin-finance__panel">
         <h2>Tariefversie toevoegen</h2>
         <p>Tarieven worden historisch bewaard. Een nieuwe open-ended versie sluit automatisch de vorige open-ended versie op dezelfde ingangsdatum. Bounded historische versies kun je backfillen zolang ze niet overlappen.</p>
         <div className="admin-finance__form">
           <div className="admin-finance__grid">
-            <label className="admin-finance__field"><span>Geldig vanaf</span><input type="datetime-local" value={tariffFrom} onChange={event=>setTariffFrom(event.target.value)}/></label>
-            <label className="admin-finance__field"><span>Geldig tot (optioneel)</span><input type="datetime-local" value={tariffUntil} onChange={event=>setTariffUntil(event.target.value)}/></label>
-            <label className="admin-finance__field"><span>Tarief per uur (€)</span><input type="text" inputMode="decimal" value={tariffRate} onChange={event=>setTariffRate(event.target.value)} placeholder="bijv. 0,35"/></label>
+            <label className="admin-field"><span>Geldig vanaf</span><input type="datetime-local" value={tariffFrom} onChange={event=>setTariffFrom(event.target.value)}/></label>
+            <label className="admin-field"><span>Geldig tot (optioneel)</span><input type="datetime-local" value={tariffUntil} onChange={event=>setTariffUntil(event.target.value)}/></label>
+            <label className="admin-field"><span>Tarief per uur (€)</span><input className="admin-field__control--money" type="text" inputMode="decimal" value={tariffRate} onChange={event=>setTariffRate(event.target.value)} placeholder="bijv. 0,35"/></label>
           </div>
-          <div className="admin-finance__actions"><Button onClick={()=>void saveTariff()} disabled={saving||!products.find(product=>product.id===selectedProductId)?.isAvailable}>{saving?"Opslaan…":"Tariefversie toevoegen"}</Button></div>
+          <div className="admin-finance__actions"><Button className="admin-action--compact" onClick={()=>void saveTariff()} disabled={saving||!selectedProduct?.isAvailable}>{saving?"Opslaan…":"Tariefversie toevoegen"}</Button></div>
         </div>
       </section>
 
-      <div className="admin-finance__items">
-        {(tariffs??[]).length===0?<section className="admin-finance__item"><p className="admin-finance__empty">Er zijn nog geen tarieven geconfigureerd. Kostenrapportage blijft dan expliciet onvolledig.</p></section>:null}
-        {(tariffs??[]).map(item=><article className="admin-finance__item" key={item.id}>
-          <div className="admin-finance__item-head"><div><h3>{formatDate(item.validFrom)} → {formatDate(item.validUntil)}</h3><small>{item.id}</small></div></div>
-          <div className="admin-finance__facts"><span className="admin-finance__badge">{new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(item.rate)} / uur</span></div>
-        </article>)}
-      </div>
+      <section className="admin-finance__panel">
+        <h2>Tariefhistorie</h2>
+        {(tariffs??[]).length===0
+          ? <p className="admin-finance__empty">Er zijn nog geen tarieven geconfigureerd. Kostenrapportage blijft dan expliciet onvolledig.</p>
+          : <div className="admin-table-wrap">
+              <table className="admin-table admin-table--fixed admin-finance__tariff-table">
+                <thead><tr><th>Geldig vanaf</th><th>Geldig tot</th><th className="admin-money admin-money--table">Tarief per uur</th><th>Status</th></tr></thead>
+                <tbody>
+                  {(tariffs??[]).map(item=>{
+                    const status=financePeriodStatus(item);
+                    return <tr key={item.id}>
+                      <td>{formatAdminDateTime(item.validFrom)}</td>
+                      <td>{formatAdminDateTime(item.validUntil,"Doorlopend")}</td>
+                      <td className="admin-money admin-money--table">{formatAdminMoney(item.rate)}</td>
+                      <td><span className={`admin-status ${status==="Actief"?"admin-status--active":""}`}>{status}</span></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>}
+      </section>
     </>}
   </div>;
 }

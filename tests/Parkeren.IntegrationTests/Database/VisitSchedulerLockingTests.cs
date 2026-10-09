@@ -316,19 +316,6 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
             ct);
         var requestedEndAt = visit.DesiredEndAt!.Value.AddMinutes(-15);
         var operationId = Guid.NewGuid();
-        var rules = new ParkingRuleSet(
-            Guid.NewGuid(),
-            now.AddDays(-1),
-            requestedEndAt.AddDays(1),
-            TimeSpan.FromHours(4),
-            Array.Empty<PaidWindow>());
-
-        await using (var seed = fixture.CreateDbContext())
-        {
-            seed.ParkingRuleSets.Add(rules);
-            await seed.SaveChangesAsync(ct);
-        }
-
         var services = CreateServices();
         await using var provider = services.BuildServiceProvider();
 
@@ -387,9 +374,6 @@ public sealed class VisitSchedulerLockingTests(PostgreSqlFixture fixture)
                 TimeSpan.FromMilliseconds(1));
         }
 
-        await verify.ParkingRuleSets
-            .Where(x => x.Id == rules.Id)
-            .ExecuteDeleteAsync(ct);
     }
 
     [Fact]

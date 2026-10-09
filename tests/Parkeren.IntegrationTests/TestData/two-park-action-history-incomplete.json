@@ -15,10 +15,6 @@
           { "prr_label": "TIMEEND", "prr_value": "03-10-2026 11:36:47" },
           { "prr_label": "COST", "prr_value": "unknown" }
         ]
-      },
-      {
-        "atn_state": "COMPLETED",
-        "atn_parameters": []
       }
     ]
   }

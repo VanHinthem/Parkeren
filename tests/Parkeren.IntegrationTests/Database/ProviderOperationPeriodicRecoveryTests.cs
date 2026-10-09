@@ -82,6 +82,115 @@ public sealed class ProviderOperationPeriodicRecoveryTests(PostgreSqlFixture fix
         await ClearVisitStateAsync(cancellationToken);
     }
 
+    [Theory]
+    [InlineData(true, false, VisitStatus.Cancelled, 0)]
+    [InlineData(false, false, VisitStatus.Starting, 1)]
+    [InlineData(true, true, VisitStatus.Starting, 1)]
+    public async Task Periodic_recovery_releases_only_expired_unprepared_start_claims(
+        bool expired,
+        bool hasProviderOperation,
+        VisitStatus expectedStatus,
+        int expectedOccupiedCapacity)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var suffix = Guid.NewGuid().ToString("N")[..8];
+            var user = new User(Guid.NewGuid(), $"orphan-{suffix}", $"ORPHAN-{suffix}", "hash", UserRole.Visitor);
+            var vehicle = new Vehicle(Guid.NewGuid(), $"OR{suffix[..6]}", $"OR{suffix[..6]}", null);
+            var visit = new Visit(
+                Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+                now, now.AddHours(1), new EffectiveParkingPolicySnapshot(null, null, true));
+            var action = hasProviderOperation
+                ? new DomainProviderParkingAction(Guid.NewGuid(), visit.Id, now, now.AddHours(1))
+                : null;
+            var operation = hasProviderOperation
+                ? new ProviderOperation(Guid.NewGuid(), visit.StartOperationId, visit.Id, action!.Id, ProviderOperationType.Start)
+                : null;
+            if (action is not null)
+                action.MarkStarting();
+            operation?.BeginAttempt();
+
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                if (action is not null)
+                    seed.ProviderParkingActions.Add(action);
+                if (operation is not null)
+                    seed.ProviderOperations.Add(operation);
+                seed.Entry(visit).Property(x => x.CreatedAt).CurrentValue = expired
+                    ? now.Subtract(ProviderOperationStartupRecovery.AttemptLease).AddSeconds(-1)
+                    : now;
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using var services = BuildServices(timeProvider: new ManualTimeProvider(now));
+            await using (var scope = services.CreateAsyncScope())
+                await scope.ServiceProvider.GetRequiredService<IVisitRecoveryService>()
+                    .ReconcileUnknownOperationsAsync(cancellationToken);
+
+            await using var verify = fixture.CreateDbContext();
+            var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+            var occupiedCapacity = await verify.Visits.CountAsync(
+                x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled,
+                cancellationToken);
+
+            Assert.Equal(expectedStatus, persistedVisit.Status);
+            Assert.Equal(expectedOccupiedCapacity, occupiedCapacity);
+        }
+        finally
+        {
+            await ClearVisitStateAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Start_store_cancels_unprepared_start_and_releases_capacity()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(cancellationToken);
+
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var suffix = Guid.NewGuid().ToString("N")[..8];
+            var user = new User(Guid.NewGuid(), $"cancel-start-{suffix}", $"CANCEL-START-{suffix}", "hash", UserRole.Visitor);
+            var vehicle = new Vehicle(Guid.NewGuid(), $"CS{suffix[..6]}", $"CS{suffix[..6]}", null);
+            var visit = new Visit(
+                Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+                now, now.AddHours(1), new EffectiveParkingPolicySnapshot(null, null, true));
+
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                await seed.SaveChangesAsync(cancellationToken);
+            }
+
+            await using var services = BuildServices();
+            await using (var scope = services.CreateAsyncScope())
+                Assert.True(await scope.ServiceProvider.GetRequiredService<IVisitStartStore>()
+                    .CancelUnpreparedStartAsync(visit.Id, cancellationToken));
+
+            await using var verify = fixture.CreateDbContext();
+            Assert.Equal(VisitStatus.Cancelled,
+                (await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Status);
+            Assert.Equal(0, await verify.Visits.CountAsync(
+                x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled,
+                cancellationToken));
+        }
+        finally
+        {
+            await ClearVisitStateAsync(cancellationToken);
+        }
+    }
+
     [Fact]
     public async Task Scheduled_cancel_confirmation_uses_readback_start_for_action_accounting()
     {

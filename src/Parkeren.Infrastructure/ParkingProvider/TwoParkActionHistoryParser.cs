@@ -9,7 +9,9 @@ public sealed record TwoParkHistoryAction(
     DateTime? StartLocal,
     DateTime? EndLocal,
     decimal? CostAmount,
-    string? Currency);
+    string? Currency,
+    string? LicensePlate = null,
+    string? Location = null);
 
 public sealed record TwoParkHistoryPage(
     IReadOnlyList<TwoParkHistoryAction> Actions,
@@ -31,12 +33,13 @@ public static class TwoParkActionHistoryParser
         {
             foreach (var action in actionArray.EnumerateArray())
             {
-                if (!action.TryGetProperty("atn_id", out var idElement))
-                    continue;
+                if (action.ValueKind != JsonValueKind.Object ||
+                    !action.TryGetProperty("atn_id", out var idElement))
+                    throw new JsonException("2Park history action has no provider action ID.");
 
                 var providerActionId = idElement.ToString();
                 if (string.IsNullOrWhiteSpace(providerActionId))
-                    continue;
+                    throw new JsonException("2Park history action has an empty provider action ID.");
 
                 var parameters = ReadParameters(action);
                 actions.Add(new TwoParkHistoryAction(
@@ -45,7 +48,9 @@ public static class TwoParkActionHistoryParser
                     ReadDate(parameters, "TIMESTART"),
                     ReadDate(parameters, "TIMEEND"),
                     ReadAmount(parameters, "COST"),
-                    ReadValue(parameters, "CURRENCY_DESC")));
+                    ReadValue(parameters, "CURRENCY_DESC"),
+                    ReadValue(parameters, "MBR_IDENT"),
+                    ReadValue(parameters, "LOCATION")));
             }
         }
 

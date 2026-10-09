@@ -134,6 +134,80 @@ public sealed class ParkingCapacitySettingsTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Fact]
+    public async Task External_active_actions_block_global_capacity_without_affecting_user_limit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitsAsync(ct);
+        var suffix = Guid.NewGuid().ToString("N");
+        var user = new User(Guid.NewGuid(), $"capacity-{suffix}", $"CAPACITY-{suffix}", "hash", UserRole.Visitor);
+        var plate = $"EC{suffix[..6].ToUpperInvariant()}";
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var product = new Parkeren.Domain.ParkingProvider.ParkingProviderProduct(
+            Guid.NewGuid(), $"external-capacity-{suffix}", "Test product", "182",
+            "Oss", "OSS_J", DateTimeOffset.UtcNow);
+        var observed = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var external = Enumerable.Range(0, 5).Select(i =>
+            new Parkeren.Domain.ParkingProvider.ProviderDiscrepancy(
+                Guid.NewGuid(), $"capacity-{suffix}-{i}",
+                Parkeren.Domain.ParkingProvider.ProviderDiscrepancyType.ExternalProviderAction,
+                product.Id, observed, providerActionId: $"external-{suffix}-{i}",
+                providerStatus: "ACTIVE", providerStartAt: observed)).ToArray();
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.ParkingProviderProducts.Add(product);
+                seed.ProviderDiscrepancies.AddRange(external);
+                (await seed.ParkingSystemSettings.SingleAsync(ct)).SetMaxConcurrentVisits(5);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            var services = CreateServices();
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var claimer = scope.ServiceProvider.GetRequiredService<IVisitCapacityClaimer>();
+            var start = DateTimeOffset.UtcNow;
+            var snapshot = new EffectiveParkingPolicySnapshot(
+                TimeSpan.FromHours(4), TimeSpan.FromHours(8), true);
+            var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id,
+                user.Id, start, start.AddHours(1), snapshot);
+
+            Assert.False((await claimer.TryClaimAsync(visit, 5, 1, ct)).Claimed);
+
+            await using (var update = fixture.CreateDbContext())
+            {
+                var fifth = await update.ProviderDiscrepancies.SingleAsync(
+                    x => x.Id == external[4].Id, ct);
+                fifth.Resolve(DateTimeOffset.UtcNow);
+                await update.SaveChangesAsync(ct);
+            }
+
+            Assert.True((await claimer.TryClaimAsync(visit, 5, 1, ct)).Claimed);
+
+            var nextVisit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id,
+                vehicle.Id, user.Id, start, start.AddHours(1), snapshot);
+            Assert.False((await claimer.TryClaimAsync(nextVisit, 5, 1, ct)).Claimed);
+        }
+        finally
+        {
+            await ClearVisitsAsync(ct);
+            await using var cleanup = fixture.CreateDbContext();
+            var ids = external.Select(x => x.Id).ToArray();
+            await cleanup.ProviderDiscrepancies.Where(x => ids.Contains(x.Id))
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ParkingProviderProducts.Where(x => x.Id == product.Id)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+            (await cleanup.ParkingSystemSettings.SingleAsync(ct)).SetMaxConcurrentVisits(5);
+            await cleanup.SaveChangesAsync(ct);
+        }
+    }
+
     private ServiceCollection CreateServices()
     {
         var configuration = new ConfigurationManager();

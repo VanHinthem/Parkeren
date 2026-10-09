@@ -1,0 +1,196 @@
+.admin-readonly-value{
+  min-height:2.5rem;
+  display:grid;
+  align-content:center;
+  padding:.42rem .65rem;
+  border:1px solid transparent;
+  border-radius:var(--radius-sm);
+  background:var(--color-surface-muted);
+  font-size:.8rem;
+}
+
+.admin-readonly-value--field{
+  min-height:2.65rem;
+}
+
+.admin-readonly-value>span{
+  display:block;
+  color:var(--color-text-muted);
+  font-size:.7rem;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+
+.admin-readonly-value>strong{
+  display:block;
+  margin-top:.12rem;
+}
+
+.admin-check{
+  display:flex;
+  align-items:center;
+  gap:.55rem;
+  min-height:2.65rem;
+  font-size:.84rem;
+  font-weight:650;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+.admin-check input[type="checkbox"]{
+  width:1rem;
+  height:1rem;
+  margin:0;
+  accent-color:var(--color-primary);
+}
+
+.admin-field__control--money{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+.admin-code-block{
+  margin:0;
+  padding:.7rem .8rem;
+  overflow:auto;
+  border-radius:var(--radius-sm);
+  background:var(--color-surface-muted);
+  color:var(--color-text);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  text-align:left;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size:.78rem;
+  line-height:1.45;
+}
+
+.admin-settings-form{
+  display:grid;
+  gap:.6rem;
+}
+
+.admin-setting-row{
+  display:grid;
+  grid-template-columns:minmax(12rem,1.08fr) minmax(13rem,.92fr);
+  gap:.8rem;
+  align-items:end;
+}
+
+.admin-setting-copy strong{
+  display:block;
+  font-size:.87rem;
+}
+
+.admin-setting-copy small{
+  display:block;
+  margin-top:.16rem;
+  color:var(--color-text-muted);
+  font-size:.78rem;
+  line-height:1.35;
+}
+
+.admin-setting-controls{
+  display:flex;
+  align-items:flex-end;
+  gap:.55rem;
+  min-width:0;
+  max-width:19rem;
+}
+
+.admin-setting-controls>.admin-field{
+  flex:1 1 8.5rem;
+  min-width:7.5rem;
+}
+
+.admin-setting-controls>.admin-check{
+  flex:0 0 auto;
+}
+
+.admin-action-group.admin-action-group--start{
+  justify-content:flex-start;
+  flex-wrap:wrap;
+}
+
+.admin-meta{
+  color:var(--color-text-muted);
+  font-size:.76rem;
+  line-height:1.4;
+}
+
+.admin-facts--grid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  border-top:1px solid var(--color-border);
+}
+
+.admin-facts--grid .admin-fact{
+  display:block;
+  padding:.7rem .8rem;
+  border-right:1px solid var(--color-border);
+  border-bottom:1px solid var(--color-border);
+}
+
+.admin-facts--grid .admin-fact:nth-child(3n){
+  border-right:0;
+}
+
+.admin-facts--grid .admin-fact dd{
+  margin-top:.22rem;
+}
+
+/* Shared 2Park-product selector/context layout. Keep the editable control and
+   readonly provider context aligned identically across configuration tabs. */
+.admin-rules .admin-rules__panel > .admin-rules__grid,
+.admin-finance .admin-finance__product-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:1rem;
+  align-items:end;
+}
+
+.admin-rules .admin-rules__panel > .admin-rules__grid > .admin-readonly-value,
+.admin-finance .admin-finance__product-grid > .admin-readonly-value{
+  align-self:end;
+}
+
+@media(max-width:900px){
+  .admin-facts--grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .admin-facts--grid .admin-fact:nth-child(3n){
+    border-right:1px solid var(--color-border);
+  }
+
+  .admin-facts--grid .admin-fact:nth-child(2n){
+    border-right:0;
+  }
+}
+
+@media(max-width:850px){
+  .admin-rules .admin-rules__panel > .admin-rules__grid,
+  .admin-finance .admin-finance__product-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:650px){
+  .admin-setting-row{
+    grid-template-columns:1fr;
+  }
+
+  .admin-setting-controls{
+    max-width:none;
+    flex-wrap:wrap;
+  }
+}
+
+@media(max-width:600px){
+  .admin-facts--grid{
+    grid-template-columns:1fr;
+  }
+
+  .admin-facts--grid .admin-fact{
+    border-right:0;
+  }
+}

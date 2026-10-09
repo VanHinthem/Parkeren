@@ -37,8 +37,9 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         (await http.PostAsync("api/test/reset", null, cancellationToken)).EnsureSuccessStatusCode();
         var parkingProvider = new TwoParkMockProvider(http);
 
-        var now = DateTimeOffset.UtcNow;
-        now = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+        // Keep the synthetic parking windows in daytime, even when CI runs at night.
+        // Use a future date so recovery does not treat scheduled work as overdue.
+        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddHours(9), TimeSpan.Zero);
         (await http.PostAsJsonAsync(
             "api/test/clock/set",
             new { UtcNow = now },
@@ -169,6 +170,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             });
             var services = new ServiceCollection();
             services.AddInfrastructure(configuration);
+            services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
             services.AddSingleton<IParkingProvider>(parkingProvider);
             services.AddLogging();
             await using var provider = services.BuildServiceProvider();
@@ -191,7 +193,10 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                     .ToListAsync(cancellationToken);
                 Assert.Equal(2, actions.Count);
                 Assert.Equal(ProviderActionState.Completed, actions[0].State);
-                Assert.Equal(ProviderActionState.Scheduled, actions[1].State);
+                var startOperation = await verifyContext.ProviderOperations.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.ProviderParkingActionId == actions[1].Id, cancellationToken);
+                Assert.True(actions[1].State == ProviderActionState.Scheduled,
+                    $"Expected Scheduled, got {actions[1].State}; operation status: {startOperation?.Status}, error: {startOperation?.LastErrorCode}, action health: {actions[1].Health}.");
                 Assert.Equal(ProviderHistoryStatus.Pending, actions[0].HistoryStatus);
                 var historyWork = await verifyContext.VisitSchedulerWork
                     .SingleAsync(x => x.ProviderParkingActionId == actions[0].Id, cancellationToken);
@@ -338,6 +343,11 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 .Where(x => x.Id == user.Id)
                 .ExecuteDeleteAsync(cancellationToken);
         }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     private static PaidWindow[] CreatePaidWindows(

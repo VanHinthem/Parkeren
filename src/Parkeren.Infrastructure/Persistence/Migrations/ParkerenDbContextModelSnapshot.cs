@@ -205,6 +205,59 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.ToTable("push_subscriptions", (string)null);
                 });
 
+            modelBuilder.Entity("Parkeren.Domain.ParkingProvider.ProviderHistorySyncRun", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<string>("Error").HasMaxLength(1000).HasColumnType("character varying(1000)");
+                    b.Property<DateTimeOffset?>("FinishedAt").HasColumnType("timestamp with time zone");
+                    b.Property<int>("InsertedCount").HasColumnType("integer");
+                    b.Property<string>("Mode").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+                    b.Property<string>("ProviderProductId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
+                    b.Property<int>("ReadCount").HasColumnType("integer");
+                    b.Property<int>("RefreshedCount").HasColumnType("integer");
+                    b.Property<int>("SkippedCount").HasColumnType("integer");
+                    b.Property<DateTimeOffset>("StartedAt").HasColumnType("timestamp with time zone");
+                    b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+                    b.HasKey("Id");
+                    b.HasIndex("ProviderProductId", "StartedAt");
+                    b.ToTable("provider_history_sync_runs", (string)null);
+                });
+
+            modelBuilder.Entity("Parkeren.Domain.ParkingProvider.ProviderHistorySyncState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("LastSuccessfulSyncAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("NextPageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PageSize")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderProductId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderProductId")
+                        .IsUnique();
+
+                    b.ToTable("provider_history_sync_states", (string)null);
+                });
+
             modelBuilder.Entity("Parkeren.Domain.ParkingProvider.ParkingProviderProduct", b =>
                 {
                     b.Property<Guid>("Id")
@@ -815,7 +868,19 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ActualStartAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("AssignedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AssignmentSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Unassigned");
+
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FirstObservedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Health")
@@ -827,6 +892,15 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Managed");
 
                     b.Property<DateTimeOffset>("PlannedEndAt")
                         .HasColumnType("timestamp with time zone");
@@ -858,6 +932,9 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -874,6 +951,10 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
                         .HasFilter("\"ProviderActionId\" IS NOT NULL");
 
                     b.HasIndex("VisitId");
+
+                    b.HasIndex("AssignedUserId");
+
+                    b.HasIndex("VehicleId");
 
                     b.ToTable("provider_parking_actions", (string)null);
                 });
@@ -1283,6 +1364,16 @@ namespace Parkeren.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Parkeren.Domain.Visits.ProviderParkingAction", b =>
                 {
+                    b.HasOne("Parkeren.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Parkeren.Domain.Vehicles.Vehicle", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Parkeren.Domain.Visits.Visit", null)
                         .WithMany()
                         .HasForeignKey("VisitId")

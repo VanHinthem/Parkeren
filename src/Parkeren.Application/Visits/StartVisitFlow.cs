@@ -107,8 +107,19 @@ public sealed class StartVisitFlow(
                 .Where(x => x.IsPaid)
                 .Aggregate(TimeSpan.Zero, (total, segment) => total + (segment.End - segment.Start));
 
-            await providerReadiness.CheckAsync(paidDuration, cancellationToken);
-            var providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, providerEndAt, cancellationToken);
+            ProviderStartPreparation providerPreparation;
+            try
+            {
+                await providerReadiness.CheckAsync(paidDuration, cancellationToken);
+            }
+            catch
+            {
+                await finalizer.CancelUnpreparedStartAsync(claim.Visit.Id, CancellationToken.None);
+                throw;
+            }
+
+            providerPreparation = await providerStartStore.PrepareAttemptAsync(claim, providerEndAt, cancellationToken);
+
             var execution = await providerExecutor.ExecuteAsync(
                 providerPreparation,
                 new ProviderStartRequest(

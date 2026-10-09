@@ -7,6 +7,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_acceptance_images:
+        description: Publish acceptance images to GHCR
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   changes:
@@ -43,6 +49,27 @@ jobs:
               - 'compose*.yml'
               - 'deploy/compose*.yml'
               - '.github/workflows/**'
+
+  validate-nas-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate standalone ACC and DEV Compose templates
+        env:
+          PARKEREN_DB_PASSWORD: ci-validation-placeholder
+          PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+          PARKEREN_GIT_POLL_SECONDS: '15'
+        run: |
+          docker compose -f deploy/nas/acc/docker-compose.yml config --quiet
+          docker compose -f deploy/nas/dev/docker-compose.yml config --quiet
+      - name: Check DEV controller shell interpolation
+        env:
+          PARKEREN_DB_PASSWORD: ci-validation-placeholder
+          PARKEREN_ACTIVE_BRANCH: feature/compose-validation
+          PARKEREN_GIT_POLL_SECONDS: '15'
+        run: |
+          docker compose -f deploy/nas/dev/docker-compose.yml config --format json |
+            python3 -c 'import json,sys; c=json.load(sys.stdin)["services"]["branch-controller"]["command"]; script="\n".join(c) if isinstance(c,list) else c; assert all(token in script for token in ("$branch","$interval","$(git ")), "controller shell variables were interpolated by Compose"'
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -115,7 +142,7 @@ jobs:
           PARKEREN_BUILD_ID: ${{ github.sha }}
           PARKEREN_APP_VARIANT: production
         run: npm run build && npm run check:pwa
-      - name: Build and check development PWA
+      - name: Build and check acceptance PWA
         env:
           PARKEREN_BUILD_ID: ${{ github.sha }}
           PARKEREN_APP_VARIANT: dev
@@ -149,14 +176,20 @@ jobs:
             exit 1
           fi
 
-  build-development-images:
+  build-acceptance-images:
     if: >-
       always() &&
       (
         (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
-        (github.event_name == 'pull_request' && github.base_ref == 'develop')
+        (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/develop' &&
+          inputs.publish_acceptance_images
+        )
       ) &&
       (
+        github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.backend == 'true' ||
         needs.changes.outputs.frontend == 'true'
       ) &&
@@ -174,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build development app image
+      - name: Build acceptance app image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -182,12 +215,12 @@ jobs:
           load: true
           push: false
           tags: |
-            parkeren-app:dev-${{ github.sha }}
-            parkeren-app:dev
+            parkeren-app:acc-${{ github.sha }}
+            parkeren-app:acc
           build-args: |
             PARKEREN_BUILD_ID=${{ github.sha }}
             PARKEREN_APP_VERSION=dev
-            PARKEREN_APP_VARIANT=dev
+            PARKEREN_APP_VARIANT=acc
           labels: |
             org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
       - name: Build TwoPark mock image
@@ -198,20 +231,20 @@ jobs:
           load: true
           push: false
           tags: |
-            parkeren-two-park-mock:dev-${{ github.sha }}
-            parkeren-two-park-mock:dev
+            parkeren-two-park-mock:acc-${{ github.sha }}
+            parkeren-two-park-mock:acc
           labels: |
             org.opencontainers.image.source=https://github.com/VanHinthem/Parkeren
       - name: Verify development image tags
         run: |
-          docker image inspect parkeren-app:dev-${GITHUB_SHA}
-          docker image inspect parkeren-app:dev
-          docker image inspect parkeren-two-park-mock:dev-${GITHUB_SHA}
-          docker image inspect parkeren-two-park-mock:dev
+          docker image inspect parkeren-app:acc-${GITHUB_SHA}
+          docker image inspect parkeren-app:acc
+          docker image inspect parkeren-two-park-mock:acc-${GITHUB_SHA}
+          docker image inspect parkeren-two-park-mock:acc
       - name: Scan development app image for secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: parkeren-app:dev-${{ github.sha }}
+          image-ref: parkeren-app:acc-${{ github.sha }}
           scanners: secret
           format: json
           output: trivy-app-secrets.json
@@ -220,7 +253,7 @@ jobs:
       - name: Scan development app image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: parkeren-app:dev-${{ github.sha }}
+          image-ref: parkeren-app:acc-${{ github.sha }}
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: false
@@ -230,7 +263,7 @@ jobs:
       - name: Scan TwoPark mock image for secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: parkeren-two-park-mock:dev-${{ github.sha }}
+          image-ref: parkeren-two-park-mock:acc-${{ github.sha }}
           scanners: secret
           format: json
           output: trivy-mock-secrets.json
@@ -240,43 +273,61 @@ jobs:
       - name: Scan TwoPark mock image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: parkeren-two-park-mock:dev-${{ github.sha }}
+          image-ref: parkeren-two-park-mock:acc-${{ github.sha }}
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: '1'
           skip-setup-trivy: true
           hide-progress: true
-      - name: Save scanned development images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+      - name: Save scanned acceptance images
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            github.ref == 'refs/heads/develop' &&
+            inputs.publish_acceptance_images
+          )
         run: |
           docker save -o dev-images.tar \
-            parkeren-app:dev-${GITHUB_SHA} \
-            parkeren-app:dev \
-            parkeren-two-park-mock:dev-${GITHUB_SHA} \
-            parkeren-two-park-mock:dev
-      - name: Upload scanned development images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+            parkeren-app:acc-${GITHUB_SHA} \
+            parkeren-app:acc \
+            parkeren-two-park-mock:acc-${GITHUB_SHA} \
+            parkeren-two-park-mock:acc
+      - name: Upload scanned acceptance images
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            github.ref == 'refs/heads/develop' &&
+            inputs.publish_acceptance_images
+          )
         uses: actions/upload-artifact@v4
         with:
-          name: development-images-${{ github.sha }}
+          name: acceptance-images-${{ github.sha }}
           path: dev-images.tar
           compression-level: 0
           retention-days: 1
 
-  publish-development-images:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    needs: [build-development-images]
+  publish-acceptance-images:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/develop' &&
+        inputs.publish_acceptance_images
+      )
+    needs: [build-acceptance-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Download scanned development images
+      - name: Download scanned acceptance images
         uses: actions/download-artifact@v4
         with:
-          name: development-images-${{ github.sha }}
-      - name: Load scanned development images
+          name: acceptance-images-${{ github.sha }}
+      - name: Load scanned acceptance images
         run: docker load --input dev-images.tar
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -284,18 +335,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tag and publish development images
+      - name: Tag and publish acceptance images
         env:
           IMAGE_SHA: ${{ github.sha }}
         run: |
-          docker tag parkeren-app:dev-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-app:dev-${IMAGE_SHA}
-          docker tag parkeren-app:dev ghcr.io/vanhinthem/parkeren-app:dev
-          docker tag parkeren-two-park-mock:dev-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-two-park-mock:dev-${IMAGE_SHA}
-          docker tag parkeren-two-park-mock:dev ghcr.io/vanhinthem/parkeren-two-park-mock:dev
-          docker push ghcr.io/vanhinthem/parkeren-app:dev-${IMAGE_SHA}
-          docker push ghcr.io/vanhinthem/parkeren-app:dev
-          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:dev-${IMAGE_SHA}
-          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:dev
+          docker tag parkeren-app:acc-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-app:acc-${IMAGE_SHA}
+          docker tag parkeren-app:acc ghcr.io/vanhinthem/parkeren-app:acc
+          docker tag parkeren-two-park-mock:acc-${IMAGE_SHA} ghcr.io/vanhinthem/parkeren-two-park-mock:acc-${IMAGE_SHA}
+          docker tag parkeren-two-park-mock:acc ghcr.io/vanhinthem/parkeren-two-park-mock:acc
+          docker push ghcr.io/vanhinthem/parkeren-app:acc-${IMAGE_SHA}
+          docker push ghcr.io/vanhinthem/parkeren-app:acc
+          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:acc-${IMAGE_SHA}
+          docker push ghcr.io/vanhinthem/parkeren-two-park-mock:acc
 
   build-release-image:
     if: >-

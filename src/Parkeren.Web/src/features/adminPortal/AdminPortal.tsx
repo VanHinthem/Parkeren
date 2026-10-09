@@ -1,9 +1,12 @@
 import type { MouseEvent } from "react";
 import { AdminDashboard } from "./AdminDashboard";
-import { AdminVisitsPage,AdminVisitDetailPage } from "./AdminVisitsPage";
+import { AdminVisitsPage } from "./AdminVisitsPage";
+import { AdminVisitDetailPage } from "./AdminVisitDetailPage";
 import { AdminProviderPage } from "./AdminProviderPage";
+import { AdminProviderHistoryPage } from "./AdminProviderHistoryPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
-import { AdminUsersPage,AdminUserDetailPage } from "./AdminUsersPage";
+import { AdminUserDetailPage } from "./AdminUserDetailPage";
+import { AdminUsersOverviewPage } from "./AdminUsersOverviewPage";
 import { AdminSystemPage } from "./AdminSystemPage";
 import { AdminSystemDiagnosticsPage } from "./AdminSystemDiagnosticsPage";
 import { AdminSystemAuditPage } from "./AdminSystemAuditPage";
@@ -11,6 +14,7 @@ import { AdminParkingRulesPage } from "./AdminParkingRulesPage";
 import { AdminFinanceConfigPage } from "./AdminFinanceConfigPage";
 import { AdminUsagePage } from "./AdminUsagePage";
 import { AdminAnalysisPage } from "./AdminAnalysisPage";
+import "./adminTablePresentation.css";
 import "./AdminPortal.css";
 
 type Props = {
@@ -145,11 +149,11 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
             )
           ) : section.path === "/beheer/gebruikers" ? (
             currentPath === "/beheer/voertuigen" ? (
-              <AdminUsersPage mode="vehicles" />
+              <AdminUsersOverviewPage mode="vehicles" />
             ) : currentPath.startsWith("/beheer/gebruikers/") ? (
               <AdminUserDetailPage userId={currentPath.slice("/beheer/gebruikers/".length)} />
             ) : (
-              <AdminUsersPage mode="users" />
+              <AdminUsersOverviewPage mode="users" />
             )
           ) : section.path === "/beheer/configuratie" ? (
             currentPath === "/beheer/configuratie" || currentPath === "/beheer/configuratie/parkeerregels" ? (
@@ -167,19 +171,14 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           ) : section.path === "/beheer/provider" ? (
             currentPath === "/beheer/provider/afwijkingen" ? (
               <AdminProviderDiscrepanciesPage />
+            ) : currentPath === "/beheer/provider/historie" ? (
+              <AdminProviderHistoryPage />
             ) : (
               <AdminProviderPage />
             )
           ) : section.path === "/beheer/systeem" ? (
             currentPath === "/beheer/systeem" ? (
-              <>
-                <section className="admin-portal__panel admin-portal__placeholder">
-                  <h2>Beheeraudit</h2>
-                  <p>Bekijk recente administratieve mutaties met actor, target en veilige context.</p>
-                  <p><a href="/beheer/systeem/audit">Auditlog openen</a></p>
-                </section>
-                <AdminSystemPage />
-              </>
+              <AdminSystemPage />
             ) : currentPath === "/beheer/systeem/diagnostiek" ? (
               <AdminSystemDiagnosticsPage />
             ) : currentPath === "/beheer/systeem/audit" ? (

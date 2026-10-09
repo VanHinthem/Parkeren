@@ -19,18 +19,24 @@ function resolveBuildId(): string {
 function resolveAppVersion(): string {
   const configured = process.env.PARKEREN_APP_VERSION;
   if (configured) return configured;
-  return process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "local";
+  return ["dev", "acc"].includes(process.env.PARKEREN_APP_VARIANT ?? "") ? process.env.PARKEREN_APP_VARIANT! : "local";
 }
 
-const appVariant = process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
-const appName = appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
-const appIcon192 = appVariant === "dev" ? "/pwa-192x192-dev.png" : "/pwa-192x192.png";
-const appIcon512 = appVariant === "dev" ? "/pwa-512x512-dev.png" : "/pwa-512x512.png";
+const appVariant = process.env.PARKEREN_APP_VARIANT === "acc" ? "acc" : process.env.PARKEREN_APP_VARIANT === "dev" ? "dev" : "production";
+const apiProxyTarget = process.env.PARKEREN_API_PROXY_TARGET ?? "http://localhost:5080";
+const pwaDevEnabled = process.env.PARKEREN_PWA_DEV === "true";
+const devHmrHost = process.env.PARKEREN_HMR_HOST;
+const appName = appVariant === "acc" ? "Parkeren ACC" : appVariant === "dev" ? "Parkeren Dev" : "Parkeren";
+const appIcon192 = appVariant === "production" ? "/pwa-192x192.png" : `/pwa-192x192-${appVariant}.png`;
+const appIcon512 = appVariant === "production" ? "/pwa-512x512.png" : `/pwa-512x512-${appVariant}.png`;
+const notificationBadge = "/notification-badge.png";
 
 export default defineConfig({
   define: {
     __PARKEREN_BUILD_ID__: JSON.stringify(resolveBuildId()),
-    __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion())
+    __PARKEREN_APP_VERSION__: JSON.stringify(resolveAppVersion()),
+    __PARKEREN_NOTIFICATION_ICON__: JSON.stringify(appIcon192),
+    __PARKEREN_NOTIFICATION_BADGE__: JSON.stringify(notificationBadge)
   },
   plugins: [
     react(),
@@ -43,6 +49,10 @@ export default defineConfig({
         // Never precache the SPA shell. Navigations must fetch the current
         // index.html so a deployment cannot revive an older asset graph.
         globIgnores: ["**/index.html"]
+      },
+      devOptions: {
+        enabled: pwaDevEnabled,
+        type: "module"
       },
       manifest: {
         name: appName,
@@ -72,21 +82,36 @@ export default defineConfig({
     {
       name: "parkeren-app-variant",
       transformIndexHtml(html) {
-        return html.replace("<title>Parkeren</title>", `<title>${appName}</title>`);
+        return html
+          .replace("<title>Parkeren</title>", `<title>${appName}</title>`)
+          .replace(
+            "</head>",
+            `    <link rel="apple-touch-icon" sizes="192x192" href="${appIcon192}" />\n  </head>`
+          );
       },
       async closeBundle() {
-        if (appVariant !== "dev") return;
+        if (appVariant === "production") return;
 
         await copyFile(
-          fileURLToPath(new URL("./public/pwa-192x192-dev.png", import.meta.url)),
+          fileURLToPath(new URL(`./public/pwa-192x192-${appVariant}.png`, import.meta.url)),
           fileURLToPath(new URL("./dist/pwa-192x192.png", import.meta.url))
         );
       }
     }
   ],
   server: {
+    watch: {
+      usePolling: true
+    },
+    ...(devHmrHost ? {
+      hmr: {
+        protocol: "wss" as const,
+        host: devHmrHost,
+        clientPort: 443
+      }
+    } : {}),
     proxy: {
-      "/api": "http://localhost:5080"
+      "/api": apiProxyTarget
     }
   },
   build: {

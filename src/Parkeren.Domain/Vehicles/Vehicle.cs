@@ -25,6 +25,26 @@ public sealed class Vehicle
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// Registers an otherwise unknown plate observed in provider history.
+    /// History alone does not authorize parking or create a UserVehicle assignment.
+    /// </summary>
+    public static Vehicle FromProviderHistory(Guid id, string licensePlate)
+    {
+        if (id == Guid.Empty)
+            throw new ArgumentException("Vehicle id is required.", nameof(id));
+        if (string.IsNullOrWhiteSpace(licensePlate))
+            throw new ArgumentException("License plate is required.", nameof(licensePlate));
+
+        var normalizedPlate = NormalizeLicensePlate(licensePlate);
+        if (string.IsNullOrEmpty(normalizedPlate))
+            throw new ArgumentException("License plate must contain letters or digits.", nameof(licensePlate));
+
+        var vehicle = new Vehicle(id, normalizedPlate, normalizedPlate, null);
+        vehicle.Deactivate();
+        return vehicle;
+    }
+
     public Guid Id { get; private set; }
     public string LicensePlate { get; private set; } = string.Empty;
     public string NormalizedLicensePlate { get; private set; } = string.Empty;

@@ -17,6 +17,8 @@ public sealed class TwoParkActionHistoryParserTests
         Assert.Equal(new DateTime(2026, 10, 3, 11, 36, 47, DateTimeKind.Unspecified), action.EndLocal);
         Assert.Equal(0.01m, action.CostAmount);
         Assert.Equal("EUR", action.Currency);
+        Assert.Equal("XX-00-XX", action.LicensePlate);
+        Assert.Equal("OSS Zone J", action.Location);
         Assert.Equal(10, page.StartIndex);
         Assert.Equal(19, page.StopIndex);
         Assert.Equal(20, page.MaxIndex);
@@ -33,6 +35,8 @@ public sealed class TwoParkActionHistoryParserTests
         Assert.Null(action.StartLocal);
         Assert.Null(action.CostAmount);
         Assert.Null(action.Currency);
+        Assert.Null(action.LicensePlate);
+        Assert.Null(action.Location);
         Assert.Null(page.StartIndex);
         Assert.Null(page.StopIndex);
         Assert.Null(page.MaxIndex);
@@ -47,6 +51,18 @@ public sealed class TwoParkActionHistoryParserTests
 
         Assert.Empty(page.Actions);
         Assert.Null(page.StartIndex);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"atn_id\":\"\"}")]
+    public void Rejects_history_actions_without_valid_provider_id(string actionJson)
+    {
+        using var document = JsonDocument.Parse(
+            "{\"data\":{\"actions\":[" + actionJson + "]}}");
+
+        Assert.Throws<JsonException>(() =>
+            TwoParkActionHistoryParser.Parse(document.RootElement));
     }
 
     private static TwoParkHistoryPage ParseFixture(string name)

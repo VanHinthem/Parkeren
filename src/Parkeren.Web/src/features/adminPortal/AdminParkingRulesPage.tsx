@@ -10,6 +10,7 @@ import {
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
+import "./adminFieldPresentation.css";
 import "./AdminParkingRules.css";
 
 type WindowRow={key:number;day:DayOfWeekName;start:string;end:string};
@@ -43,9 +44,10 @@ function nextVersionDate(latest:AdminParkingRuleSetVersion|undefined){
 }
 
 function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"})
-    : "doorlopend";
+  if(value===null)return "doorlopend";
+  const date=new Date(value);
+  if(date.getTime()===0)return "Basisversie";
+  return date.toLocaleString("nl-NL",{dateStyle:"medium",timeStyle:"short"});
 }
 
 function formatDuration(minutes:number){
@@ -209,11 +211,10 @@ export function AdminParkingRulesPage(){
   </div>;
 
   return <div className="admin-rules">
-    <nav className="admin-rules__tabs" aria-label="Parkeerconfiguratie">
-      <a className="admin-rules__tab" href="/beheer/provider">Providerproducten</a>
-      <a className="admin-rules__tab active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
-      <a className="admin-rules__tab" href="/beheer/configuratie/tarieven">Tarieven</a>
-      <a className="admin-rules__tab" href="/beheer/configuratie/budgetten">Budgetten</a>
+    <nav className="admin-subnav" aria-label="Parkeerconfiguratie">
+      <a className="admin-subnav__link active" href="/beheer/configuratie/parkeerregels">Parkeerregels</a>
+      <a className="admin-subnav__link" href="/beheer/configuratie/tarieven">Tarieven</a>
+      <a className="admin-subnav__link" href="/beheer/configuratie/budgetten">Budgetten</a>
     </nav>
 
     {error&&<Alert tone="danger">{error}</Alert>}
@@ -224,7 +225,7 @@ export function AdminParkingRulesPage(){
       {products.length===0
         ? <p>Er zijn nog geen providerproducten gesynchroniseerd. Synchroniseer ze eerst onder <a href="/beheer/provider">Provider & reconciliatie</a>.</p>
         : <div className="admin-rules__grid">
-            <label className="admin-rules__field">
+            <label className="admin-field">
               <span>Configuratie voor</span>
               <select value={selectedProductId??""} onChange={event=>setSelectedProductId(event.target.value)}>
                 {products.map(product=><option key={product.id} value={product.id}>
@@ -232,7 +233,7 @@ export function AdminParkingRulesPage(){
                 </option>)}
               </select>
             </label>
-            {selectedProductId&&<div className="admin-rules__fact">
+            {selectedProductId&&<div className="admin-readonly-value admin-readonly-value--field">
               <span>Providercontext</span>
               <strong>{products.find(product=>product.id===selectedProductId)?.location??"—"}</strong>
             </div>}
@@ -245,67 +246,71 @@ export function AdminParkingRulesPage(){
 
       <div className="admin-rules__form">
         <div className="admin-rules__grid">
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Geldig vanaf</span>
             <input type="datetime-local" value={validFrom} onChange={event=>setValidFrom(event.target.value)}/>
           </label>
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Max. provider-actieduur (uren)</span>
-            <input type="number" min=".25" step=".25" value={maxActionHours} onChange={event=>setMaxActionHours(event.target.value)}/>
+            <input className="admin-field__control--number" type="number" min=".25" step=".25" value={maxActionHours} onChange={event=>setMaxActionHours(event.target.value)}/>
           </label>
-          <label className="admin-rules__field">
+          <label className="admin-field">
             <span>Continuation</span>
             <select value={continuation} onChange={event=>setContinuation(event.target.value as "ExtendAction"|"StartNewAction")}>
               <option value="StartNewAction">Nieuwe aansluitende provideractie</option>
               <option value="ExtendAction">Bestaande provideractie verlengen</option>
             </select>
           </label>
-          <label className="admin-rules__check">
+          <label className="admin-check">
             <input type="checkbox" checked={publicHolidaysFree} onChange={event=>setPublicHolidaysFree(event.target.checked)}/>
-            Nederlandse feestdagen gratis
+            <span>Nederlandse feestdagen gratis</span>
           </label>
         </div>
 
-        <div className="admin-rules__subsection">
+        <div className="admin-rules__subsection admin-rules__subsection--windows">
           <div className="admin-rules__subsection-head">
             <h3>Betaalvensters</h3>
-            <Button variant="secondary" onClick={()=>setWindows(rows=>[...rows,{key:nextKey++,day:"Monday",start:"09:00",end:"20:00"}])}>Venster toevoegen</Button>
+            <Button className="admin-action--compact" variant="secondary" onClick={()=>setWindows(rows=>[...rows,{key:nextKey++,day:"Monday",start:"09:00",end:"20:00"}])}>Venster toevoegen</Button>
           </div>
-          {windows.length===0?<p className="admin-rules__empty">Geen betaalvensters: alle reguliere tijden zijn gratis.</p>:null}
-          <div className="admin-rules__rows">
-            {windows.map(row=><div className="admin-rules__row" key={row.key}>
-              <label className="admin-rules__field">
-                <span>Dag</span>
-                <select value={row.day} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,day:event.target.value as DayOfWeekName}:item))}>
-                  {days.map(day=><option key={day} value={day}>{dayLabels[day]}</option>)}
-                </select>
-              </label>
-              <label className="admin-rules__field"><span>Start</span><input type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></label>
-              <label className="admin-rules__field"><span>Einde</span><input type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></label>
-              <button className="admin-rules__remove" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</button>
-            </div>)}
-          </div>
+          {windows.length===0
+            ? <p className="admin-rules__empty">Geen betaalvensters: alle reguliere tijden zijn gratis.</p>
+            : <div className="admin-table-wrap">
+                <table className="admin-table admin-table--fixed admin-rules__window-table">
+                  <thead><tr><th>Dag</th><th>Start</th><th>Einde</th><th aria-label="Acties"/></tr></thead>
+                  <tbody>
+                    {windows.map(row=><tr key={row.key}>
+                      <td><select className="admin-table__control" aria-label="Dag" value={row.day} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,day:event.target.value as DayOfWeekName}:item))}>{days.map(day=><option key={day} value={day}>{dayLabels[day]}</option>)}</select></td>
+                      <td><input className="admin-table__control" aria-label="Start" type="time" value={row.start} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,start:event.target.value}:item))}/></td>
+                      <td><input className="admin-table__control" aria-label="Einde" type="time" value={row.end} onChange={event=>setWindows(rows=>rows.map(item=>item.key===row.key?{...item,end:event.target.value}:item))}/></td>
+                      <td className="admin-table__actions"><Button className="admin-action--compact" variant="danger" type="button" onClick={()=>setWindows(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>}
         </div>
 
         <div className="admin-rules__subsection">
           <div className="admin-rules__subsection-head">
             <h3>Kalenderuitzonderingen</h3>
-            <Button variant="secondary" onClick={()=>setExceptions(rows=>[...rows,{key:nextKey++,date:"",isPaid:false}])}>Uitzondering toevoegen</Button>
+            <Button className="admin-action--compact" variant="secondary" onClick={()=>setExceptions(rows=>[...rows,{key:nextKey++,date:"",isPaid:false}])}>Uitzondering toevoegen</Button>
           </div>
-          {exceptions.length===0?<p className="admin-rules__empty">Geen expliciete kalenderuitzonderingen in deze versie.</p>:null}
-          <div className="admin-rules__rows">
-            {exceptions.map(row=><div className="admin-rules__row admin-rules__exception-row" key={row.key}>
-              <label className="admin-rules__field"><span>Datum</span><input type="date" value={row.date} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,date:event.target.value}:item))}/></label>
-              <label className="admin-rules__field">
-                <span>Gedrag</span>
-                <select value={row.isPaid?"paid":"free"} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,isPaid:event.target.value==="paid"}:item))}>
-                  <option value="free">Gratis</option>
-                  <option value="paid">Betaald</option>
-                </select>
-              </label>
-              <button className="admin-rules__remove" type="button" onClick={()=>setExceptions(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</button>
-            </div>)}
-          </div>
+          {exceptions.length===0
+            ? <p className="admin-rules__empty">Geen expliciete kalenderuitzonderingen in deze versie.</p>
+            : <div className="admin-table-wrap">
+                <table className="admin-table admin-table--fixed admin-rules__exception-table">
+                  <thead><tr><th>Datum</th><th>Gedrag</th><th aria-label="Acties"/></tr></thead>
+                  <tbody>
+                    {exceptions.map(row=><tr key={row.key}>
+                      <td><input className="admin-table__control" aria-label="Datum" type="date" value={row.date} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,date:event.target.value}:item))}/></td>
+                      <td><select className="admin-table__control" aria-label="Gedrag" value={row.isPaid?"paid":"free"} onChange={event=>setExceptions(rows=>rows.map(item=>item.key===row.key?{...item,isPaid:event.target.value==="paid"}:item))}>
+                        <option value="free">Gratis</option>
+                        <option value="paid">Betaald</option>
+                      </select></td>
+                      <td className="admin-table__actions"><Button className="admin-action--compact" variant="danger" type="button" onClick={()=>setExceptions(rows=>rows.filter(item=>item.key!==row.key))}>Verwijderen</Button></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>}
         </div>
 
         <div className="admin-rules__actions">

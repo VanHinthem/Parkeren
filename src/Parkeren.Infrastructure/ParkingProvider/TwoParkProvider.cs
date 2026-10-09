@@ -212,7 +212,10 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
         var startIndex = checked(pageNumber * pageSize + 1);
         var stopIndex = checked(startIndex + pageSize - 1);
-        if (historyMaxIndexByProduct.TryGetValue(providerProductId, out var maxIndex))
+        // Always refresh the provider maximum on the first page of a new run.
+        // Otherwise a prior small history (even maxindex=0) can truncate or
+        // suppress subsequent imports after more actions have been created.
+        if (pageNumber > 0 && historyMaxIndexByProduct.TryGetValue(providerProductId, out var maxIndex))
         {
             if (startIndex > maxIndex)
                 return new ProviderActionHistoryPage([], pageNumber, pageSize, maxIndex);
@@ -232,8 +235,90 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         if (historyPage.MaxIndex is not int pageMaxIndex || pageMaxIndex < 0)
             throw new JsonException("2Park action history response has no valid maxindex.");
 
+        // Changing provider totals during a traversal invalidate its indexed
+        // pages. Reject the page rather than committing a potentially partial run.
+        if (pageNumber > 0 &&
+            historyMaxIndexByProduct.TryGetValue(providerProductId, out var priorMaxIndex) &&
+            priorMaxIndex != pageMaxIndex)
+            throw new JsonException("2Park history maxindex changed during the import.");
+
         historyMaxIndexByProduct[providerProductId] = pageMaxIndex;
-        var records = historyPage.Actions
+
+        // A short terminal page can omit an action at its leading boundary.
+        // Probe one preceding index only when the final range has room for
+        // an overlapping record without exceeding the public page size.
+        var actions = historyPage.Actions.ToList();
+        var actualStop = historyPage.StopIndex;
+        if (pageNumber > 0 && stopIndex == pageMaxIndex &&
+            stopIndex - startIndex + 1 < pageSize &&
+            actualStop is int reportedStop && reportedStop < stopIndex)
+        {
+            var overlapStart = startIndex - 1;
+            using var overlapData = await PostAsync("get_action_history.json",
+                new Dictionary<string, string>
+                {
+                    ["product_id"] = providerProductId,
+                    ["locale"] = Locale,
+                    ["startindex"] = overlapStart.ToString(CultureInfo.InvariantCulture),
+                    ["stopindex"] = stopIndex.ToString(CultureInfo.InvariantCulture)
+                }, cancellationToken);
+            var overlap = TwoParkActionHistoryParser.Parse(overlapData.RootElement);
+            if (overlap.MaxIndex != pageMaxIndex ||
+                overlap.StartIndex != overlapStart ||
+                overlap.StopIndex is not int overlapStop ||
+                overlapStop < reportedStop ||
+                overlapStop > stopIndex ||
+                overlap.Actions.Count > pageSize)
+                throw new JsonException("2Park history overlapping terminal page could not be verified.");
+
+            foreach (var action in overlap.Actions)
+            {
+                if (!actions.Any(x => string.Equals(
+                        x.ProviderActionId, action.ProviderActionId, StringComparison.Ordinal)))
+                    actions.Add(action);
+            }
+            actualStop = overlapStop;
+        }
+
+        // Only retry an individually addressable terminal index if even the
+        // overlapping read still reports a short range.
+        if (stopIndex == pageMaxIndex &&
+            actualStop is int verifiedStop &&
+            verifiedStop >= startIndex - 1 &&
+            verifiedStop < stopIndex)
+        {
+            for (var index = verifiedStop + 1; index <= stopIndex; index++)
+            {
+                using var tailData = await PostAsync("get_action_history.json",
+                    new Dictionary<string, string>
+                    {
+                        ["product_id"] = providerProductId,
+                        ["locale"] = Locale,
+                        ["startindex"] = index.ToString(CultureInfo.InvariantCulture),
+                        ["stopindex"] = index.ToString(CultureInfo.InvariantCulture)
+                    }, cancellationToken);
+                var tail = TwoParkActionHistoryParser.Parse(tailData.RootElement);
+                if (tail.MaxIndex != pageMaxIndex ||
+                    tail.StartIndex != index ||
+                    tail.StopIndex != index ||
+                    tail.Actions.Count != 1)
+                    throw new JsonException("2Park history terminal index could not be verified.");
+                if (!actions.Any(x => string.Equals(
+                        x.ProviderActionId, tail.Actions[0].ProviderActionId, StringComparison.Ordinal)))
+                    actions.Add(tail.Actions[0]);
+            }
+        }
+
+        if (actions.Count > pageSize)
+            throw new JsonException("2Park history terminal page exceeds the requested page size.");
+
+        // Never silently lose a completed action with an invalid interval:
+        // the caller must not checkpoint an incomplete history page.
+        if (actions.Any(x => string.Equals(x.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase) &&
+            (!x.StartLocal.HasValue || !x.EndLocal.HasValue)))
+            throw new JsonException("2Park completed history action has missing or invalid timestamps.");
+
+        var records = actions
             .Where(x => x.StartLocal.HasValue && x.EndLocal.HasValue)
             .Select(x => new ProviderActionHistoryRecord(
                 x.ProviderActionId,
@@ -241,7 +326,9 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
                 ParseProviderTime(x.StartLocal!.Value),
                 ParseProviderTime(x.EndLocal!.Value),
                 x.CostAmount,
-                x.Currency))
+                x.Currency,
+                x.LicensePlate is null ? null : NormalizePlate(x.LicensePlate),
+                x.Location))
             .ToArray();
 
         return new ProviderActionHistoryPage(records, pageNumber, pageSize, pageMaxIndex);

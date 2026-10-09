@@ -56,6 +56,10 @@
   margin-bottom:1rem;
 }
 
+.admin-users__create-action{
+  min-width:9.5rem;
+}
+
 .admin-users__field{
   display:grid;
   gap:.35rem;
@@ -74,42 +78,36 @@
   color:var(--color-text);
 }
 
-.admin-users__table-wrap{
-  overflow-x:auto;
+.admin-users__table--users{
+  min-width:58rem;
 }
 
-.admin-users__table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:.84rem;
+.admin-users__table--users th:nth-child(1),
+.admin-users__table--users td:nth-child(1){width:20%;}
+.admin-users__table--users th:nth-child(2),
+.admin-users__table--users td:nth-child(2){width:14%;}
+.admin-users__table--users th:nth-child(3),
+.admin-users__table--users td:nth-child(3){width:14%;}
+.admin-users__table--users th:nth-child(4),
+.admin-users__table--users td:nth-child(4){width:12%;}
+.admin-users__table--users th:nth-child(5),
+.admin-users__table--users td:nth-child(5){width:40%;}
+
+.admin-users__table--vehicles{
+  min-width:48rem;
 }
 
-.admin-users__table th,
-.admin-users__table td{
-  padding:.72rem .58rem;
-  border-bottom:1px solid var(--color-border);
-  text-align:left;
-  vertical-align:middle;
-  white-space:nowrap;
-}
-
-.admin-users__table th{
-  color:var(--color-text-muted);
-  font-size:.71rem;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.035em;
-}
-
-.admin-users__table tr:last-child td{
-  border-bottom:0;
-}
+.admin-users__table--vehicles th:nth-child(1),
+.admin-users__table--vehicles td:nth-child(1){width:24%;}
+.admin-users__table--vehicles th:nth-child(2),
+.admin-users__table--vehicles td:nth-child(2){width:32%;}
+.admin-users__table--vehicles th:nth-child(3),
+.admin-users__table--vehicles td:nth-child(3){width:14%;}
+.admin-users__table--vehicles th:nth-child(4),
+.admin-users__table--vehicles td:nth-child(4){width:30%;}
 
 .admin-users__actions{
-  display:flex;
   flex-wrap:wrap;
-  justify-content:flex-end;
-  gap:.45rem;
 }
 
 .admin-users__link{
@@ -164,7 +162,7 @@
   background:var(--color-surface-muted);
 }
 
-.admin-user-detail__summary-item span{
+.admin-user-detail__summary-item>span{
   display:block;
   color:var(--color-text-muted);
   font-size:.72rem;
@@ -173,16 +171,30 @@
   letter-spacing:.035em;
 }
 
-.admin-user-detail__summary-item strong{
+.admin-user-detail__summary-item>strong{
   display:block;
   margin-top:.28rem;
+}
+
+.admin-user-detail__summary-status .admin-status{
+  color:var(--color-text);
+  font-size:.86rem;
+  font-weight:650;
+  text-transform:none;
+  letter-spacing:0;
 }
 
 .admin-user-detail__columns{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:1rem;
-  align-items:start;
+  align-items:stretch;
+}
+
+.admin-user-detail__column-panel{
+  min-height:100%;
+  display:flex;
+  flex-direction:column;
 }
 
 .admin-user-detail__list{
@@ -204,11 +216,24 @@
 .admin-user-detail__row-copy{
   min-width:0;
   display:grid;
-  gap:.18rem;
+  gap:.22rem;
+}
+
+.admin-user-detail__vehicle-main{
+  display:flex;
+  align-items:center;
+  gap:.65rem;
+  min-width:0;
 }
 
 .admin-user-detail__row-copy small{
   color:var(--color-text-muted);
+}
+
+.admin-user-detail__unlink.button--secondary{
+  flex:none;
+  border:1px solid var(--color-border);
+  background:var(--color-surface);
 }
 
 .admin-user-detail__assign{
@@ -219,17 +244,22 @@
   margin-bottom:.75rem;
 }
 
+.admin-user-detail__account-actions{
+  min-height:2.65rem;
+  align-items:center;
+}
+
 .admin-user-detail__policy{
   display:grid;
-  gap:.75rem;
+  gap:0;
 }
 
 .admin-user-detail__policy-row{
   display:grid;
-  grid-template-columns:minmax(13rem,1.15fr) minmax(10rem,.8fr) minmax(10rem,.8fr);
-  gap:.7rem;
-  align-items:end;
-  padding:.75rem 0;
+  grid-template-columns:minmax(15rem,1.35fr) minmax(9rem,.72fr) minmax(9rem,.72fr);
+  gap:.8rem;
+  align-items:center;
+  padding:.48rem 0;
   border-bottom:1px solid var(--color-border);
 }
 
@@ -244,13 +274,26 @@
 
 .admin-user-detail__policy-copy small{
   display:block;
-  margin-top:.2rem;
+  margin-top:.1rem;
   color:var(--color-text-muted);
-  line-height:1.4;
+  line-height:1.25;
+}
+
+.admin-user-detail__policy-row .admin-field{
+  gap:.2rem;
+}
+
+.admin-user-detail__policy-row .admin-field input,
+.admin-user-detail__policy-row .admin-field select{
+  min-height:2.45rem;
 }
 
 .admin-user-detail__effective{
-  padding:.62rem .7rem;
+  min-height:2.45rem;
+  display:grid;
+  align-content:center;
+  padding:.42rem .68rem;
+  border:1px solid transparent;
   border-radius:var(--radius-sm);
   background:var(--color-surface-muted);
   font-size:.8rem;
@@ -259,14 +302,14 @@
 .admin-user-detail__effective span{
   display:block;
   color:var(--color-text-muted);
-  font-size:.7rem;
+  font-size:.68rem;
   text-transform:uppercase;
   letter-spacing:.035em;
 }
 
 .admin-user-detail__effective strong{
   display:block;
-  margin-top:.2rem;
+  margin-top:.12rem;
 }
 
 .admin-user-detail__policy-actions,
@@ -274,13 +317,13 @@
   display:flex;
   flex-wrap:wrap;
   gap:.5rem;
-  margin-top:.8rem;
+  margin-top:.65rem;
 }
 
 .admin-user-detail__warning{
-  margin:0 0 .8rem;
+  margin:.35rem 0 .55rem;
   color:var(--color-text-muted);
-  line-height:1.45;
+  line-height:1.35;
 }
 
 .admin-users__empty{
@@ -299,6 +342,7 @@
 
   .admin-user-detail__policy-row{
     grid-template-columns:1fr 1fr;
+    padding:.65rem 0;
   }
 
   .admin-user-detail__policy-copy{
@@ -313,7 +357,17 @@
     grid-template-columns:1fr;
   }
 
+  .admin-users__create-action{
+    width:100%;
+  }
+
   .admin-user-detail__assign{
     grid-template-columns:1fr;
+  }
+
+  .admin-user-detail__vehicle-main{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:.35rem;
   }
 }

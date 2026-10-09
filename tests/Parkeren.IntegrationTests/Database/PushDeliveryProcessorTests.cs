@@ -156,8 +156,11 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
             Assert.Equal(WebPushSendResult.RetryRequired, result);
             Assert.Contains(
-                $"Web Push delivery failed for subscription {subscriptionId} and user {user.Id}.",
-                logger.Entries);
+                logger.Entries,
+                entry => entry.Contains(
+                    $"Web Push delivery failed for subscription {subscriptionId} and user {user.Id}.",
+                    StringComparison.Ordinal)
+                    && entry.Contains("Failure type:", StringComparison.Ordinal));
             Assert.All(logger.Exceptions, exception => Assert.Null(exception));
             Assert.DoesNotContain(sensitiveDetails, string.Join(Environment.NewLine, logger.Entries), StringComparison.Ordinal);
         }
@@ -177,6 +180,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"stop-push-{suffix}", $"STOP-PUSH-{suffix}", "hash", UserRole.Visitor);
+        var admin = new User(Guid.NewGuid(), $"stop-push-admin-{suffix}", $"STOP-PUSH-ADMIN-{suffix}", "hash", UserRole.Admin);
         var vehicle = new Vehicle(Guid.NewGuid(), $"SP{suffix[..6]}", $"SP{suffix[..6]}", null);
         var startAt = DateTimeOffset.UtcNow.AddMinutes(-30);
         var visit = new Visit(
@@ -187,7 +191,7 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
 
         await using (var seed = fixture.CreateDbContext())
         {
-            seed.Users.Add(user);
+            seed.Users.AddRange(user, admin);
             seed.Vehicles.Add(vehicle);
             seed.Visits.Add(visit);
             await seed.SaveChangesAsync(cancellationToken);
@@ -217,21 +221,24 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
                 .CompleteWithoutProviderActionAsync(claim, actualEndAt, cancellationToken);
         }
 
-        Guid notificationId;
-        Guid deliveryId;
+        Guid[] notificationIds;
+        Guid[] deliveryIds;
         await using (var verify = fixture.CreateDbContext())
         {
             var persistedVisit = await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
-            var notification = await verify.Notifications.SingleAsync(
-                x => x.VisitId == visit.Id && x.Type == NotificationType.VisitStopped,
-                cancellationToken);
-            var delivery = await verify.PushDeliveries.SingleAsync(
-                x => x.NotificationId == notification.Id,
-                cancellationToken);
+            var notifications = await verify.Notifications
+                .Where(x => x.VisitId == visit.Id && x.Type == NotificationType.VisitStopped)
+                .ToListAsync(cancellationToken);
+            Assert.Single(notifications, x => x.RecipientUserId == user.Id);
+            Assert.Single(notifications, x => x.RecipientUserId == admin.Id);
 
             Assert.Equal(VisitStatus.Completed, persistedVisit.Status);
-            notificationId = notification.Id;
-            deliveryId = delivery.Id;
+            notificationIds = notifications.Select(x => x.Id).ToArray();
+            deliveryIds = await verify.PushDeliveries
+                .Where(x => notificationIds.Contains(x.NotificationId))
+                .Select(x => x.Id)
+                .ToArrayAsync(cancellationToken);
+            Assert.Equal(notificationIds.Length, deliveryIds.Length);
         }
 
         await using (var deliveryContext = fixture.CreateDbContext())
@@ -247,21 +254,30 @@ public sealed class PushDeliveryProcessorTests(PostgreSqlFixture fixture)
             Assert.Equal(
                 VisitStatus.Completed,
                 (await verify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Status);
-            Assert.True(await verify.Notifications.AnyAsync(x => x.Id == notificationId, cancellationToken));
-            var delivery = await verify.PushDeliveries.SingleAsync(x => x.Id == deliveryId, cancellationToken);
-            Assert.Equal(PushDeliveryStatus.Failed, delivery.Status);
+            Assert.Equal(
+                notificationIds.Length,
+                await verify.Notifications.CountAsync(x => notificationIds.Contains(x.Id), cancellationToken));
+            var deliveries = await verify.PushDeliveries
+                .Where(x => deliveryIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+            Assert.Single(deliveries, x => x.Status == PushDeliveryStatus.Failed);
+            Assert.Equal(deliveryIds.Length - 1, deliveries.Count(x => x.Status == PushDeliveryStatus.Pending));
         }
 
         await using var cleanup = fixture.CreateDbContext();
-        await cleanup.PushDeliveries.Where(x => x.Id == deliveryId).ExecuteDeleteAsync(cancellationToken);
-        await cleanup.Notifications.Where(x => x.Id == notificationId).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.PushDeliveries
+            .Where(x => deliveryIds.Contains(x.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Notifications
+            .Where(x => notificationIds.Contains(x.Id))
+            .ExecuteDeleteAsync(cancellationToken);
         await cleanup.NotificationEvents.Where(x => x.AggregateId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.DeleteVisitSchedulerAuditEventsAsync(cancellationToken, visit.Id);
         await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(cancellationToken);
         await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(cancellationToken);
-        await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(cancellationToken);
+        await cleanup.Users.Where(x => x.Id == user.Id || x.Id == admin.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
 

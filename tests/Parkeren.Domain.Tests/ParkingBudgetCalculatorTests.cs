@@ -68,6 +68,28 @@ public sealed class ParkingBudgetCalculatorTests
     }
 
     [Fact]
+    public void Historical_budget_baseline_marks_reached_thresholds_without_repeating_existing_ones()
+    {
+        var usage = CreateUsage(100, 95);
+
+        var thresholds = ParkingBudgetWarningEvaluator.GetHistoricalBaselineThresholds(
+            usage, [75, 90, 100], [75]);
+
+        Assert.Equal(new[] { 90 }, thresholds);
+    }
+
+    [Fact]
+    public void Historical_budget_baseline_never_acknowledges_future_thresholds()
+    {
+        var usage = CreateUsage(100, 70);
+
+        var thresholds = ParkingBudgetWarningEvaluator.GetHistoricalBaselineThresholds(
+            usage, [75, 90], []);
+
+        Assert.Empty(thresholds);
+    }
+
+    [Fact]
     public void Budget_warning_returns_none_for_zero_budget()
     {
         var usage = CreateUsage(0, 0);
@@ -170,6 +192,90 @@ public sealed class ParkingBudgetCalculatorTests
 
         Assert.Equal(start.AddHours(1), action.ActualStartAt);
         Assert.Equal(TimeSpan.FromHours(1), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Action_based_budget_includes_imported_without_visit_and_deduplicates_overlap()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var period = BudgetPeriod(start.Date, start.Date.AddDays(1), 100);
+        var rules = Rules(start.AddDays(-1));
+        var imported = ProviderParkingAction.ImportCompleted(
+            Guid.NewGuid(), "history-1", "product-1", null, Guid.NewGuid(),
+            ProviderActionAssignment.Unassigned, start, start.AddHours(2),
+            0.5m, "COMPLETED", start.AddHours(3));
+        var managed = CompletedAction(Guid.NewGuid(), start.AddHours(1), start.AddHours(3));
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            period, new[] { imported, managed, imported }, new[] { rules });
+
+        Assert.Equal(TimeSpan.FromHours(3), usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Action_based_budget_ignores_unfinished_actions()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 15, 0, 0, TimeSpan.Zero);
+        var ongoing = new ProviderParkingAction(
+            Guid.NewGuid(), Guid.NewGuid(), start, start.AddHours(2));
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(start.Date, start.Date.AddDays(1), 100),
+            new[] { ongoing }, new[] { Rules(start.AddDays(-1)) });
+
+        Assert.Equal(TimeSpan.Zero, usage.UsedPaidDuration);
+    }
+
+    [Fact]
+    public void Action_based_budget_does_not_estimate_missing_actual_start()
+    {
+        var start = new DateTimeOffset(2026, 9, 28, 8, 0, 0, TimeSpan.Zero);
+        var action = new ProviderParkingAction(Guid.NewGuid(), null, start, start.AddHours(2));
+        action.MarkStarting();
+        action.MarkScheduled($"scheduled-{Guid.NewGuid():N}");
+        action.BeginStopping();
+        action.MarkStopped(start.AddHours(1));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+                BudgetPeriod(start.Date, start.Date.AddDays(1), 100),
+                new[] { action }, new[] { Rules(start.AddDays(-1)) }));
+    }
+
+    [Fact]
+    public void Action_based_budget_clips_at_local_new_year_boundary()
+    {
+        // The 2027 Amsterdam year begins at 2026-12-31 23:00 UTC.
+        var yearStart = new DateTimeOffset(2026, 12, 31, 23, 0, 0, TimeSpan.Zero);
+        var yearEnd = new DateTimeOffset(2027, 12, 31, 23, 0, 0, TimeSpan.Zero);
+        var actionStart = yearStart.AddHours(-4);
+        var actionEnd = yearStart.AddHours(11);
+        var action = CompletedAction(Guid.NewGuid(), actionStart, actionEnd);
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(yearStart, yearEnd, 1500),
+            new[] { action }, new[] { Rules(yearStart.AddDays(-2)) });
+
+        // Friday 1 January, 09:00-11:00 local; previous year's time is excluded.
+        Assert.Equal(TimeSpan.FromHours(2), usage.UsedPaidDuration);
+    }
+
+    [Theory]
+    [InlineData(2026, 3, 29, 0, 30, 2)]
+    [InlineData(2026, 10, 25, 0, 30, 1)]
+    public void Action_based_budget_uses_amsterdam_paid_windows_across_dst(
+        int year, int month, int day, int hour, int minute, int expectedHours)
+    {
+        var transition = new DateTimeOffset(year, month, day, hour, minute, 0, TimeSpan.Zero);
+        var end = new DateTimeOffset(year, month, day + 1, 9, 0, 0, TimeSpan.Zero);
+        var action = CompletedAction(Guid.NewGuid(), transition, end);
+
+        var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+            BudgetPeriod(transition.AddDays(-1), end.AddHours(1), 1500),
+            new[] { action }, new[] { Rules(transition.AddDays(-2)) });
+
+        // Sunday is free in Oss. Monday's 09:00 local start follows the DST offset.
+        Assert.Equal(TimeSpan.FromHours(expectedHours), usage.UsedPaidDuration);
     }
 
     private static Visit CompletedVisit(DateTimeOffset start, DateTimeOffset end)

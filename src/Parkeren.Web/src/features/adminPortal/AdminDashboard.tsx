@@ -1,4 +1,4 @@
-import { useEffect,useMemo,useState } from "react";
+import { useEffect,useState } from "react";
 import {
   getAdminBudgetUsage,
   getAdminDashboard,
@@ -16,25 +16,13 @@ import {
   type VehicleSummary
 } from "../../api/client";
 import { LicensePlate } from "../../components/LicensePlate";
+import { StartVisitCard } from "../../components/StartVisitCard";
 import { Alert } from "../../design/primitives/Alert";
 import { Button } from "../../design/primitives/Button";
 import { Loading } from "../../design/primitives/Loading";
 import { clearPendingOperation,getOrCreatePendingOperation } from "../../pendingOperations";
 import "./AdminDashboard.css";
-
-function formatDateTime(value:string|null){
-  return value
-    ? new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})
-    : "Tot handmatig stoppen";
-}
-
-function formatPaidMinutes(value:number|null){
-  if(value===null)return "Niet beschikbaar";
-  if(value<60)return `${value} min`;
-  const hours=Math.floor(value/60);
-  const minutes=value%60;
-  return minutes===0?`${hours} u`:`${hours} u ${minutes} min`;
-}
+import { formatAdminCapacity,formatAdminDateTime,formatAdminDuration,formatAdminMoney,formatAdminNumber } from "./adminFieldFormatters";
 
 function statusLabel(status:AdminDashboardSummary["activeVisits"][number]["status"]){
   switch(status){
@@ -50,24 +38,11 @@ function formatProviderBalance(status:AdminProviderStatus|undefined){
   const balance=status?.balance;
   if(!balance)return "Niet beschikbaar";
   switch(balance.unit){
-    case "Euro": return new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(balance.remainingBalance);
-    case "Minute": return `${balance.remainingBalance} min`;
-    case "Times": return `${balance.remainingBalance} keer`;
+    case "Euro": return formatAdminMoney(balance.remainingBalance);
+    case "Minute": return formatAdminDuration(balance.remainingBalance);
+    case "Times": return `${formatAdminNumber(balance.remainingBalance)} keer`;
     default: return String(balance.remainingBalance);
   }
-}
-
-function maxStartDurationMinutes(policy:AdminParkingPolicySummary|null|undefined){
-  if(!policy)return null;
-  return policy.maxVisitElapsedDurationMinutes;
-}
-
-function durationOptions(maxMinutes:number|null){
-  if(maxMinutes===null||maxMinutes<=0)return [];
-  const values:number[]=[];
-  for(let minutes=60;minutes<=maxMinutes;minutes+=60)values.push(minutes);
-  if(values.length===0||values[values.length-1]!==maxMinutes)values.push(maxMinutes);
-  return values;
 }
 
 export function AdminDashboard(){
@@ -77,9 +52,7 @@ export function AdminDashboard(){
   const[users,setUsers]=useState<UserSummary[]>([]);
   const[selectedUserId,setSelectedUserId]=useState("");
   const[vehicles,setVehicles]=useState<VehicleSummary[]>();
-  const[selectedVehicleId,setSelectedVehicleId]=useState("");
   const[policy,setPolicy]=useState<AdminParkingPolicySummary|null>();
-  const[durationMinutes,setDurationMinutes]=useState(240);
   const[loading,setLoading]=useState(true);
   const[error,setError]=useState<string>();
   const[message,setMessage]=useState<string>();
@@ -121,7 +94,6 @@ export function AdminDashboard(){
     if(!selectedUserId){
       setVehicles([]);
       setPolicy(null);
-      setSelectedVehicleId("");
       return;
     }
 
@@ -133,67 +105,38 @@ export function AdminDashboard(){
       getAdminUserParkingPolicy(selectedUserId)
     ]).then(([assigned,parkingPolicy])=>{
       if(cancelled)return;
-      const activeVehicles=assigned.filter(vehicle=>vehicle.isActive);
-      setVehicles(activeVehicles);
+      setVehicles(assigned.filter(vehicle=>vehicle.isActive));
       setPolicy(parkingPolicy);
-      setSelectedVehicleId(current=>activeVehicles.some(vehicle=>vehicle.id===current)?current:(activeVehicles[0]?.id??""));
     }).catch(e=>{
       if(cancelled)return;
       setVehicles([]);
       setPolicy(null);
-      setSelectedVehicleId("");
       setError(e instanceof Error?e.message:"Startgegevens voor de bezoeker konden niet worden geladen.");
     });
 
     return()=>{cancelled=true;};
   },[selectedUserId]);
 
-  const maxDuration=maxStartDurationMinutes(policy);
-  const durations=useMemo(()=>durationOptions(maxDuration),[maxDuration]);
-
-  useEffect(()=>{
-    if(durations.length===0)return;
-    if(!durations.includes(durationMinutes)){
-      const preferred=durations.filter(value=>value<=240).at(-1)??durations[0];
-      setDurationMinutes(preferred);
-    }
-  },[durations,durationMinutes]);
-
   const attentionCount=dashboard?.activeVisits.filter(visit=>visit.health!=="Healthy").length??0;
   const selectedUserActiveCount=dashboard?.activeVisits.filter(visit=>visit.userId===selectedUserId).length??0;
   const capacityFull=dashboard!==undefined&&dashboard.used>=dashboard.total;
   const userLimitReached=policy!==undefined&&policy!==null&&selectedUserActiveCount>=policy.maxConcurrentVisits;
-  const startDisabled=
-    starting||
-    !selectedUserId||
-    !selectedVehicleId||
-    policy===undefined||
-    policy===null||
-    vehicles===undefined||
-    vehicles.length===0||
-    durationMinutes<=0||
-    (maxDuration!==null&&durations.length===0)||
-    capacityFull||
-    userLimitReached;
 
   let startDisabledMessage:string|undefined;
   if(capacityFull)startDisabledMessage=`Alle ${dashboard?.total??0} parkeerplaatsen zijn in gebruik.`;
   else if(userLimitReached)startDisabledMessage=`Deze bezoeker heeft het maximum van ${policy?.maxConcurrentVisits??0} actieve parkeeractie(s) bereikt.`;
-  else if(policy===null)startDisabledMessage="Het parkeerbeleid voor deze bezoeker is niet beschikbaar.";
-  else if(vehicles!==undefined&&vehicles.length===0)startDisabledMessage="Deze bezoeker heeft geen actief toegewezen voertuig.";
 
-  async function handleStart(){
-    if(startDisabled||!selectedUserId||!selectedVehicleId)return;
+  async function handleStart(vehicleId:string,desiredEndAt:string|null){
+    if(starting||!selectedUserId||capacityFull||userLimitReached)return;
     setStarting(true);
     setError(undefined);
     setMessage(undefined);
 
-    const desiredEndAt=new Date(Date.now()+durationMinutes*60_000).toISOString();
-    const logicalKey=`${selectedUserId}:${selectedVehicleId}:${desiredEndAt}`;
+    const logicalKey=`${selectedUserId}:${vehicleId}:${desiredEndAt??"open"}`;
     const operationId=getOrCreatePendingOperation("start",logicalKey);
 
     try{
-      const result=await startVisit(selectedVehicleId,desiredEndAt,operationId,selectedUserId);
+      const result=await startVisit(vehicleId,desiredEndAt,operationId,selectedUserId);
       if(!result.reconciliationRequired)clearPendingOperation("start",logicalKey);
       setMessage(result.reconciliationRequired
         ?"Parkeren is aangevraagd; de providerbevestiging loopt nog."
@@ -235,32 +178,32 @@ export function AdminDashboard(){
     <div className="admin-dashboard__metrics">
       <section className="admin-dashboard__metric">
         <span>Actieve bezoeken</span>
-        <strong>{dashboard?.used??0} / {dashboard?.total??0}</strong>
+        <strong className="admin-number">{formatAdminCapacity(dashboard?.used??0,dashboard?.total??0)}</strong>
       </section>
       <section className="admin-dashboard__metric">
         <span>Aandacht vereist</span>
-        <strong>{attentionCount}</strong>
+        <strong className="admin-number">{formatAdminNumber(attentionCount)}</strong>
       </section>
       <section className="admin-dashboard__metric">
         <span>Officieel 2Park-saldo</span>
-        <strong>{formatProviderBalance(providerStatus)}</strong>
+        <strong className={providerStatus?.balance?.unit==="Euro"?"admin-money":providerStatus?.balance?.unit==="Minute"?"admin-duration":"admin-number"}>{formatProviderBalance(providerStatus)}</strong>
         <small>
           {providerStatus?.balanceIsStale
             ?"Verouderde laatst bekende waarde"
             : providerStatus?.balance
-              ?"Actueel volgens provider"
+              ?"Saldo volgens 2Park"
               :"Niet beschikbaar"}
         </small>
       </section>
       <section className="admin-dashboard__metric">
         <span>Lokaal jaarbudget</span>
-        <strong>{budgetUsage?.isComplete
-          ? formatPaidMinutes(budgetUsage.remainingPaidDurationMinutes)
+        <strong className="admin-duration">{budgetUsage?.isComplete
+          ? formatAdminDuration(budgetUsage.remainingPaidDurationMinutes)
           : budgetUsage==null
             ?"Niet ingesteld"
             :"Onvolledig"}</strong>
         <small>{budgetUsage?.isComplete
-          ? `${formatPaidMinutes(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatPaidMinutes(budgetUsage.period.maximumPaidDurationMinutes)}`
+          ? `${formatAdminDuration(budgetUsage.usedPaidDurationMinutes)} gebruikt van ${formatAdminDuration(budgetUsage.period.maximumPaidDurationMinutes)}`
           : budgetUsage==null
             ?"Configureer een budgetperiode"
             :"Historische parkeerregels dekken de periode niet volledig"}</small>
@@ -277,7 +220,7 @@ export function AdminDashboard(){
         </div>
 
         {users.length===0
-          ? <p className="admin-dashboard__empty">Er zijn geen actieve bezoekers beschikbaar.</p>
+          ? <p className="admin-dashboard__empty">Er zijn momenteel geen bezoekers beschikbaar om een parkeeractie voor te starten.</p>
           : <div className="admin-dashboard__form">
               <label className="admin-dashboard__field">
                 <span>Bezoeker</span>
@@ -286,33 +229,24 @@ export function AdminDashboard(){
                 </select>
               </label>
 
-              <label className="admin-dashboard__field">
-                <span>Voertuig</span>
-                <select value={selectedVehicleId} onChange={event=>setSelectedVehicleId(event.target.value)} disabled={starting||vehicles===undefined||vehicles.length===0}>
-                  {(vehicles??[]).map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}
-                </select>
-              </label>
-
-              <label className="admin-dashboard__field">
-                <span>Parkeerduur</span>
-                {maxDuration===null
-                  ? <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={Math.max(1,Math.round(durationMinutes/60))}
-                      onChange={event=>setDurationMinutes(Math.max(0,Number(event.target.value))*60)}
-                      disabled={starting}
-                    />
-                  : <select value={durationMinutes} onChange={event=>setDurationMinutes(Number(event.target.value))} disabled={starting||durations.length===0}>
-                      {durations.map(minutes=><option key={minutes} value={minutes}>{formatPaidMinutes(minutes)}</option>)}
-                    </select>}
-              </label>
-
-              {startDisabledMessage&&<p className="admin-dashboard__hint">{startDisabledMessage}</p>}
-              <Button onClick={()=>void handleStart()} disabled={startDisabled}>
-                {starting?"Starten…":"Parkeren starten"}
-              </Button>
+              {vehicles===undefined||policy===undefined
+                ? <p className="admin-dashboard__hint">Startgegevens laden…</p>
+                : policy===null
+                  ? <p className="admin-dashboard__hint admin-dashboard__hint--error">Het parkeerbeleid voor deze bezoeker is niet beschikbaar.</p>
+                  : vehicles.length===0
+                    ? <p className="admin-dashboard__hint admin-dashboard__hint--error">Deze bezoeker heeft geen actief toegewezen voertuig.</p>
+                    : <StartVisitCard
+                        vehicles={vehicles}
+                        starting={starting}
+                        disabled={capacityFull||userLimitReached}
+                        disabledMessage={startDisabledMessage}
+                        maxDurationMinutes={policy.maxVisitElapsedDurationMinutes}
+                        allowOpenEnded={policy.allowOpenEndedVisits}
+                        ownerUserId={selectedUserId}
+                        embedded
+                        hideHeading
+                        onStart={handleStart}
+                      />}
             </div>}
       </section>
 
@@ -337,7 +271,7 @@ export function AdminDashboard(){
                     <th>Kenteken</th>
                     <th>Gestart</th>
                     <th>Gepland tot</th>
-                    <th>Betaalde tijd</th>
+                    <th className="admin-duration admin-duration--table">Betaalde tijd</th>
                     <th>Status</th>
                     <th aria-label="Acties"/>
                   </tr>
@@ -351,9 +285,9 @@ export function AdminDashboard(){
                       </span>
                     </td>
                     <td><LicensePlate value={visit.licensePlate}/></td>
-                    <td>{formatDateTime(visit.startAt)}</td>
-                    <td>{formatDateTime(visit.desiredEndAt)}</td>
-                    <td>{formatPaidMinutes(visit.paidDurationMinutes)}</td>
+                    <td>{formatAdminDateTime(visit.startAt)}</td>
+                    <td>{formatAdminDateTime(visit.desiredEndAt,"Tot handmatig stoppen")}</td>
+                    <td className="admin-duration admin-duration--table">{formatAdminDuration(visit.paidDurationMinutes)}</td>
                     <td>
                       <span className={"admin-dashboard__status "+(visit.health!=="Healthy"?"admin-dashboard__status--warning":"")}>
                         {statusLabel(visit.status)}
