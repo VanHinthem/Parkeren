@@ -1093,7 +1093,6 @@ app.MapPost("/api/admin/provider-history/sync", async (
 app.MapPost("/api/admin/provider-history/sync/{runId:guid}/cancel", async (
     Guid runId,
     ProviderHistorySyncRunCanceller canceller,
-    ParkerenDbContext db,
     IAuthenticationService authentication,
     HttpContext context,
     CancellationToken cancellationToken) =>
