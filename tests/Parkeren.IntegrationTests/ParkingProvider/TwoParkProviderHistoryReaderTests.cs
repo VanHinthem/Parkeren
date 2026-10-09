@@ -35,6 +35,132 @@ public sealed class TwoParkProviderHistoryReaderTests
         Assert.Equal(DateTimeOffset.Parse("2026-10-04T06:41:27+00:00", CultureInfo.InvariantCulture), record.ActualEndAt);
         Assert.Equal(0.01m, record.ProviderCostAmount);
         Assert.Equal("€", record.Currency);
+        Assert.Equal("AB12CD", record.LicensePlate);
+        Assert.Equal("OSS Zone J", record.Location);
+    }
+
+    [Fact]
+    public async Task History_only_validation_uses_authentication_and_read_only_history_endpoints()
+    {
+        var handler = new HistoryHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        await provider.GetActionHistoryPageAsync("product-1", 0, 10, TestContext.Current.CancellationToken);
+        await provider.GetActionHistoryPageAsync("product-1", 1, 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            ["check_credentials.json", "get_action_history.json", "get_action_history.json"],
+            handler.RequestedEndpoints);
+    }
+
+    [Theory]
+    [InlineData(false, 5)]
+    [InlineData(true, 4)]
+    public async Task Last_page_preserves_provider_maxindex_when_response_ends_before_requested_stop(
+        bool terminalIdAlreadyPresent, int expectedCount)
+    {
+        var handler = new HistoryHandler(shortFinalPage: true, terminalIdAlreadyPresent: terminalIdAlreadyPresent);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        var first = await provider.GetActionHistoryPageAsync(
+            "product-1", 0, 10, TestContext.Current.CancellationToken);
+        var second = await provider.GetActionHistoryPageAsync(
+            "product-1", 1, 10, TestContext.Current.CancellationToken);
+        var last = await provider.GetActionHistoryPageAsync(
+            "product-1", 2, 10, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (20, 24), (24, 24) }, handler.RequestedRanges);
+        Assert.Equal(10, first.Records.Count);
+        Assert.Equal(10, second.Records.Count);
+        Assert.Equal(expectedCount, last.Records.Count);
+        Assert.Equal(24, last.TotalCount);
+        Assert.False(last.HasMore);
+        Assert.Equal(expectedCount, last.Records.Select(x => x.ProviderActionId).Distinct().Count());
+        Assert.Contains(last.Records, x => x.ProviderActionId == (terminalIdAlreadyPresent ? "action-23" : "action-24"));
+    }
+
+    [Fact]
+    public async Task Live_boundary_shape_recovers_24_unique_ids_with_overlapping_terminal_page()
+    {
+        var handler = new HistoryHandler(liveBoundaryShape: true);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        var second = await provider.GetActionHistoryPageAsync("product-1", 1, 10, ct);
+        var last = await provider.GetActionHistoryPageAsync("product-1", 2, 10, ct);
+        var standardIds = first.Records.Concat(second.Records).Concat(last.Records)
+            .Select(x => x.ProviderActionId).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(24, standardIds.Count);
+        Assert.False(last.HasMore);
+        Assert.Equal(5, last.Records.Count);
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (20, 24) },
+            handler.RequestedRanges);
+        Assert.Contains("action-21", standardIds);
+        Assert.Contains("action-24", standardIds);
+    }
+
+    [Fact]
+    public async Task First_page_refreshes_stale_maxindex_when_history_grows_on_same_provider()
+    {
+        var handler = new HistoryHandler { DynamicMaxIndex = 5 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var original = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(5, original.TotalCount);
+        Assert.Equal(5, original.Records.Count);
+
+        handler.DynamicMaxIndex = 24;
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        var second = await provider.GetActionHistoryPageAsync("product-1", 1, 10, ct);
+        var third = await provider.GetActionHistoryPageAsync("product-1", 2, 10, ct);
+        var ids = first.Records.Concat(second.Records).Concat(third.Records)
+            .Select(x => x.ProviderActionId).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(new[] { (1, 10), (1, 10), (11, 20), (21, 24) },
+            handler.RequestedRanges);
+        Assert.Equal(24, first.TotalCount);
+        Assert.Equal(10, first.Records.Count);
+        Assert.Equal(24, ids.Count);
+    }
+
+    [Fact]
+    public async Task History_maxindex_change_between_pages_rejects_the_traversal()
+    {
+        var handler = new HistoryHandler { DynamicMaxIndex = 21 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(21, first.TotalCount);
+        handler.DynamicMaxIndex = 24;
+
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(() =>
+            provider.GetActionHistoryPageAsync("product-1", 1, 10, ct));
+        Assert.Equal(new[] { (1, 10), (11, 20) }, handler.RequestedRanges);
+
+        // A new traversal can refresh the maximum at page zero.
+        var restarted = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(24, restarted.TotalCount);
+    }
+
+    [Fact]
+    public async Task Completed_action_with_missing_end_time_rejects_page_instead_of_silently_dropping_it()
+    {
+        var handler = new HistoryHandler(missingCompletedEndTime: true);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(() =>
+            provider.GetActionHistoryPageAsync("product-1", 0, 10, TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { (1, 10) }, handler.RequestedRanges);
     }
 
     [Fact]
@@ -66,15 +192,37 @@ public sealed class TwoParkProviderHistoryReaderTests
         return new TwoParkProvider(http, configuration);
     }
 
-    private sealed class HistoryHandler(bool returnProviderError = false) : HttpMessageHandler
+    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false, bool liveBoundaryShape = false, bool missingCompletedEndTime = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
+        public int? DynamicMaxIndex { get; set; }
+        public List<string> RequestedEndpoints { get; } = [];
+        public async Task<IReadOnlyList<string>> ReadRangeAsync(int start, int stop, CancellationToken ct)
+        {
+            using var response = await SendAsync(new HttpRequestMessage(
+                HttpMethod.Post, "https://twopark.test/get_action_history.json")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["product_id"] = "product-1", ["locale"] = "nl_NL",
+                    ["startindex"] = start.ToString(CultureInfo.InvariantCulture),
+                    ["stopindex"] = stop.ToString(CultureInfo.InvariantCulture)
+                })
+            }, ct);
+            using var payload = System.Text.Json.JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(ct));
+            return payload.RootElement.GetProperty("data").GetProperty("actions")
+                .EnumerateArray().Select(x => x.GetProperty("atn_id").GetString()!).ToArray();
+        }
+
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath.TrimStart('/');
+            if (path is not null)
+                RequestedEndpoints.Add(path);
             if (path == "check_credentials.json")
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"OK\"}},\"data\":{}}");
 
@@ -90,17 +238,29 @@ public sealed class TwoParkProviderHistoryReaderTests
             if (returnProviderError)
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"ERROR\",\"minor\":\"PROVIDER_FAILURE\"},\"message\":\"History unavailable\"}}");
 
-            var actualStop = Math.Min(stopIndex, 21);
+            var actualStop = DynamicMaxIndex.HasValue
+                ? Math.Min(stopIndex, DynamicMaxIndex.Value)
+                : liveBoundaryShape
+                ? (startIndex == 21 ? 23 : Math.Min(stopIndex, 24))
+                : Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
-                .Select(CreateActionJson);
+                .Select(index => CreateActionJson(
+                    liveBoundaryShape && startIndex == 21
+                        ? (index == 23 ? 24 : index + 1)
+                        : terminalIdAlreadyPresent && startIndex == 24 ? 23 : index));
             var actionJson = string.Join(",", actions);
+            if (missingCompletedEndTime)
+                actionJson = actionJson.Replace(
+                    """{ "prr_label": "TIMEEND", "prr_value": "04-10-2026 08:41:27" }""",
+                    """{ "prr_label": "TIMEEND", "prr_value": "not-a-date" }""",
+                    StringComparison.Ordinal);
             var response = $$"""
             {
               "status": { "code": { "major": "OK", "minor": "SUCCESS" }, "message": "Gelukt" },
               "data": {
                 "startindex": "{{startIndex}}",
                 "stopindex": "{{actualStop}}",
-                "maxindex": "21",
+                "maxindex": "{{(DynamicMaxIndex ?? (liveBoundaryShape ? 24 : shortFinalPage ? 24 : 21))}}",
                 "actions": [{{actionJson}}]
               }
             }
@@ -114,6 +274,8 @@ public sealed class TwoParkProviderHistoryReaderTests
               "atn_state": "COMPLETED",
               "atn_id": "action-{{index}}",
               "atn_parameters": [
+                { "prr_label": "MBR_IDENT", "prr_value": "AB-12-CD" },
+                { "prr_label": "LOCATION", "prr_value": "OSS Zone J" },
                 { "prr_label": "TIMESTART", "prr_value": "04-10-2026 08:41:14" },
                 { "prr_label": "TIMEEND", "prr_value": "04-10-2026 08:41:27" },
                 { "prr_label": "COST", "prr_value": "0.01" },

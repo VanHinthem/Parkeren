@@ -1,3 +1,4 @@
+import { AdminProviderSubnav } from "./AdminProviderSubnav";
 import { useEffect,useState } from "react";
 import {
   getAdminProviderProducts,
@@ -100,10 +101,7 @@ export function AdminProviderPage(){
   const state=status?balanceState(status):null;
 
   return <div className="admin-provider">
-    <nav className="admin-subnav" aria-label="Provider & reconciliatie">
-      <a className="admin-subnav__link active" href="/beheer/provider">Provider</a>
-      <a className="admin-subnav__link" href="/beheer/provider/afwijkingen">Reconciliatie</a>
-    </nav>
+    <AdminProviderSubnav current="provider" />
 
     {error&&<Alert tone="danger">{error}</Alert>}
     {message&&<Alert>{message}</Alert>}

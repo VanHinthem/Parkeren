@@ -38,6 +38,8 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
     public DbSet<VisitSchedulerAuditEvent> VisitSchedulerAuditEvents => Set<VisitSchedulerAuditEvent>();
     public DbSet<ParkingBudgetWarningState> ParkingBudgetWarningStates => Set<ParkingBudgetWarningState>();
     public DbSet<ParkingProviderProduct> ParkingProviderProducts => Set<ParkingProviderProduct>();
+    public DbSet<ProviderHistorySyncState> ProviderHistorySyncStates => Set<ProviderHistorySyncState>();
+    public DbSet<ProviderHistorySyncRun> ProviderHistorySyncRuns => Set<ProviderHistorySyncRun>();
     public DbSet<ProviderDiscrepancy> ProviderDiscrepancies => Set<ProviderDiscrepancy>();
     public DbSet<AdminAuditEvent> AdminAuditEvents => Set<AdminAuditEvent>();
     private int nextAuditEventOrder = 1;
@@ -617,10 +619,38 @@ public sealed class ParkerenDbContext(DbContextOptions<ParkerenDbContext> option
             entity.HasOne<ProviderParkingAction>().WithMany().HasForeignKey(x => x.ProviderParkingActionId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<ProviderHistorySyncRun>(entity =>
+        {
+            entity.ToTable("provider_history_sync_runs");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProviderProductId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Mode).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Error).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.ProviderProductId, x.StartedAt });
+        });
+
+        modelBuilder.Entity<ProviderHistorySyncState>(entity =>
+        {
+            entity.ToTable("provider_history_sync_states");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProviderProductId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PageSize).IsRequired();
+            entity.Property(x => x.NextPageNumber).IsRequired();
+            entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.HasIndex(x => x.ProviderProductId).IsUnique();
+        });
+
         modelBuilder.Entity<ProviderParkingAction>(entity =>
         {
             entity.ToTable("provider_parking_actions");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Origin).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ProviderActionOrigin.Managed).IsRequired();
+            entity.Property(x => x.AssignmentSource).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ProviderActionAssignmentSource.Unassigned).IsRequired();
+            entity.HasOne<Parkeren.Domain.Vehicles.Vehicle>().WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Parkeren.Domain.Users.User>().WithMany().HasForeignKey(x => x.AssignedUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.VehicleId);
+            entity.HasIndex(x => x.AssignedUserId);
             entity.Property(x => x.ProviderActionId).HasMaxLength(200);
             entity.Property(x => x.ProviderProductId).HasMaxLength(200);
             entity.Property(x => x.ProviderLocation).HasMaxLength(100);

@@ -1463,32 +1463,28 @@ internal sealed class AdministrationService(
         if (period is null)
             return null;
 
-        var visits = await dbContext.Visits.AsNoTracking()
-            .Where(x => x.ProviderProductId == period.ProviderProductId &&
-                        x.Status == VisitStatus.Completed &&
-                        x.ActualEndAt.HasValue &&
-                        ((x.StartAt < period.ValidUntil && x.ActualEndAt.Value > period.ValidFrom) ||
-                         dbContext.ProviderParkingActions.Any(action =>
-                             action.VisitId == x.Id &&
-                             action.ActualStartAt.HasValue &&
-                             action.ActualEndAt.HasValue &&
-                             action.ActualStartAt.Value < period.ValidUntil &&
-                             action.ActualEndAt.Value > period.ValidFrom)))
-            .ToListAsync(cancellationToken);
-
         var ruleSets = await LoadRuleSetsForProductAsync(
-            period.ValidFrom,
-            period.ValidUntil,
-            period.ProviderProductId,
-            cancellationToken);
-        var visitIds = visits.Select(x => x.Id).ToArray();
+            period.ValidFrom, period.ValidUntil, period.ProviderProductId, cancellationToken);
+
+        var externalProductId = await dbContext.ParkingProviderProducts.AsNoTracking()
+            .Where(x => x.Id == period.ProviderProductId)
+            .Select(x => x.ProviderProductId)
+            .SingleOrDefaultAsync(cancellationToken);
+
         var providerActions = await dbContext.ProviderParkingActions.AsNoTracking()
-            .Where(x => x.VisitId.HasValue && visitIds.Contains(x.VisitId.Value))
+            .Where(x =>
+                ((externalProductId != null && x.ProviderProductId == externalProductId) ||
+                 (x.ProviderProductId == null && x.VisitId.HasValue && dbContext.Visits.Any(v =>
+                     v.Id == x.VisitId.Value && v.ProviderProductId == period.ProviderProductId))) &&
+                x.ActualStartAt.HasValue && x.ActualEndAt.HasValue &&
+                x.ActualStartAt.Value < period.ValidUntil &&
+                x.ActualEndAt.Value > period.ValidFrom &&
+                (x.State == ProviderActionState.Completed || x.State == ProviderActionState.Stopped))
             .ToListAsync(cancellationToken);
 
         try
         {
-            var usage = RealizedParkingBudgetUsageCalculator.Calculate(period, visits, providerActions, ruleSets);
+            var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(period, providerActions, ruleSets);
             return new AdminBudgetUsageSummary(
                 ToAdminBudgetPeriodSummary(period),
                 (int)Math.Floor(usage.UsedPaidDuration.TotalMinutes),

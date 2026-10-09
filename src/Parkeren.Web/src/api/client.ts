@@ -231,6 +231,82 @@ export async function getAdminProviderDiscrepancies(includeResolved=false){
   ));
 }
 
+export type AdminProviderActionHistoryRow={
+  id:string;providerActionId:string|null;visitId:string|null;providerProductId:string|null;
+  licensePlate:string|null;actualStartAt:string|null;actualEndAt:string|null;
+  providerCostAmount:number|null;state:string;origin:string;assignedUserId:string|null;
+  assignmentSource:string;historyStatus:string;username:string|null;
+};
+export type AdminProviderActionHistoryPage={
+  items:AdminProviderActionHistoryRow[];page:number;pageSize:number;totalCount:number;
+};
+export type AdminProviderActionHistoryFilter={
+  page:number;pageSize:number;search?:string;providerProductId?:string;
+  state?:string;origin?:string;from?:string;until?:string;assignedUserId?:string;oldestFirst?:boolean;hasOpenDiscrepancy?:boolean;
+};
+export async function getAdminProviderActionHistory(filter:AdminProviderActionHistoryFilter){
+  const params=new URLSearchParams({page:String(filter.page),pageSize:String(filter.pageSize)});
+  if(filter.search)params.set("search",filter.search);
+  if(filter.providerProductId)params.set("providerProductId",filter.providerProductId);
+  if(filter.state)params.set("state",filter.state);
+  if(filter.origin)params.set("origin",filter.origin);
+  if(filter.assignedUserId)params.set("assignedUserId",filter.assignedUserId);
+  if(filter.oldestFirst)params.set("oldestFirst","true");
+  if(filter.hasOpenDiscrepancy!==undefined)params.set("hasOpenDiscrepancy",String(filter.hasOpenDiscrepancy));
+  if(filter.from)params.set("from",filter.from);
+  if(filter.until)params.set("until",filter.until);
+  return json<AdminProviderActionHistoryPage>(
+    await apiFetch("/api/admin/provider/actions?"+params.toString()));
+}
+
+export type AdminProviderHistorySyncRun={
+  id:string;providerProductId:string;mode:"Bootstrap"|"Incremental"|"Manual";
+  status:"Running"|"Succeeded"|"Failed"|"Cancelled";
+  startedAt:string;finishedAt:string|null;readCount:number;insertedCount:number;
+  refreshedCount:number;skippedCount:number;error:string|null;
+};
+export type AdminProviderHistorySyncState={
+  id:string;providerProductId:string;nextPageNumber:number;pageSize:number;
+  lastSuccessfulSyncAt:string|null;lastAttemptAt:string|null;lastError:string|null;
+};
+export type AdminProviderHistorySyncStatus={
+  states:AdminProviderHistorySyncState[];runs:AdminProviderHistorySyncRun[];
+};
+export async function getAdminProviderHistorySyncStatus(providerProductId?:string){
+  const query=providerProductId?"?providerProductId="+encodeURIComponent(providerProductId):"";
+  return json<AdminProviderHistorySyncStatus>(await apiFetch("/api/admin/provider-history/sync-status"+query));
+}
+export async function startAdminProviderHistorySync(providerProductId:string){
+  const response=await apiFetch("/api/admin/provider-history/sync",{
+    method:"POST",body:JSON.stringify({providerProductId})
+  });
+  if(!response.ok)throw await visitError(response,"Synchronisatie starten is mislukt");
+  return json<{id:string;providerProductId:string;status:string}>(response);
+}
+export async function cancelAdminProviderHistorySync(runId:string){
+  const response=await apiFetch(`/api/admin/provider-history/sync/${encodeURIComponent(runId)}/cancel`,{
+    method:"POST"
+  });
+  if(!response.ok)throw await visitError(response,"Synchronisatie annuleren is mislukt");
+  return json<{runId:string;status:string}>(response);
+}
+
+export type AdminProviderAssignmentAuditEntry={
+  id:string;createdAt:string;actorUserId:string;actorUsername:string|null;contextJson:string|null;
+};
+export async function getAdminProviderAssignmentHistory(actionId:string){
+  return json<AdminProviderAssignmentAuditEntry[]>(
+    await apiFetch(`/api/admin/provider/actions/${encodeURIComponent(actionId)}/assignment-history`));
+}
+
+export async function assignAdminProviderActionUser(actionId:string,userId:string|null){
+  const response=await apiFetch(`/api/admin/provider/actions/${encodeURIComponent(actionId)}/assignment`,{
+    method:"PUT",body:JSON.stringify({userId})
+  });
+  if(!response.ok)throw await visitError(response,"Toewijzing van provideractie is mislukt");
+  return json<{changed:boolean}>(response);
+}
+
 export type AdminProviderProduct={
   id:string;
   providerProductId:string;

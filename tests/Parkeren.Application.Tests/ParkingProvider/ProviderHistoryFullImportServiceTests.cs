@@ -1,0 +1,132 @@
+using Parkeren.Application.ParkingProvider;
+using Xunit;
+
+namespace Parkeren.Application.Tests.ParkingProvider;
+
+public sealed class ProviderHistoryFullImportServiceTests
+{
+    private sealed class HistoryReader : IProviderActionHistoryReader
+    {
+        public List<int> Pages { get; } = [];
+        public int? FailAtPage { get; set; }
+        public int? EmptyAtPage { get; set; }
+
+        public Task<ProviderActionHistoryPage> GetActionHistoryPageAsync(
+            string productId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
+        {
+            Pages.Add(pageNumber);
+            if (FailAtPage == pageNumber)
+                throw new InvalidOperationException("Simulated provider history failure.");
+            if (EmptyAtPage == pageNumber)
+                return Task.FromResult(new ProviderActionHistoryPage([], pageNumber, pageSize, 3));
+            var start = DateTimeOffset.UnixEpoch;
+            var record = new ProviderActionHistoryRecord(
+                $"action-{pageNumber}", "COMPLETED", start, start.AddMinutes(5),
+                0.10m, "EUR", "AB12CD", "OSS Zone J");
+            return Task.FromResult(new ProviderActionHistoryPage([record], pageNumber, pageSize, 3));
+        }
+    }
+
+    private sealed class ExistingStore : IProviderHistoryExistingActionStore
+    {
+        public Task<ProviderHistoryExistingActionResult> ApplyIfExistingAsync(
+            string productId, ProviderActionHistoryRecord record,
+            DateTimeOffset observedAt, CancellationToken cancellationToken = default) =>
+            Task.FromResult(ProviderHistoryExistingActionResult.NotFound);
+    }
+
+    private sealed class NewStore : IProviderHistoryNewActionStore
+    {
+        public List<string> Inserted { get; } = [];
+
+        public Task<ProviderHistoryNewActionResult> InsertIfMissingAsync(
+            string productId, ProviderActionHistoryRecord record,
+            DateTimeOffset observedAt, CancellationToken cancellationToken = default)
+        {
+            if (Inserted.Contains(record.ProviderActionId))
+                return Task.FromResult(ProviderHistoryNewActionResult.AlreadyExists);
+            Inserted.Add(record.ProviderActionId);
+            return Task.FromResult(ProviderHistoryNewActionResult.Inserted);
+        }
+    }
+
+    [Fact]
+    public async Task Imports_all_pages_using_existing_has_more_contract()
+    {
+        var reader = new HistoryReader();
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        var result = await service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken);
+
+        Assert.Equal([0, 1, 2], reader.Pages);
+        Assert.Equal(["action-0", "action-1", "action-2"], store.Inserted);
+        Assert.Equal(new ProviderHistoryImportSummary(3, 0, 0, 0), result);
+    }
+
+    [Fact]
+    public async Task Failure_on_later_page_stops_import_without_processing_further_pages()
+    {
+        var reader = new HistoryReader { FailAtPage = 1 };
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Simulated provider history failure.", exception.Message);
+        Assert.Equal([0, 1], reader.Pages);
+        Assert.Equal(["action-0"], store.Inserted);
+    }
+
+    [Fact]
+    public async Task Restart_after_failed_page_reuses_existing_actions_without_duplicates()
+    {
+        var reader = new HistoryReader { FailAtPage = 1 };
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
+
+        Assert.Equal(["action-0"], store.Inserted);
+
+        reader.FailAtPage = null;
+        var summary = await service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["action-0", "action-1", "action-2"], store.Inserted);
+        Assert.Equal([0, 1, 0, 1, 2], reader.Pages);
+        Assert.Equal(new ProviderHistoryImportSummary(2, 0, 0, 1), summary);
+    }
+
+    [Fact]
+    public async Task Empty_nonterminal_page_fails_without_reading_further_pages()
+    {
+        var reader = new HistoryReader { EmptyAtPage = 1 };
+        var store = new NewStore();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), store), TimeProvider.System);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ImportAsync("product-1", 1, TestContext.Current.CancellationToken));
+
+        Assert.Contains("empty page", exception.Message);
+        Assert.Equal([0, 1], reader.Pages);
+        Assert.Equal(["action-0"], store.Inserted);
+    }
+
+    [Fact]
+    public async Task Invalid_page_size_is_rejected_before_reading()
+    {
+        var reader = new HistoryReader();
+        var service = new ProviderHistoryFullImportService(reader,
+            new ProviderHistoryPageImporter(new ExistingStore(), new NewStore()), TimeProvider.System);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.ImportAsync("product-1", 0, TestContext.Current.CancellationToken));
+        Assert.Empty(reader.Pages);
+    }
+}

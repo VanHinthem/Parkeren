@@ -78,10 +78,15 @@ public sealed class ProviderContinuationStartStoreTests(PostgreSqlFixture fixtur
             Assert.Equal(ProviderOperationType.ContinueStart, preparation.Operation.Type);
             Assert.Equal(ProviderOperationStatus.InProgress, preparation.Operation.Status);
             Assert.Equal(ProviderActionState.Starting, preparation.Action.State);
+            Assert.Equal(vehicle.Id, preparation.Action.VehicleId);
             Assert.Equal(predecessorEnd.AddSeconds(1), preparation.Action.PlannedStartAt);
             Assert.Equal(requestedEnd, preparation.Action.PlannedEndAt);
 
             await using var verifyContext = fixture.CreateDbContext();
+            Assert.Equal(vehicle.Id, await verifyContext.ProviderParkingActions
+                .Where(x => x.Id == preparation.Action.Id)
+                .Select(x => x.VehicleId)
+                .SingleAsync(cancellationToken));
             Assert.Equal(2, await verifyContext.ProviderParkingActions.CountAsync(
                 x => x.VisitId == visit.Id,
                 cancellationToken));

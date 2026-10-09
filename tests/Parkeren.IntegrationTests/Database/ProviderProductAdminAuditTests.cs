@@ -16,7 +16,6 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
     public async Task Admin_sync_writes_provider_product_audit_event()
     {
         var ct = TestContext.Current.CancellationToken;
-        await ClearProductsAsync(ct);
 
         var suffix = Guid.NewGuid().ToString("N");
         var admin = new User(
@@ -34,8 +33,8 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
 
         var parkingProvider = new ProductCatalogProvider(
         [
-            new ProviderProduct("product-a", "Product A", "LOC_A", "category", "Category"),
-            new ProviderProduct("product-b", "Product B", "LOC_B", "category", "Category")
+            new ProviderProduct($"product-a-{suffix}", "Product A", "LOC_A", "category", "Category"),
+            new ProviderProduct($"product-b-{suffix}", "Product B", "LOC_B", "category", "Category")
         ]);
 
         try
@@ -43,7 +42,8 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
             await using var catalog = CreateCatalog(parkingProvider);
             var result = await catalog.Service.SynchronizeForAdminAsync(admin.Id, ct);
 
-            Assert.Equal(2, result.Products.Count);
+            Assert.Contains(result.Products, p => p.ProviderProductId == $"product-a-{suffix}");
+            Assert.Contains(result.Products, p => p.ProviderProductId == $"product-b-{suffix}");
 
             await using var verify = fixture.CreateDbContext();
             var audit = await verify.AdminAuditEvents.AsNoTracking()
@@ -56,13 +56,13 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
             Assert.NotNull(audit.ContextJson);
 
             using var context = JsonDocument.Parse(audit.ContextJson);
-            Assert.Equal(2, context.RootElement.GetProperty("providerProductCount").GetInt32());
+            Assert.Equal(result.Products.Count, context.RootElement.GetProperty("providerProductCount").GetInt32());
             Assert.Equal(2, context.RootElement.GetProperty("availableProductCount").GetInt32());
             Assert.False(context.RootElement.GetProperty("defaultAutoSelected").GetBoolean());
         }
         finally
         {
-            await CleanupAsync(admin.Id, ct);
+            await CleanupAsync(admin.Id, suffix, ct);
         }
     }
 
@@ -70,7 +70,6 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
     public async Task Repeating_same_admin_default_does_not_write_duplicate_audit_event()
     {
         var ct = TestContext.Current.CancellationToken;
-        await ClearProductsAsync(ct);
 
         var suffix = Guid.NewGuid().ToString("N");
         var admin = new User(
@@ -82,7 +81,7 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
         var seenAt = DateTimeOffset.UtcNow;
         var productA = new ParkingProviderProduct(
             Guid.NewGuid(),
-            "product-a",
+            $"product-a-{suffix}",
             "Product A",
             "category",
             "Category",
@@ -91,7 +90,7 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
         productA.SetDefault(true);
         var productB = new ParkingProviderProduct(
             Guid.NewGuid(),
-            "product-b",
+            $"product-b-{suffix}",
             "Product B",
             "category",
             "Category",
@@ -127,30 +126,24 @@ public sealed class ProviderProductAdminAuditTests(PostgreSqlFixture fixture)
             using var context = JsonDocument.Parse(audit.ContextJson);
             Assert.Equal(productA.Id, context.RootElement.GetProperty("previousDefaultProductId").GetGuid());
             Assert.Equal(productB.Id, context.RootElement.GetProperty("productId").GetGuid());
-            Assert.Equal("product-b", context.RootElement.GetProperty("providerProductId").GetString());
+            Assert.Equal($"product-b-{suffix}", context.RootElement.GetProperty("providerProductId").GetString());
         }
         finally
         {
-            await CleanupAsync(admin.Id, ct);
+            await CleanupAsync(admin.Id, suffix, ct);
         }
     }
 
-    private async Task CleanupAsync(Guid adminId, CancellationToken cancellationToken)
+    private async Task CleanupAsync(Guid adminId, string suffix, CancellationToken cancellationToken)
     {
         await using var context = fixture.CreateDbContext();
         await context.AdminAuditEvents
             .Where(x => x.ActorUserId == adminId)
             .ExecuteDeleteAsync(cancellationToken);
-        await context.ProviderDiscrepancies.ExecuteDeleteAsync(cancellationToken);
-        await context.ParkingProviderProducts.ExecuteDeleteAsync(cancellationToken);
+        await context.ParkingProviderProducts
+            .Where(x => x.ProviderProductId == $"product-a-{suffix}" || x.ProviderProductId == $"product-b-{suffix}")
+            .ExecuteDeleteAsync(cancellationToken);
         await context.Users.Where(x => x.Id == adminId).ExecuteDeleteAsync(cancellationToken);
-    }
-
-    private async Task ClearProductsAsync(CancellationToken cancellationToken)
-    {
-        await using var context = fixture.CreateDbContext();
-        await context.ProviderDiscrepancies.ExecuteDeleteAsync(cancellationToken);
-        await context.ParkingProviderProducts.ExecuteDeleteAsync(cancellationToken);
     }
 
     private CatalogScope CreateCatalog(IParkingProvider parkingProvider)

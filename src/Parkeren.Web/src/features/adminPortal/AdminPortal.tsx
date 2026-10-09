@@ -3,6 +3,7 @@ import { AdminDashboard } from "./AdminDashboard";
 import { AdminVisitsPage } from "./AdminVisitsPage";
 import { AdminVisitDetailPage } from "./AdminVisitDetailPage";
 import { AdminProviderPage } from "./AdminProviderPage";
+import { AdminProviderHistoryPage } from "./AdminProviderHistoryPage";
 import { AdminProviderDiscrepanciesPage } from "./AdminProviderDiscrepanciesPage";
 import { AdminUserDetailPage } from "./AdminUserDetailPage";
 import { AdminUsersOverviewPage } from "./AdminUsersOverviewPage";
@@ -170,6 +171,8 @@ export function AdminPortal({ currentPath, username, onNavigate }: Props) {
           ) : section.path === "/beheer/provider" ? (
             currentPath === "/beheer/provider/afwijkingen" ? (
               <AdminProviderDiscrepanciesPage />
+            ) : currentPath === "/beheer/provider/historie" ? (
+              <AdminProviderHistoryPage />
             ) : (
               <AdminProviderPage />
             )

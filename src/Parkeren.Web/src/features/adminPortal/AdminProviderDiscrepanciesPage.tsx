@@ -1,3 +1,4 @@
+import { AdminProviderSubnav } from "./AdminProviderSubnav";
 import { Fragment,useEffect,useState } from "react";
 import {
   getAdminProviderDiscrepancies,
@@ -45,10 +46,7 @@ export function AdminProviderDiscrepanciesPage(){
   const resolvedCount=items?.filter(item=>item.status==="Resolved").length??0;
 
   return <div className="admin-provider">
-    <nav className="admin-subnav" aria-label="Provider & reconciliatie">
-      <a className="admin-subnav__link" href="/beheer/provider">Provider</a>
-      <a className="admin-subnav__link active" href="/beheer/provider/afwijkingen">Reconciliatie</a>
-    </nav>
+    <AdminProviderSubnav current="reconciliation" />
 
     <section className="admin-provider__panel">
       <div className="admin-provider__toolbar">

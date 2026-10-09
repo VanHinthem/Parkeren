@@ -51,6 +51,40 @@ public sealed class ProviderParkingActionHistoryTests
         Assert.Equal(0.30m, action.ProviderCostAmount);
     }
 
+    [Fact]
+    public void Finalized_managed_history_can_be_corrected_after_initial_reconciliation()
+    {
+        var startedAt = DateTimeOffset.UtcNow.AddHours(-2);
+        var action = CreateCompletedAction(startedAt);
+        action.SetInitialProviderCost(0.30m);
+        action.ScheduleHistoryReconciliation();
+        action.ApplyProviderHistory(startedAt, startedAt.AddHours(1), 0.30m);
+        var observedAt = DateTimeOffset.UtcNow;
+        var correctedStart = startedAt.AddMinutes(1);
+        var correctedEnd = startedAt.AddMinutes(58);
+
+        action.RefreshFinalizedManagedHistory(
+            correctedStart, correctedEnd, 0.28m, "COMPLETED", observedAt);
+
+        Assert.Equal(correctedStart, action.ActualStartAt);
+        Assert.Equal(correctedEnd, action.ActualEndAt);
+        Assert.Equal(0.28m, action.ProviderCostAmount);
+        Assert.Equal("COMPLETED", action.ProviderStatus);
+        Assert.Equal(ProviderHistoryStatus.Reconciled, action.HistoryStatus);
+        Assert.Equal(observedAt, action.FirstObservedAt);
+        Assert.Equal(observedAt, action.LastSyncedAt);
+    }
+
+    [Fact]
+    public void Finalized_managed_history_cannot_refresh_before_initial_reconciliation_is_terminal()
+    {
+        var startedAt = DateTimeOffset.UtcNow.AddHours(-2);
+        var action = CreateCompletedAction(startedAt);
+
+        Assert.Throws<InvalidOperationException>(() => action.RefreshFinalizedManagedHistory(
+            startedAt, startedAt.AddHours(1), 0.30m, "COMPLETED", DateTimeOffset.UtcNow));
+    }
+
     private static ProviderParkingAction CreateCompletedAction(DateTimeOffset startedAt)
     {
         var action = new ProviderParkingAction(

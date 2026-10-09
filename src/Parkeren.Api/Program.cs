@@ -13,6 +13,7 @@ using Parkeren.Domain.Visits;
 using Parkeren.Domain.Notifications;
 using Parkeren.Infrastructure;
 using Parkeren.Infrastructure.Persistence;
+using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Notifications;
 using System.Threading.RateLimiting;
 using System.Text.Json.Serialization;
@@ -25,6 +26,7 @@ builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<FailedSchedulerWorkReleaseQueue>();
 builder.Services.AddHostedService<VisitSchedulerWorker>();
+builder.Services.AddHostedService<ProviderHistorySyncWorker>();
 builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddHostedService<NotificationRetentionWorker>();
@@ -1064,6 +1066,169 @@ app.MapGet("/api/admin/provider/status", async (
     return Results.Ok(await providerStatus.GetStatusAsync(cancellationToken));
 });
 
+app.MapPost("/api/admin/provider-history/sync", async (
+    ProviderHistorySyncStartRequest request,
+    ProviderHistorySyncRunStarter starter,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(request.ProviderProductId) || request.ProviderProductId.Trim().Length > 100)
+        return Results.BadRequest(new { error = "Geldig providerproduct is vereist." });
+
+    var run = await starter.TryStartAsync(
+        request.ProviderProductId, Parkeren.Domain.ParkingProvider.ProviderHistorySyncRunMode.Manual,
+        cancellationToken);
+    return run is null
+        ? Results.Conflict(new { error = "Er loopt al een synchronisatie voor dit product." })
+        : Results.Accepted($"/api/admin/provider-history/sync-status?providerProductId={Uri.EscapeDataString(run.ProviderProductId)}",
+            new { run.Id, run.ProviderProductId, run.Status });
+});
+
+app.MapPost("/api/admin/provider-history/sync/{runId:guid}/cancel", async (
+    Guid runId,
+    ProviderHistorySyncRunCanceller canceller,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var cancelled = await canceller.TryCancelAsync(runId, cancellationToken);
+    if (cancelled is null)
+        return Results.NotFound(new { error = "Synchronisatierun niet gevonden." });
+    if (!cancelled.Value)
+        return Results.Conflict(new { error = "De synchronisatierun is al afgerond of wordt momenteel uitgevoerd." });
+
+    return Results.Ok(new { runId, status = "Cancelled" });
+});
+
+app.MapGet("/api/admin/provider-history/sync-status", async (
+    string? providerProductId,
+    ParkerenDbContext db,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var states = await db.ProviderHistorySyncStates.AsNoTracking()
+        .Where(x => providerProductId == null || x.ProviderProductId == providerProductId)
+        .OrderBy(x => x.ProviderProductId)
+        .ToListAsync(cancellationToken);
+    var runs = await db.ProviderHistorySyncRuns.AsNoTracking()
+        .Where(x => providerProductId == null || x.ProviderProductId == providerProductId)
+        .OrderByDescending(x => x.StartedAt)
+        .ThenByDescending(x => x.Id)
+        .Take(25)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new { states, runs });
+});
+
+app.MapGet("/api/admin/provider/actions", async (
+    int? page,
+    int? pageSize,
+    string? search,
+    string? providerProductId,
+    ProviderActionState? state,
+    ProviderActionOrigin? origin,
+    Guid? assignedUserId,
+    DateTimeOffset? from,
+    DateTimeOffset? until,
+    bool? oldestFirst,
+    bool? hasOpenDiscrepancy,
+    IAdminProviderActionHistoryQuery history,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (page is < 1 || pageSize is < 1 or > 100)
+        return Results.BadRequest("Page must be positive and page size between 1 and 100.");
+    if (from.HasValue && until.HasValue && from >= until)
+        return Results.BadRequest("From must be earlier than Until.");
+
+    return Results.Ok(await history.GetAsync(
+        new AdminProviderActionHistoryFilter(page ?? 1, pageSize ?? 25, search,
+            providerProductId, state, origin, assignedUserId, from, until, oldestFirst ?? false, hasOpenDiscrepancy), cancellationToken));
+});
+
+app.MapGet("/api/admin/provider/actions/{actionId:guid}/assignment-history", async (
+    Guid actionId,
+    ParkerenDbContext db,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (!await db.ProviderParkingActions.AnyAsync(x => x.Id == actionId, cancellationToken))
+        return Results.NotFound();
+
+    var events = await db.AdminAuditEvents.AsNoTracking()
+        .Where(x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                    x.TargetId == actionId.ToString("D") &&
+                    x.Action == ProviderActionAssignmentAudit.ActionName)
+        .OrderByDescending(x => x.CreatedAt)
+        .ThenByDescending(x => x.Id)
+        .Select(x => new
+        {
+            x.Id, x.CreatedAt, x.ActorUserId,
+            ActorUsername = db.Users.Where(u => u.Id == x.ActorUserId)
+                .Select(u => u.Username).FirstOrDefault(),
+            x.ContextJson
+        })
+        .ToListAsync(cancellationToken);
+    return Results.Ok(events);
+});
+
+app.MapPut("/api/admin/provider/actions/{actionId:guid}/assignment", async (
+    Guid actionId,
+    ProviderActionAssignmentRequest request,
+    ProviderHistoryAssignmentService assignment,
+    IAuthenticationService authentication,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var authenticated = await GetAuthenticatedAsync(authentication, context, cancellationToken);
+    if (authenticated.User is null)
+        return Results.Unauthorized();
+    if (authenticated.User.Role != UserRole.Admin)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    try
+    {
+        var changed = await assignment.AssignAsync(
+            actionId, authenticated.User.Id, request.UserId, cancellationToken);
+        return Results.Ok(new { changed });
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+});
+
 app.MapGet("/api/admin/provider/discrepancies", async (
     bool includeResolved,
     IProviderDiscrepancyService discrepancyService,
@@ -2089,5 +2254,8 @@ public sealed record ChangeVisitEndTimeRequest(Guid OperationId, DateTimeOffset?
 
 public partial class Program;
 
+public sealed record ProviderActionAssignmentRequest(Guid? UserId);
+
 public sealed record PushSubscriptionRequest(string Endpoint, string P256dh, string Auth);
 public sealed record PushSubscriptionDeleteRequest(string Endpoint);
+public sealed record ProviderHistorySyncStartRequest(string ProviderProductId);

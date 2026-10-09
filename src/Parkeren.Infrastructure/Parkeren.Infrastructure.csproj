@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <InternalsVisibleTo Include="Parkeren.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Parkeren.Domain/Parkeren.Domain.csproj" />
     <ProjectReference Include="../Parkeren.Application/Parkeren.Application.csproj" />
   </ItemGroup>

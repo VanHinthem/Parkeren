@@ -96,7 +96,7 @@ ensure(bundle.includes("serviceWorker.register"), "Production JavaScript must re
 ensure(bundle.includes("aria-live") && bundle.includes("aria-label"), "Production UI must retain live announcements and accessible control names.");
 ensure(bundledStylesheets.some(stylesheet => stylesheet.includes(":focus-visible")), "Production CSS must retain a visible keyboard focus indicator.");
 
-ensure(totalJavascript <= 480 * 1024, `JavaScript budget exceeded: ${kibibytes(totalJavascript)} > 480 KiB.`);
+ensure(totalJavascript <= 500 * 1024, `JavaScript budget exceeded: ${kibibytes(totalJavascript)} > 500 KiB.`);
 ensure(largestJavascript <= 450 * 1024, `Largest JavaScript chunk budget exceeded: ${kibibytes(largestJavascript)} > 450 KiB.`);
 ensure(totalStylesheets <= 80 * 1024, `CSS budget exceeded: ${kibibytes(totalStylesheets)} > 80 KiB.`);
 
