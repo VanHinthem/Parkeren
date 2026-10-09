@@ -74,7 +74,7 @@ public sealed class ProviderHistoryCheckpointedImportService(
         {
             return await ExecuteRunAsync(providerProductId, pageSize, runId, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (reservedRunId is null)
         {
             try { await runs.CancelAsync(runId, timeProvider.GetUtcNow(), CancellationToken.None); }
             catch (Exception) { /* Preserve cancellation. */ }
