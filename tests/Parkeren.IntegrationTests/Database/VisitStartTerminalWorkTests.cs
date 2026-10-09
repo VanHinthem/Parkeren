@@ -76,8 +76,8 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
     }
 
     [Theory]
-    [InlineData(2026, 10, 9, 10, 10)] // Friday evening -> Saturday morning
-    [InlineData(2026, 10, 11, 12, 10)] // Free Sunday evening -> Monday morning
+    [InlineData(2026, 10, 9, 10)] // Friday evening -> Saturday morning
+    [InlineData(2026, 10, 11, 12)] // Free Sunday evening -> Monday morning
     public async Task Saving_open_ended_evening_visit_schedules_next_paid_morning_coverage(
         int year, int month, int startDay, int paidDay)
     {
