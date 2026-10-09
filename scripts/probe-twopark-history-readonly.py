@@ -70,6 +70,22 @@ def main():
     reference_duplicates = len(reference_ids) - len(reference_union)
     suspicious = pages[3]["_ids"]
     terminal = pages[4]["_ids"]
+    # Reconstruct the current 10-item reader behavior for the observed
+    # 24-index dataset: page 0, page 1, then terminal page with the
+    # one-index overlap recovery (20-24). No raw identifiers leave memory.
+    normal_union = pages[0]["_ids"] | pages[1]["_ids"] | pages[3]["_ids"]
+    recovered_union = normal_union | pages[2]["_ids"]
+    reader_comparison = {
+        "expected_reference_unique_ids": len(reference_union),
+        "standard_reader_unique_ids": len(normal_union),
+        "with_terminal_overlap_unique_ids": len(recovered_union),
+        "overlap_recovers_reference": recovered_union == reference_union,
+        "additional_ids_recovered": len(recovered_union - normal_union),
+        "no_ids_missing_from_reference": not (reference_union - recovered_union),
+        "same_maxindex_in_all_ranges": len({
+            str(page["reported_max"]) for page in pages
+        }) == 1,
+    }
     comparisons = []
     for index, page in enumerate(pages):
         for other in pages[index + 1:]:
@@ -95,6 +111,7 @@ def main():
             "24-24_ids_already_in_21-24": len(terminal & suspicious)
         },
         "overlap_checks": comparisons,
+        "reader_comparison": reader_comparison,
         "note": "Shared IDs in intentionally overlapping ranges are expected; "
                 "shared IDs in disjoint ranges indicate a potential paging issue."
     }, indent=2, ensure_ascii=False))
