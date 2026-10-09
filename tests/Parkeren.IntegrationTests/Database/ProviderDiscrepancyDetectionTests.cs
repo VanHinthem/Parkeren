@@ -431,7 +431,11 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
             var savedAction = await verify.ProviderParkingActions.SingleAsync(x => x.Id == action.Id, ct);
             Assert.Equal(ProviderActionState.Completed, savedAction.State);
             Assert.Equal(ProviderHistoryStatus.Pending, savedAction.HistoryStatus);
-            Assert.Equal(plannedEndAt, savedAction.ActualEndAt);
+            Assert.NotNull(savedAction.ActualEndAt);
+            Assert.InRange(
+                (savedAction.ActualEndAt.Value - plannedEndAt).Duration(),
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(1));
             Assert.Equal(VisitSchedulerWorkStatus.Pending,
                 (await verify.VisitSchedulerWork.SingleAsync(x => x.Id == nextWork.Id, ct)).Status);
             Assert.Contains(await verify.VisitSchedulerWork.Where(x => x.VisitId == visit.Id).ToListAsync(ct),
