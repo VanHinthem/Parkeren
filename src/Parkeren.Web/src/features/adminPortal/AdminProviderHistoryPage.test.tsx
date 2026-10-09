@@ -117,7 +117,7 @@ describe("AdminProviderHistoryPage synchronization",()=>{
     render(<AdminProviderHistoryPage/>);
     fireEvent.click(await screen.findByRole("button",{name:"Annuleren"}));
     await waitFor(()=>expect(cancelAdminProviderHistorySync).toHaveBeenCalledWith("run-1"));
-    await waitFor(()=>expect(screen.getByText("Cancelled")).toBeTruthy());
+    await waitFor(()=>expect(screen.getByText("Geannuleerd")).toBeTruthy());
     expect(screen.queryByRole("button",{name:"Annuleren"})).toBeNull();
   });
 });
