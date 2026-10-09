@@ -82,6 +82,35 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task Live_boundary_shape_has_23_normal_ids_but_24_with_overlapping_reference()
+    {
+        var handler = new HistoryHandler(liveBoundaryShape: true);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        var second = await provider.GetActionHistoryPageAsync("product-1", 1, 10, ct);
+        var last = await provider.GetActionHistoryPageAsync("product-1", 2, 10, ct);
+        var standardIds = first.Records.Concat(second.Records).Concat(last.Records)
+            .Select(x => x.ProviderActionId).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(23, standardIds.Count);
+        Assert.False(last.HasMore);
+
+        // Read the overlapping boundary directly as a diagnostic. A fresh
+        // provider is not needed: only a read-only HTTP request is added.
+        var overlap = await handler.ReadRangeAsync(20, 24, ct);
+        var referenceIds = first.Records.Concat(second.Records)
+            .Select(x => x.ProviderActionId)
+            .Concat(overlap)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(24, referenceIds.Count);
+        Assert.Single(referenceIds.Except(standardIds));
+    }
+
+    [Fact]
     public async Task Http_success_with_provider_error_status_throws_typed_provider_exception()
     {
         using var http = new HttpClient(new HistoryHandler(returnProviderError: true))
@@ -110,10 +139,28 @@ public sealed class TwoParkProviderHistoryReaderTests
         return new TwoParkProvider(http, configuration);
     }
 
-    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false) : HttpMessageHandler
+    private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false, bool liveBoundaryShape = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
         public List<string> RequestedEndpoints { get; } = [];
+        public async Task<IReadOnlyList<string>> ReadRangeAsync(int start, int stop, CancellationToken ct)
+        {
+            using var response = await SendAsync(new HttpRequestMessage(
+                HttpMethod.Post, "https://twopark.test/get_action_history.json")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["product_id"] = "product-1", ["locale"] = "nl_NL",
+                    ["startindex"] = start.ToString(CultureInfo.InvariantCulture),
+                    ["stopindex"] = stop.ToString(CultureInfo.InvariantCulture)
+                })
+            }, ct);
+            using var payload = System.Text.Json.JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(ct));
+            return payload.RootElement.GetProperty("data").GetProperty("actions")
+                .EnumerateArray().Select(x => x.GetProperty("atn_id").GetString()!).ToArray();
+        }
+
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -137,10 +184,14 @@ public sealed class TwoParkProviderHistoryReaderTests
             if (returnProviderError)
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"ERROR\",\"minor\":\"PROVIDER_FAILURE\"},\"message\":\"History unavailable\"}}");
 
-            var actualStop = Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
+            var actualStop = liveBoundaryShape
+                ? (startIndex == 21 ? 23 : Math.Min(stopIndex, 24))
+                : Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
                 .Select(index => CreateActionJson(
-                    terminalIdAlreadyPresent && startIndex == 24 ? 23 : index));
+                    liveBoundaryShape && startIndex == 21
+                        ? (index == 23 ? 24 : index + 1)
+                        : terminalIdAlreadyPresent && startIndex == 24 ? 23 : index));
             var actionJson = string.Join(",", actions);
             var response = $$"""
             {
@@ -148,7 +199,7 @@ public sealed class TwoParkProviderHistoryReaderTests
               "data": {
                 "startindex": "{{startIndex}}",
                 "stopindex": "{{actualStop}}",
-                "maxindex": "{{(shortFinalPage ? 24 : 21)}}",
+                "maxindex": "{{(liveBoundaryShape ? 24 : shortFinalPage ? 24 : 21)}}",
                 "actions": [{{actionJson}}]
               }
             }
