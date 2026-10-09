@@ -164,3 +164,35 @@ following distinguishes automated verification from read-only live evidence.
 success. In particular, an unchanged `maxindex` does not establish a stable
 snapshot or action-ID ordering across pages. Keep #153 open until the remaining
 E2E scenarios and privacy-safe provider observations have been reviewed.
+
+
+## Live overlap recovery confirmation — 2026-10-09
+
+The owner reran `scripts/probe-twopark-history-readonly.py` against the
+configured real 2Park product after commit `3efc101`. Only aggregate counts
+and set comparisons were reported; no provider IDs or personal data retained.
+
+| Observation | Result |
+|---|---:|
+| Provider `maxindex` (all five queried ranges) | 24 |
+| Standard reader's unique IDs: 1–10 + 11–20 + 21–24 | 23 |
+| Reference unique IDs: 1–10 + 11–20 + 20–24 | 24 |
+| Unique IDs with terminal overlap | **24** |
+| Additional ID recovered by overlap | **1** |
+| Overlap result identical to reference ID set | **Yes** |
+| Action ID missing from reference after recovery | **0** |
+| Actions without IDs or duplicate IDs within queried pages | **0** |
+| Overlap between disjoint first two pages | **0** |
+| Singleton 24–24 action also present in 21–24 | **Yes** |
+
+**Confirmed:** The implemented bounded terminal overlap strategy recovers the
+missing ID for the observed 24-index live provider dataset. This upgrades the
+earlier boundary analysis from mock-only verification to a privacy-preserving,
+read-only live identity-set comparison. The preceding sections' outstanding
+questions reflect their historical status before this observation.
+
+**Not established:** correct results for every possible history size, a stable
+provider snapshot when entries reorder mid-traversal with an unchanged
+`maxindex`, or unobserved history variants and retention behavior. The probe
+does not itself execute the app's persistence pipeline. Retain these limitations
+in the #153 release assessment; do not claim universal provider completeness.
