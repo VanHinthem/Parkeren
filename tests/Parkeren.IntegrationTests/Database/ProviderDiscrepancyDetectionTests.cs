@@ -181,6 +181,8 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
                 Assert.Equal(ProviderDiscrepancyType.ExternalProviderAction, discrepancy.Type);
                 Assert.Equal(ProviderDiscrepancyStatus.Open, discrepancy.Status);
                 Assert.Null(discrepancy.VisitId);
+                Assert.Equal(1, await new ExternalActiveProviderActionCounter(verify)
+                    .CountAsync(cancellationToken));
             }
 
             (await http.PostAsync(
@@ -197,6 +199,8 @@ public sealed class ProviderDiscrepancyDetectionTests(PostgreSqlFixture fixture)
                 .ToListAsync(cancellationToken));
             Assert.Equal(ProviderDiscrepancyStatus.Resolved, persisted.Status);
             Assert.NotNull(persisted.ResolvedAt);
+            Assert.Equal(0, await new ExternalActiveProviderActionCounter(resolved)
+                .CountAsync(cancellationToken));
         }
         finally
         {
