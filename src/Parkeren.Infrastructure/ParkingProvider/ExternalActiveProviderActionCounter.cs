@@ -18,8 +18,9 @@ public sealed class ExternalActiveProviderActionCounter(ParkerenDbContext db)
                         x.Status == ProviderDiscrepancyStatus.Open &&
                         x.ProviderActionId != null &&
                         x.ProviderStatus != null &&
+                        // ProviderEndAt is the planned end even while the action is active.
+                        // The observed provider status is authoritative for activity.
                         x.ProviderStatus.ToUpper() == "ACTIVE" &&
-                        x.ProviderEndAt == null &&
                         !db.ProviderParkingActions.Any(action =>
                             action.ProviderActionId == x.ProviderActionId &&
                             action.ProviderProductId == db.ParkingProviderProducts
