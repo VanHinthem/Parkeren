@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.Users;
+using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
 using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.ParkingProvider;
@@ -64,6 +65,94 @@ public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fi
             await using var cleanup = fixture.CreateDbContext();
             await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id)
                 .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public async Task Finalized_managed_history_requires_completed_visit_and_no_inflight_operation(
+        bool visitActive, bool pendingOperation, bool shouldRefresh)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = $"managed-revisit-{suffix}";
+        var providerId = $"managed-action-{suffix}";
+        var plate = $"MC{suffix[..6].ToUpperInvariant()}";
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var observedAt = start.AddDays(1);
+        var user = new User(Guid.NewGuid(), $"managed-{suffix}", $"MANAGED-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), plate, plate, null);
+        var visit = new Visit(Guid.NewGuid(), Guid.NewGuid(), user.Id, vehicle.Id, user.Id,
+            start, start.AddHours(1),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true));
+        visit.Activate();
+        if (!visitActive)
+        {
+            visit.BeginStopping();
+            visit.Complete(start.AddHours(1));
+        }
+
+        var action = new ProviderParkingAction(Guid.NewGuid(), visit.Id,
+            start, start.AddHours(1), product);
+        action.MarkStarting();
+        action.MarkActive(providerId, start, "ACTIVE");
+        action.MarkCompleted(start.AddHours(1));
+        action.SetInitialProviderCost(0.30m);
+        action.ScheduleHistoryReconciliation();
+        action.ApplyProviderHistory(start, start.AddHours(1), 0.30m);
+
+        ProviderOperation? operation = pendingOperation
+            ? new ProviderOperation(Guid.NewGuid(), Guid.NewGuid(), visit.Id, action.Id, ProviderOperationType.Stop)
+            : null;
+        var corrected = new ProviderActionHistoryRecord(providerId, "COMPLETED",
+            start.AddMinutes(1), start.AddMinutes(58), 0.28m, "EUR");
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.Add(user);
+                seed.Vehicles.Add(vehicle);
+                seed.Visits.Add(visit);
+                seed.ProviderParkingActions.Add(action);
+                if (operation is not null)
+                    seed.ProviderOperations.Add(operation);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                var result = await new ProviderHistoryExistingActionStore(db)
+                    .ApplyIfExistingAsync(product, corrected, observedAt, ct);
+                Assert.Equal(shouldRefresh
+                    ? ProviderHistoryExistingActionResult.RefreshedManaged
+                    : ProviderHistoryExistingActionResult.SkippedManaged, result);
+                await transaction.CommitAsync(ct);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var persisted = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == action.Id, ct);
+            Assert.Equal(shouldRefresh ? corrected.ActualStartAt : start, persisted.ActualStartAt);
+            Assert.Equal(shouldRefresh ? corrected.ActualEndAt : start.AddHours(1), persisted.ActualEndAt);
+            Assert.Equal(shouldRefresh ? 0.28m : 0.30m, persisted.ProviderCostAmount);
+            Assert.Equal(visit.Id, persisted.VisitId);
+            Assert.Equal(ProviderActionOrigin.Managed, persisted.Origin);
+            Assert.Equal(ProviderActionState.Completed, persisted.State);
+            Assert.Equal(ProviderHistoryStatus.Reconciled, persisted.HistoryStatus);
+            Assert.Equal(shouldRefresh ? "COMPLETED" : "ACTIVE", persisted.ProviderStatus);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderOperations.Where(x => x.VisitId == visit.Id).ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.Id == action.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Visits.Where(x => x.Id == visit.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == user.Id).ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.Id == vehicle.Id).ExecuteDeleteAsync(ct);
         }
     }
 
