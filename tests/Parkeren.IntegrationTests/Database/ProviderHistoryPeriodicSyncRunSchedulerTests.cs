@@ -141,6 +141,50 @@ public sealed class ProviderHistoryPeriodicSyncRunSchedulerTests(PostgreSqlFixtu
     }
 
     [Fact]
+    public async Task Reservation_persists_attempt_time_before_first_provider_page()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"periodic-attempt-{Guid.NewGuid():N}";
+        var previousSuccess = DateTimeOffset.UtcNow.AddHours(-1);
+        var beforeReservation = DateTimeOffset.UtcNow;
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                var state = new ProviderHistorySyncState(Guid.NewGuid(), product, 10);
+                state.RecordSyncCompleted(previousSuccess);
+                seed.ProviderHistorySyncStates.Add(state);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var scheduler = new ProviderHistoryPeriodicSyncRunScheduler(
+                    db, new ProviderHistorySyncRunStarter(db, TimeProvider.System),
+                    TimeProvider.System);
+                Assert.Equal(1, await scheduler.ReserveDueRunsAsync(ct));
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var saved = await verify.ProviderHistorySyncStates.AsNoTracking()
+                .SingleAsync(x => x.ProviderProductId == product, ct);
+            Assert.Equal(previousSuccess, saved.LastSuccessfulSyncAt);
+            Assert.NotNull(saved.LastAttemptAt);
+            Assert.InRange(saved.LastAttemptAt.Value, beforeReservation, DateTimeOffset.UtcNow);
+            Assert.Equal(0, saved.NextPageNumber);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Concurrent_schedulers_reserve_only_one_incremental_run()
     {
         var ct = TestContext.Current.CancellationToken;
