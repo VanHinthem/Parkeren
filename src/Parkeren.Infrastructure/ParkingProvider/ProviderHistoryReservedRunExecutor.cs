@@ -28,7 +28,8 @@ public sealed class ProviderHistoryReservedRunExecutor(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await FinalizeIfRunningAsync(runId, cancelled: true, null);
+            // Host shutdown must leave the reserved run Running so another
+            // worker can resume from the durable page checkpoint.
             throw;
         }
         catch (Exception error)
