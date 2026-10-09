@@ -502,11 +502,12 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
         rules.AssignProviderProduct(product.Id);
         var plate = $"BH{suffix[..6].ToUpperInvariant()}";
         var actionId = $"budget-action-{suffix}";
+        var corrected = false;
         var record = new ProviderActionHistoryRecord(actionId, "COMPLETED",
             start, start.AddHours(1), 0.20m, "EUR", plate);
         var reader = new Reader((page, ct) =>
             Task.FromResult(new ProviderActionHistoryPage(
-                page == 0 ? [record] : [], page, 10, 1)));
+                page == 0 ? [corrected ? record with { ActualEndAt = start.AddMinutes(90), ProviderCostAmount = 0.30m } : record] : [], page, 10, 1)));
         try
         {
             await using (var seed = fixture.CreateDbContext())
@@ -552,6 +553,28 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
                     .CountAsync(x => x.ParkingBudgetPeriodId == period.Id, token));
                 Assert.Equal(notificationCountBefore,
                     await repeated.NotificationEvents.CountAsync(token));
+            }
+
+            // A later provider correction updates realized paid minutes without
+            // duplicate warning baselines or retrospective notifications.
+            corrected = true;
+            await using (var correction = fixture.CreateDbContext())
+                await CreateService(correction, reader).ImportAsync(externalProduct, 10, token);
+
+            await using (var verifiedCorrection = fixture.CreateDbContext())
+            {
+                var action = await verifiedCorrection.ProviderParkingActions.AsNoTracking()
+                    .SingleAsync(x => x.ProviderActionId == actionId, token);
+                var usage = RealizedParkingBudgetUsageCalculator.CalculateFromActions(
+                    period, [action], [rules]);
+                Assert.Equal(TimeSpan.FromMinutes(90), usage.UsedPaidDuration);
+                Assert.Equal(0.30m, action.ProviderCostAmount);
+                Assert.Equal(firstBaselineCount, await verifiedCorrection.ParkingBudgetWarningStates
+                    .CountAsync(x => x.ParkingBudgetPeriodId == period.Id, token));
+                Assert.Equal(notificationCountBefore,
+                    await verifiedCorrection.NotificationEvents.CountAsync(token));
+                Assert.Equal(1, await verifiedCorrection.ProviderParkingActions
+                    .CountAsync(x => x.ProviderActionId == actionId, token));
             }
         }
         finally
