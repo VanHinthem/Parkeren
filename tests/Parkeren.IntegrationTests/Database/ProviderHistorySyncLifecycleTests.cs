@@ -192,6 +192,77 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Incremental_reread_restarts_at_first_page_and_corrects_older_history()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = $"overlap-{suffix}";
+        var plate = $"OL{suffix[..6].ToUpperInvariant()}";
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var firstId = $"first-overlap-{suffix}";
+        var secondId = $"second-overlap-{suffix}";
+        var corrected = false;
+        var requestedPages = new List<int>();
+        var reader = new Reader((page, _) =>
+        {
+            requestedPages.Add(page);
+            var record = page switch
+            {
+                0 => new ProviderActionHistoryRecord(firstId, "COMPLETED",
+                    start, start.AddMinutes(corrected ? 25 : 20),
+                    corrected ? 0.35m : 0.25m, "EUR", plate),
+                1 => new ProviderActionHistoryRecord(secondId, "COMPLETED",
+                    start.AddHours(1), start.AddHours(1).AddMinutes(20),
+                    0.30m, "EUR", plate),
+                _ => throw new InvalidOperationException("Unexpected history page.")
+            };
+            return Task.FromResult(new ProviderActionHistoryPage([record], page, 1, 2));
+        });
+
+        try
+        {
+            await using (var db = fixture.CreateDbContext())
+            {
+                var initial = await CreateService(db, reader).ImportAsync(product, 1, ct);
+                Assert.Equal(2, initial.Inserted);
+            }
+
+            corrected = true;
+            await using (var db = fixture.CreateDbContext())
+            {
+                var updated = await CreateService(db, reader).ImportAsync(product, 1, ct);
+                Assert.Equal(0, updated.Inserted);
+                Assert.Equal(2, updated.Refreshed);
+            }
+
+            Assert.Equal([0, 1, 0, 1], requestedPages);
+            await using var verify = fixture.CreateDbContext();
+            var first = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.ProviderActionId == firstId, ct);
+            Assert.Equal(start.AddMinutes(25), first.ActualEndAt);
+            Assert.Equal(0.35m, first.ProviderCostAmount);
+            Assert.Equal(2, await verify.ProviderParkingActions.CountAsync(
+                x => x.ProviderActionId == firstId || x.ProviderActionId == secondId, ct));
+            Assert.Equal(0, await verify.ProviderHistorySyncStates
+                .Where(x => x.ProviderProductId == product)
+                .Select(x => x.NextPageNumber).SingleAsync(ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderParkingActions.Where(x =>
+                x.ProviderActionId == firstId || x.ProviderActionId == secondId)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Shutdown_cancellation_preserves_reserved_run_for_restart()
     {
         var ct = TestContext.Current.CancellationToken;
