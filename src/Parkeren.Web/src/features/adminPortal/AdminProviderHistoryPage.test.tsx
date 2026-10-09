@@ -93,6 +93,24 @@ describe("AdminProviderHistoryPage synchronization",()=>{
       isDefault:true,firstSeenAt:"2026-10-01T00:00:00Z",lastSeenAt:"2026-10-09T00:00:00Z"
     }]);
   }
+  it("shows localized failures and completed progress counters",async()=>{
+    setupSync();
+    vi.mocked(getAdminProviderHistorySyncStatus).mockResolvedValue({
+      states:[],
+      runs:[{
+        ...runningRun,
+        status:"Failed",finishedAt:"2026-10-09T09:04:00Z",
+        error:"Provider tijdelijk niet bereikbaar"
+      }]
+    });
+    render(<AdminProviderHistoryPage/>);
+    expect(await screen.findByText("Mislukt")).toBeTruthy();
+    expect(screen.getByText("Provider tijdelijk niet bereikbaar")).toBeTruthy();
+    expect(screen.getByText("6")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.queryByRole("button",{name:"Annuleren"})).toBeNull();
+  });
   it("starts a manual sync for the selected product",async()=>{
     setupSync();
     vi.mocked(startAdminProviderHistorySync).mockResolvedValue({
