@@ -35,6 +35,12 @@ public sealed class ProviderHistoryExistingActionStore(ParkerenDbContext dbConte
         if (existing.Origin == ProviderActionOrigin.Managed)
             return ProviderHistoryExistingActionResult.SkippedManaged;
 
+        // Only finalized provider history can revise imported facts. An active or
+        // unexpected status must not turn a completed imported action into a
+        // misleading reconciliation result.
+        if (!string.Equals(record.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only completed history actions can refresh imported actions.");
+
         existing.RefreshImportedHistory(
             record.ActualStartAt,
             record.ActualEndAt,
