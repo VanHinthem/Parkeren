@@ -75,6 +75,63 @@ public sealed class VisitStartTerminalWorkTests(PostgreSqlFixture fixture)
         Assert.Equal(VisitEndReason.DesiredEndReached, terminalWork.EndReason);
     }
 
+    [Fact]
+    public async Task Saving_open_ended_friday_evening_visit_schedules_saturday_morning_coverage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ClearVisitStateAsync(ct);
+
+        var startAt = new DateTimeOffset(2026, 10, 9, 18, 16, 0, TimeSpan.Zero); // Friday 20:16 Amsterdam
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var user = new User(Guid.NewGuid(), $"overnight-{suffix}", $"OVERNIGHT-{suffix}", "hash", UserRole.Visitor);
+        var vehicle = new Vehicle(Guid.NewGuid(), $"ON{suffix[..6]}", $"ON{suffix[..6]}", null);
+        var visit = new Visit(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            user.Id,
+            vehicle.Id,
+            user.Id,
+            startAt,
+            null,
+            new EffectiveParkingPolicySnapshot(null, null, true));
+        visit.Activate();
+
+        var rules = new ParkingRuleSet(
+            Guid.NewGuid(),
+            DateTimeOffset.UnixEpoch,
+            null,
+            TimeSpan.FromHours(4),
+            new[] { new PaidWindow(DayOfWeek.Saturday, new TimeOnly(9, 0), new TimeOnly(20, 0)) });
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Users.Add(user);
+            seed.Vehicles.Add(vehicle);
+            seed.Visits.Add(visit);
+            seed.ParkingRuleSets.Add(rules);
+            await seed.SaveChangesAsync(ct);
+        }
+
+        await using var provider = BuildServices();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<ParkerenDbContext>();
+            var persistedVisit = await dbContext.Visits.SingleAsync(x => x.Id == visit.Id, ct);
+            await scope.ServiceProvider.GetRequiredService<IVisitStartStore>()
+                .SaveAsync(persistedVisit, ct);
+        }
+
+        await using var verify = fixture.CreateDbContext();
+        var work = await verify.VisitSchedulerWork.SingleAsync(
+            x => x.VisitId == visit.Id &&
+                 x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                 x.Status == VisitSchedulerWorkStatus.Pending,
+            ct);
+
+        Assert.Equal(new DateTimeOffset(2026, 10, 10, 6, 55, 0, TimeSpan.Zero), work.DueAt);
+        Assert.False(await verify.ProviderParkingActions.AnyAsync(x => x.VisitId == visit.Id, ct));
+    }
+
     private ServiceProvider BuildServices()
     {
         var configuration = new ConfigurationManager();
