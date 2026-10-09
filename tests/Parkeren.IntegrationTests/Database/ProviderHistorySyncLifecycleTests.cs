@@ -84,6 +84,60 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reserved_run_executor_reuses_the_run_and_records_its_outcome(bool fail)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"reserved-executor-{Guid.NewGuid():N}";
+        var reader = new Reader((page, token) => fail
+            ? throw new InvalidOperationException("Reserved history read failed.")
+            : Task.FromResult(new ProviderActionHistoryPage([], page, 10, 0)));
+
+        try
+        {
+            Guid runId;
+            await using (var reserve = fixture.CreateDbContext())
+            {
+                var run = await new ProviderHistorySyncRunStarter(reserve, TimeProvider.System)
+                    .TryStartAsync(product, ProviderHistorySyncRunMode.Manual, ct);
+                Assert.NotNull(run);
+                runId = run.Id;
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var executor = new ProviderHistoryReservedRunExecutor(
+                    db, CreateService(db, reader),
+                    new ProviderHistorySyncRunStore(db), TimeProvider.System);
+                if (fail)
+                    await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                        executor.ExecuteAsync(runId, ct));
+                else
+                    await executor.ExecuteAsync(runId, ct);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var runs = await verify.ProviderHistorySyncRuns.AsNoTracking()
+                .Where(x => x.ProviderProductId == product).ToListAsync(ct);
+            var saved = Assert.Single(runs);
+            Assert.Equal(runId, saved.Id);
+            Assert.Equal(ProviderHistorySyncRunMode.Manual, saved.Mode);
+            Assert.Equal(fail ? ProviderHistorySyncRunStatus.Failed :
+                ProviderHistorySyncRunStatus.Succeeded, saved.Status);
+            Assert.NotNull(saved.FinishedAt);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
     [Fact]
     public async Task Successful_history_import_records_budget_baseline_without_notifications()
     {
