@@ -168,7 +168,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 ignoreCase: true);
 
             // A second four-hour boundary must create another adjacent action.
-            var secondBoundary = boundary.AddSeconds(1).AddHours(4);
+            var secondBoundary = boundary.AddHours(4);
             var secondPrecheck = secondBoundary.AddMinutes(-4);
             clock.SetUtcNow(secondPrecheck);
             (await http.PostAsJsonAsync(
