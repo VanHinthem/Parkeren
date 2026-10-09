@@ -42,8 +42,20 @@ public sealed class ProviderHistorySyncRunStarter(
             return null;
         }
 
+        var now = timeProvider.GetUtcNow();
+        if (mode == ProviderHistorySyncRunMode.Incremental)
+        {
+            var state = await dbContext.ProviderHistorySyncStates
+                .SingleOrDefaultAsync(x => x.ProviderProductId == productId, cancellationToken);
+            // A bootstrap is still required before the scheduler can select a product.
+            // Persist the attempt with the reservation so failures before page one
+            // cannot trigger a new periodic run on every worker poll.
+            if (state?.LastSuccessfulSyncAt is not null)
+                state.RecordAttempt(now);
+        }
+
         var run = new ProviderHistorySyncRun(
-            Guid.NewGuid(), productId, mode, timeProvider.GetUtcNow());
+            Guid.NewGuid(), productId, mode, now);
         dbContext.ProviderHistorySyncRuns.Add(run);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
