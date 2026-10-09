@@ -1,11 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Parkeren.Application.Visits;
 using Parkeren.Domain.Visits;
+using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Persistence;
 
 namespace Parkeren.Infrastructure.Visits;
 
-internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) : IVisitCapacityClaimer
+internal sealed class PostgresVisitCapacityClaimer(
+    ParkerenDbContext dbContext,
+    ExternalActiveProviderActionCounter externalActions) : IVisitCapacityClaimer
 {
     private const long CapacityLockKey = 0x5041524B; // PARK
 
@@ -57,7 +60,10 @@ internal sealed class PostgresVisitCapacityClaimer(ParkerenDbContext dbContext) 
         }
 
         var occupied = await dbContext.Visits.CountAsync(x => x.Status != VisitStatus.Completed && x.Status != VisitStatus.Cancelled, cancellationToken);
-        if (occupied >= maxGlobalConcurrentVisits)
+        // Count only confirmed external actions that are not already represented
+        // by a managed action or Visit; user-specific limits remain Visit-based.
+        var occupiedExternally = await externalActions.CountAsync(cancellationToken);
+        if (occupied + occupiedExternally >= maxGlobalConcurrentVisits)
         {
             await transaction.RollbackAsync(cancellationToken);
             return new VisitCapacityClaim(false, null, false);
