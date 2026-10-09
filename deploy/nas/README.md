@@ -37,6 +37,16 @@ docker compose pull
 docker compose up -d
 ```
 
+**Bij iedere nieuwe ACC-build:** GitHub Actions publiceert de bewegende GHCR-tag `acc`, maar een reeds draaiende NAS-container haalt die image **niet automatisch** op. Voer na een geslaagde `publish-acceptance-images`-job in de bestaande ACC-map expliciet `docker compose pull app two-park-mock` en daarna `docker compose up -d --no-deps app two-park-mock` uit. De databasecontainer en volumes hoeven hiervoor niet opnieuw te worden aangemaakt. Een `docker compose up -d` zonder voorafgaande `pull` kan dezelfde oude lokale `acc`-image blijven gebruiken.
+
+Controleer daarna welke image de draaiende app gebruikt:
+
+```sh
+docker inspect --format '{{.Config.Image}} | {{.Image}}' parkeren-acc-app-1
+```
+
+De eerste waarde is alleen de **tag** (`:acc`); de tweede is de daadwerkelijk gebruikte lokale **image-ID**. Twee containers met dezelfde tagnaam hoeven dus niet dezelfde code te draaien. Leg voor een reproduceerbare uitrol de bij de CI-run horende commit-SHA vast of gebruik de immutable tag `acc-<volledige-commit-sha>`.
+
 ## DEV (feature branch, watch/HMR)
 
 - URL: `https://parkeren-dev.vanhinthem.nl`
