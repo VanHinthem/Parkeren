@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import { afterEach,describe,expect,it,vi } from "vitest";
-import { assignAdminProviderActionUser,getAdminProviderActionHistory,getAdminProviderAssignmentHistory,getAdminProviderProducts,getUsers } from "../../api/client";
+import { assignAdminProviderActionUser,getAdminProviderActionHistory,getAdminProviderAssignmentHistory,getAdminProviderHistorySyncStatus,startAdminProviderHistorySync,getAdminProviderProducts,getUsers } from "../../api/client";
 import { AdminProviderHistoryPage } from "./AdminProviderHistoryPage";
 
 vi.mock("../../api/client",()=>({
   assignAdminProviderActionUser:vi.fn(),
   getAdminProviderActionHistory:vi.fn(),
   getAdminProviderAssignmentHistory:vi.fn(),
+  getAdminProviderHistorySyncStatus:vi.fn(),
+  startAdminProviderHistorySync:vi.fn(),
   getAdminProviderProducts:vi.fn(),
   getUsers:vi.fn()
 }));
@@ -23,6 +25,7 @@ const action=(origin:"Managed"|"Imported",assignedUserId:string|null)=>({
 });
 
 function setup(origin:"Managed"|"Imported"){
+  vi.mocked(getAdminProviderHistorySyncStatus).mockResolvedValue({states:[],runs:[]});
   vi.mocked(getAdminProviderProducts).mockResolvedValue([]);
   vi.mocked(getUsers).mockResolvedValue([
     {id:"user-1",username:"Ramon",role:"Visitor",status:"Active",isActive:true,canDelete:false,maxConcurrentVisits:null}
