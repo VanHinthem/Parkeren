@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import { afterEach,describe,expect,it,vi } from "vitest";
-import { assignAdminProviderActionUser,getAdminProviderActionHistory,getAdminProviderAssignmentHistory,getAdminProviderHistorySyncStatus,startAdminProviderHistorySync,getAdminProviderProducts,getUsers } from "../../api/client";
+import { assignAdminProviderActionUser,getAdminProviderActionHistory,getAdminProviderAssignmentHistory,getAdminProviderHistorySyncStatus,startAdminProviderHistorySync,cancelAdminProviderHistorySync,getAdminProviderProducts,getUsers } from "../../api/client";
 import { AdminProviderHistoryPage } from "./AdminProviderHistoryPage";
 
 vi.mock("../../api/client",()=>({
@@ -10,6 +10,7 @@ vi.mock("../../api/client",()=>({
   getAdminProviderAssignmentHistory:vi.fn(),
   getAdminProviderHistorySyncStatus:vi.fn(),
   startAdminProviderHistorySync:vi.fn(),
+  cancelAdminProviderHistorySync:vi.fn(),
   getAdminProviderProducts:vi.fn(),
   getUsers:vi.fn()
 }));
@@ -75,5 +76,48 @@ describe("AdminProviderHistoryPage assignment",()=>{
     fireEvent.change(reloadedSelection,{target:{value:""}});
     fireEvent.click(screen.getByRole("button",{name:"Toewijzing opslaan"}));
     await waitFor(()=>expect(assignAdminProviderActionUser).toHaveBeenCalledWith("action-1",null));
+  });
+});
+
+describe("AdminProviderHistoryPage synchronization",()=>{
+  const runningRun={
+    id:"run-1",providerProductId:"visitor",mode:"Manual" as const,status:"Running" as const,
+    startedAt:"2026-10-09T09:00:00Z",finishedAt:null,
+    readCount:10,insertedCount:6,refreshedCount:3,skippedCount:1,error:null
+  };
+  function setupSync(){
+    setup("Imported");
+    vi.mocked(getAdminProviderProducts).mockResolvedValue([{
+      id:"product-1",providerProductId:"visitor",name:"Bezoekersparkeren",
+      categoryId:null,categoryName:null,location:"OSS_J",isAvailable:true,
+      isDefault:true,firstSeenAt:"2026-10-01T00:00:00Z",lastSeenAt:"2026-10-09T00:00:00Z"
+    }]);
+  }
+  it("starts a manual sync for the selected product",async()=>{
+    setupSync();
+    vi.mocked(startAdminProviderHistorySync).mockResolvedValue({
+      id:"run-1",providerProductId:"visitor",status:"Running"
+    });
+    render(<AdminProviderHistoryPage/>);
+    fireEvent.change(await screen.findByLabelText("Product voor synchronisatie"),{
+      target:{value:"visitor"}
+    });
+    fireEvent.click(screen.getByRole("button",{name:"Synchroniseren"}));
+    await waitFor(()=>expect(startAdminProviderHistorySync).toHaveBeenCalledWith("visitor"));
+    await waitFor(()=>expect(getAdminProviderHistorySyncStatus).toHaveBeenCalledTimes(2));
+  });
+  it("offers cancellation for a running sync and refreshes its status",async()=>{
+    setupSync();
+    vi.mocked(getAdminProviderHistorySyncStatus)
+      .mockResolvedValueOnce({states:[],runs:[runningRun]})
+      .mockResolvedValue({states:[],runs:[{...runningRun,status:"Cancelled",finishedAt:"2026-10-09T09:01:00Z"}]});
+    vi.mocked(cancelAdminProviderHistorySync).mockResolvedValue({
+      runId:"run-1",status:"Cancelled"
+    });
+    render(<AdminProviderHistoryPage/>);
+    fireEvent.click(await screen.findByRole("button",{name:"Annuleren"}));
+    await waitFor(()=>expect(cancelAdminProviderHistorySync).toHaveBeenCalledWith("run-1"));
+    await waitFor(()=>expect(screen.getByText("Cancelled")).toBeTruthy());
+    expect(screen.queryByRole("button",{name:"Annuleren"})).toBeNull();
   });
 });
