@@ -26,7 +26,7 @@ public sealed class ProviderHistoryReservedRunExecutor(
             await importer.ImportAsync(
                 run.ProviderProductId, 10, cancellationToken, run.Mode, run.Id);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             // Host shutdown must leave the reserved run Running so another
             // worker can resume from the durable page checkpoint.
