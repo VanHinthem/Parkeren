@@ -139,6 +139,65 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Shutdown_cancellation_preserves_reserved_run_for_restart()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var product = $"shutdown-resume-{Guid.NewGuid():N}";
+        var cancelledReader = new Reader((_, token) => throw new OperationCanceledException(token));
+        try
+        {
+            Guid runId;
+            await using (var reserve = fixture.CreateDbContext())
+            {
+                var run = await new ProviderHistorySyncRunStarter(reserve, TimeProvider.System)
+                    .TryStartAsync(product, ProviderHistorySyncRunMode.Manual, ct);
+                Assert.NotNull(run);
+                runId = run.Id;
+            }
+
+            await using (var interrupted = fixture.CreateDbContext())
+            {
+                var executor = new ProviderHistoryReservedRunExecutor(
+                    interrupted, CreateService(interrupted, cancelledReader),
+                    new ProviderHistorySyncRunStore(interrupted), TimeProvider.System);
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    executor.ExecuteAsync(runId, ct));
+            }
+
+            await using (var verify = fixture.CreateDbContext())
+            {
+                var run = await verify.ProviderHistorySyncRuns.AsNoTracking()
+                    .SingleAsync(x => x.Id == runId, ct);
+                Assert.Equal(ProviderHistorySyncRunStatus.Running, run.Status);
+                Assert.Null(run.FinishedAt);
+            }
+
+            await using (var restarted = fixture.CreateDbContext())
+            {
+                var reader = new Reader((page, token) =>
+                    Task.FromResult(new ProviderActionHistoryPage([], page, 10, 0)));
+                var executor = new ProviderHistoryReservedRunExecutor(
+                    restarted, CreateService(restarted, reader),
+                    new ProviderHistorySyncRunStore(restarted), TimeProvider.System);
+                await executor.ExecuteAsync(runId, ct);
+            }
+
+            await using var completed = fixture.CreateDbContext();
+            Assert.Equal(ProviderHistorySyncRunStatus.Succeeded,
+                await completed.ProviderHistorySyncRuns.AsNoTracking()
+                    .Where(x => x.Id == runId).Select(x => x.Status).SingleAsync(ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
     public async Task Reserved_run_resumes_at_checkpoint_after_worker_restart()
     {
         var ct = TestContext.Current.CancellationToken;
