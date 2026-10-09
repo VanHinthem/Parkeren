@@ -20,7 +20,7 @@ public sealed class ProviderHistoryExistingActionStoreTests(PostgreSqlFixture fi
         var actionId = $"managed-active-{suffix}";
         var product = $"history-safe-{suffix}";
         var start = new DateTimeOffset(2026, 10, 9, 9, 0, 0, TimeSpan.Zero);
-        var action = new ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(),
+        var action = new Parkeren.Domain.Visits.ProviderParkingAction(Guid.NewGuid(), Guid.NewGuid(),
             start, start.AddHours(1), product);
         action.MarkStarting();
         action.MarkActive(actionId, start, "ACTIVE");
