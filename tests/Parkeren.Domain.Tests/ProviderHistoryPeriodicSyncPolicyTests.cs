@@ -1,3 +1,4 @@
+using Xunit;
 using Parkeren.Domain.ParkingProvider;
 
 namespace Parkeren.Domain.Tests;
