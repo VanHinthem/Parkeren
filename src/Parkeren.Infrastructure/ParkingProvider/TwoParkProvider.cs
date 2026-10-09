@@ -235,6 +235,13 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
         if (historyPage.MaxIndex is not int pageMaxIndex || pageMaxIndex < 0)
             throw new JsonException("2Park action history response has no valid maxindex.");
 
+        // Changing provider totals during a traversal invalidate its indexed
+        // pages. Reject the page rather than committing a potentially partial run.
+        if (pageNumber > 0 &&
+            historyMaxIndexByProduct.TryGetValue(providerProductId, out var priorMaxIndex) &&
+            priorMaxIndex != pageMaxIndex)
+            throw new JsonException("2Park history maxindex changed during the import.");
+
         historyMaxIndexByProduct[providerProductId] = pageMaxIndex;
 
         // A short terminal page can omit an action at its leading boundary.

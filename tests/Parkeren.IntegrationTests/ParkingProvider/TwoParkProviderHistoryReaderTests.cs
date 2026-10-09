@@ -131,6 +131,27 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task History_maxindex_change_between_pages_rejects_the_traversal()
+    {
+        var handler = new HistoryHandler { DynamicMaxIndex = 21 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(21, first.TotalCount);
+        handler.DynamicMaxIndex = 24;
+
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(() =>
+            provider.GetActionHistoryPageAsync("product-1", 1, 10, ct));
+        Assert.Equal(new[] { (1, 10), (11, 20) }, handler.RequestedRanges);
+
+        // A new traversal can refresh the maximum at page zero.
+        var restarted = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(24, restarted.TotalCount);
+    }
+
+    [Fact]
     public async Task Completed_action_with_missing_end_time_rejects_page_instead_of_silently_dropping_it()
     {
         var handler = new HistoryHandler(missingCompletedEndTime: true);
