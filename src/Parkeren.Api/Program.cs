@@ -26,6 +26,7 @@ builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<FailedSchedulerWorkReleaseQueue>();
 builder.Services.AddHostedService<VisitSchedulerWorker>();
+builder.Services.AddHostedService<ProviderHistorySyncWorker>();
 builder.Services.Configure<NotificationRetentionOptions>(builder.Configuration.GetSection("Notifications"));
 builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection("WebPush"));
 builder.Services.AddHostedService<NotificationRetentionWorker>();
