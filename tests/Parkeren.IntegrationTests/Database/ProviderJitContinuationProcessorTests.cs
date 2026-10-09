@@ -61,7 +61,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             user.Id,
             startAt,
             desiredEndAt,
-            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(8), TimeSpan.FromHours(8), true),
+            new EffectiveParkingPolicySnapshot(TimeSpan.FromHours(12), TimeSpan.FromHours(12), true),
             product.Id,
             product.ProviderProductId,
             product.Location);
