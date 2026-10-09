@@ -28,6 +28,13 @@ public sealed class ProviderHistorySyncState
         PageSize = pageSize;
     }
 
+    public void RecordAttempt(DateTimeOffset observedAt)
+    {
+        if (LastAttemptAt is { } previous && observedAt < previous)
+            throw new ArgumentOutOfRangeException(nameof(observedAt));
+        LastAttemptAt = observedAt;
+    }
+
     public void RecordPageCompleted(int pageNumber, DateTimeOffset observedAt)
     {
         if (pageNumber != NextPageNumber)
