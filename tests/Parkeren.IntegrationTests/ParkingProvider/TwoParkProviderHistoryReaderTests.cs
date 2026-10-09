@@ -68,13 +68,13 @@ public sealed class TwoParkProviderHistoryReaderTests
         var last = await provider.GetActionHistoryPageAsync(
             "product-1", 2, 10, TestContext.Current.CancellationToken);
 
-        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24) }, handler.RequestedRanges);
+        Assert.Equal(new[] { (1, 10), (11, 20), (21, 24), (24, 24) }, handler.RequestedRanges);
         Assert.Equal(10, first.Records.Count);
         Assert.Equal(10, second.Records.Count);
-        Assert.Equal(3, last.Records.Count);
+        Assert.Equal(4, last.Records.Count);
         Assert.Equal(24, last.TotalCount);
         Assert.False(last.HasMore);
-        Assert.DoesNotContain(last.Records, x => x.ProviderActionId == "action-24");
+        Assert.Contains(last.Records, x => x.ProviderActionId == "action-24");
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class TwoParkProviderHistoryReaderTests
             if (returnProviderError)
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"ERROR\",\"minor\":\"PROVIDER_FAILURE\"},\"message\":\"History unavailable\"}}");
 
-            var actualStop = Math.Min(stopIndex, shortFinalPage ? 23 : 21);
+            var actualStop = Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
                 .Select(CreateActionJson);
             var actionJson = string.Join(",", actions);

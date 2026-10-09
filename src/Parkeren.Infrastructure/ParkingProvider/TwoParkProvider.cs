@@ -233,7 +233,37 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
             throw new JsonException("2Park action history response has no valid maxindex.");
 
         historyMaxIndexByProduct[providerProductId] = pageMaxIndex;
-        var records = historyPage.Actions
+
+        // Live 2Park has returned 21..23 for a 21..24 request while index 24
+        // remained retrievable on its own. Recover only an omitted terminal
+        // index; do not change the established normal page ranges.
+        var actions = historyPage.Actions.ToList();
+        if (stopIndex == pageMaxIndex &&
+            historyPage.StopIndex is int actualStop &&
+            actualStop >= startIndex - 1 &&
+            actualStop < stopIndex)
+        {
+            for (var index = actualStop + 1; index <= stopIndex; index++)
+            {
+                using var tailData = await PostAsync("get_action_history.json",
+                    new Dictionary<string, string>
+                    {
+                        ["product_id"] = providerProductId,
+                        ["locale"] = Locale,
+                        ["startindex"] = index.ToString(CultureInfo.InvariantCulture),
+                        ["stopindex"] = index.ToString(CultureInfo.InvariantCulture)
+                    }, cancellationToken);
+                var tail = TwoParkActionHistoryParser.Parse(tailData.RootElement);
+                if (tail.MaxIndex != pageMaxIndex ||
+                    tail.StartIndex != index ||
+                    tail.StopIndex != index ||
+                    tail.Actions.Count != 1)
+                    throw new JsonException("2Park history terminal index could not be verified.");
+                actions.Add(tail.Actions[0]);
+            }
+        }
+
+        var records = actions
             .Where(x => x.StartLocal.HasValue && x.EndLocal.HasValue)
             .Select(x => new ProviderActionHistoryRecord(
                 x.ProviderActionId,
