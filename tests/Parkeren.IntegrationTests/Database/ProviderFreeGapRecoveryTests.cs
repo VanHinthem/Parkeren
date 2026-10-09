@@ -392,7 +392,7 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             }
 
             Assert.Equal(
-                providerReadback == "missing" ? 0 : 2,
+                providerReadback == "missing" ? 0 : spansFreeSunday ? 3 : 2,
                 (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
         }
         finally
