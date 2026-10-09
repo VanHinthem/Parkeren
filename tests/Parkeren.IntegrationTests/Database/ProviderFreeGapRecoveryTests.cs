@@ -182,7 +182,8 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
             });
             var services = new ServiceCollection();
             services.AddInfrastructure(configuration);
-            services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
+            var clock = new MutableTimeProvider(now);
+            services.AddSingleton<TimeProvider>(clock);
             services.AddSingleton<IParkingProvider>(parkingProvider);
             services.AddLogging();
             await using var provider = services.BuildServiceProvider();
@@ -333,6 +334,63 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
                 }
             }
 
+            if (spansFreeSunday)
+            {
+                // Simulate Saturday's scheduled action reaching its planned end, with
+                // Sunday free, then execute Monday's continuation against TwoParkMock.
+                await using (var completeSaturday = fixture.CreateDbContext())
+                {
+                    var saturdayAction = await completeSaturday.ProviderParkingActions
+                        .SingleAsync(x => x.Id == successorId, cancellationToken);
+                    saturdayAction.ActivateScheduled(nextPaidStart, "active");
+                    saturdayAction.MarkCompleted(nextPaidEnd);
+                    await completeSaturday.SaveChangesAsync(cancellationToken);
+                }
+
+                var mondayPrecheck = furtherPaidStart!.Value.AddMinutes(-4);
+                clock.SetUtcNow(mondayPrecheck);
+                (await http.PostAsJsonAsync(
+                    "api/test/clock/set",
+                    new { UtcNow = mondayPrecheck },
+                    cancellationToken)).EnsureSuccessStatusCode();
+
+                Guid continuationId;
+                await using (var claimContext = fixture.CreateDbContext())
+                {
+                    var pending = await claimContext.VisitSchedulerWork.SingleAsync(
+                        x => x.VisitId == visit.Id &&
+                             x.Type == VisitSchedulerWorkType.ContinueProviderCoverage &&
+                             x.Status == VisitSchedulerWorkStatus.Pending,
+                        cancellationToken);
+                    continuationId = pending.Id;
+                    pending.Claim("monday-resume-test", mondayPrecheck);
+                    await claimContext.SaveChangesAsync(cancellationToken);
+                }
+
+                await using (var mondayScope = provider.CreateAsyncScope())
+                {
+                    var context = mondayScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+                    var claimed = await context.VisitSchedulerWork.SingleAsync(
+                        x => x.Id == continuationId, cancellationToken);
+                    await mondayScope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                        .ProcessAsync(claimed, cancellationToken);
+                }
+
+                await using var mondayVerify = fixture.CreateDbContext();
+                var mondayVisit = await mondayVerify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken);
+                Assert.Equal(VisitStatus.Active, mondayVisit.Status);
+                Assert.Equal(VisitHealth.Healthy, mondayVisit.Health);
+                Assert.Null(mondayVisit.DesiredEndAt);
+                var mondayAction = await mondayVerify.ProviderParkingActions
+                    .SingleAsync(x => x.VisitId == visit.Id && x.PlannedStartAt == furtherPaidStart.Value,
+                        cancellationToken);
+                Assert.Equal(ProviderActionState.Scheduled, mondayAction.State);
+                Assert.False(string.IsNullOrWhiteSpace(mondayAction.ProviderActionId));
+                Assert.Equal(VisitSchedulerWorkStatus.Completed,
+                    (await mondayVerify.VisitSchedulerWork.SingleAsync(
+                        x => x.Id == continuationId, cancellationToken)).Status);
+            }
+
             Assert.Equal(
                 providerReadback == "missing" ? 0 : 2,
                 (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
@@ -376,9 +434,11 @@ public sealed class ProviderFreeGapRecoveryTests(PostgreSqlFixture fixture)
         }
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class MutableTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
     {
+        private DateTimeOffset utcNow = initialUtcNow;
         public override DateTimeOffset GetUtcNow() => utcNow;
+        public void SetUtcNow(DateTimeOffset value) => utcNow = value;
     }
 
     private static PaidWindow[] CreatePaidWindows(
