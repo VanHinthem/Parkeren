@@ -78,6 +78,29 @@ internal sealed class VisitRecoveryService(
                     new ProviderActionMatchCriteria(
                         action.ProviderActionId,
                         action.ProviderProductId));
+                // An action that reached its planned end can legitimately disappear from
+                // the provider's current-action list. History reconciliation verifies
+                // its final interval; do not classify this as a missing active action.
+                if (remote is null && action.PlannedEndAt <= timeProvider.GetUtcNow())
+                {
+                    action.MarkCompleted(action.PlannedEndAt);
+                    await ProviderActionInitialCostInitializer.TryInitializeAsync(
+                        dbContext, action, cancellationToken);
+                    await ProviderActionHistoryWorkScheduler.EnsureScheduledAsync(
+                        dbContext, action, timeProvider.GetUtcNow().AddMinutes(1), cancellationToken);
+                    if (visit.ProviderProductId is Guid endedProductId)
+                    {
+                        var observedAt = timeProvider.GetUtcNow();
+                        await discrepancyService.ResolveAsync(
+                            MissingProviderActionKey(endedProductId, action.Id), observedAt, cancellationToken);
+                        await discrepancyService.ResolveAsync(
+                            ProviderActionStatusKey(endedProductId, action.Id), observedAt, cancellationToken);
+                        await discrepancyService.ResolveAsync(
+                            ProviderActionEndKey(endedProductId, action.Id), observedAt, cancellationToken);
+                    }
+                    continue;
+                }
+
                 var productId = visit.ProviderProductId;
                 var mismatch = false;
 

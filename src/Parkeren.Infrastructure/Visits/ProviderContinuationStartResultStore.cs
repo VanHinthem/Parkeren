@@ -117,10 +117,10 @@ internal sealed class ProviderContinuationStartResultStore(
         var successEvent = new NotificationEvent(
             Guid.NewGuid(),
             NotificationEventType.ProviderContinuationSucceeded,
-            visit.Id,
+            action.Id,
             timeProvider.GetUtcNow());
         dbContext.NotificationEvents.Add(successEvent);
-        await inboxWriter.WriteAsync(successEvent, NotificationType.ProviderContinuationSucceeded, visit.UserId, includeVisitor: false, includeAdmins: true, cancellationToken);
+        await inboxWriter.WriteAsync(successEvent, NotificationType.ProviderContinuationSucceeded, visit.UserId, includeVisitor: false, includeAdmins: true, cancellationToken, visitId: visit.Id);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
