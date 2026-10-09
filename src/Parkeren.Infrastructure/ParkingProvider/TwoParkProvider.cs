@@ -212,7 +212,10 @@ public sealed class TwoParkProvider(HttpClient httpClient, IConfiguration config
 
         var startIndex = checked(pageNumber * pageSize + 1);
         var stopIndex = checked(startIndex + pageSize - 1);
-        if (historyMaxIndexByProduct.TryGetValue(providerProductId, out var maxIndex))
+        // Always refresh the provider maximum on the first page of a new run.
+        // Otherwise a prior small history (even maxindex=0) can truncate or
+        // suppress subsequent imports after more actions have been created.
+        if (pageNumber > 0 && historyMaxIndexByProduct.TryGetValue(providerProductId, out var maxIndex))
         {
             if (startIndex > maxIndex)
                 return new ProviderActionHistoryPage([], pageNumber, pageSize, maxIndex);

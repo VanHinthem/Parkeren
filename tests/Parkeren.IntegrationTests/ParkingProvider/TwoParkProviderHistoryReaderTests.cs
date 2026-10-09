@@ -105,6 +105,32 @@ public sealed class TwoParkProviderHistoryReaderTests
     }
 
     [Fact]
+    public async Task First_page_refreshes_stale_maxindex_when_history_grows_on_same_provider()
+    {
+        var handler = new HistoryHandler { DynamicMaxIndex = 5 };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://twopark.test/") };
+        var provider = CreateProvider(http);
+        var ct = TestContext.Current.CancellationToken;
+
+        var original = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        Assert.Equal(5, original.TotalCount);
+        Assert.Equal(5, original.Records.Count);
+
+        handler.DynamicMaxIndex = 24;
+        var first = await provider.GetActionHistoryPageAsync("product-1", 0, 10, ct);
+        var second = await provider.GetActionHistoryPageAsync("product-1", 1, 10, ct);
+        var third = await provider.GetActionHistoryPageAsync("product-1", 2, 10, ct);
+        var ids = first.Records.Concat(second.Records).Concat(third.Records)
+            .Select(x => x.ProviderActionId).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(new[] { (1, 10), (1, 10), (11, 20), (21, 24) },
+            handler.RequestedRanges);
+        Assert.Equal(24, first.TotalCount);
+        Assert.Equal(10, first.Records.Count);
+        Assert.Equal(24, ids.Count);
+    }
+
+    [Fact]
     public async Task Http_success_with_provider_error_status_throws_typed_provider_exception()
     {
         using var http = new HttpClient(new HistoryHandler(returnProviderError: true))
@@ -136,6 +162,7 @@ public sealed class TwoParkProviderHistoryReaderTests
     private sealed class HistoryHandler(bool returnProviderError = false, bool shortFinalPage = false, bool terminalIdAlreadyPresent = false, bool liveBoundaryShape = false) : HttpMessageHandler
     {
         public List<(int Start, int Stop)> RequestedRanges { get; } = [];
+        public int? DynamicMaxIndex { get; set; }
         public List<string> RequestedEndpoints { get; } = [];
         public async Task<IReadOnlyList<string>> ReadRangeAsync(int start, int stop, CancellationToken ct)
         {
@@ -178,7 +205,9 @@ public sealed class TwoParkProviderHistoryReaderTests
             if (returnProviderError)
                 return JsonResponse("{\"status\":{\"code\":{\"major\":\"ERROR\",\"minor\":\"PROVIDER_FAILURE\"},\"message\":\"History unavailable\"}}");
 
-            var actualStop = liveBoundaryShape
+            var actualStop = DynamicMaxIndex.HasValue
+                ? Math.Min(stopIndex, DynamicMaxIndex.Value)
+                : liveBoundaryShape
                 ? (startIndex == 21 ? 23 : Math.Min(stopIndex, 24))
                 : Math.Min(stopIndex, shortFinalPage ? (startIndex == 24 ? 24 : 23) : 21);
             var actions = Enumerable.Range(startIndex, Math.Max(0, actualStop - startIndex + 1))
@@ -193,7 +222,7 @@ public sealed class TwoParkProviderHistoryReaderTests
               "data": {
                 "startindex": "{{startIndex}}",
                 "stopindex": "{{actualStop}}",
-                "maxindex": "{{(liveBoundaryShape ? 24 : shortFinalPage ? 24 : 21)}}",
+                "maxindex": "{{(DynamicMaxIndex ?? (liveBoundaryShape ? 24 : shortFinalPage ? 24 : 21))}}",
                 "actions": [{{actionJson}}]
               }
             }
