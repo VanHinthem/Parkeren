@@ -3,6 +3,8 @@ using Parkeren.Application.ParkingProvider;
 using Parkeren.Domain.ParkingProvider;
 using Parkeren.Domain.Rules;
 using Parkeren.Domain.Vehicles;
+using Parkeren.Domain.Users;
+using Parkeren.Domain.Visits;
 using Parkeren.Infrastructure.ParkingProvider;
 using Parkeren.Infrastructure.Persistence;
 
@@ -258,6 +260,110 @@ public sealed class ProviderHistorySyncLifecycleTests(PostgreSqlFixture fixture)
             await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
                 .ExecuteDeleteAsync(ct);
             await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task End_to_end_reimport_preserves_manual_assignment_and_applies_provider_correction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = $"e2e-history-{suffix}";
+        var providerId = $"e2e-action-{suffix}";
+        var plate = $"E2{suffix[..6].ToUpperInvariant()}";
+        var start = new DateTimeOffset(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var actor = new User(Guid.NewGuid(), $"e2e-admin-{suffix}",
+            $"E2E-ADMIN-{suffix}", "hash", UserRole.Admin);
+        var assignee = new User(Guid.NewGuid(), $"e2e-visitor-{suffix}",
+            $"E2E-VISITOR-{suffix}", "hash", UserRole.Visitor);
+        var revised = false;
+        var reader = new Reader((page, _) =>
+        {
+            Assert.Equal(0, page);
+            var record = new ProviderActionHistoryRecord(providerId, "COMPLETED",
+                start, start.AddMinutes(revised ? 35 : 30),
+                revised ? 0.45m : 0.35m, "EUR", plate, "OSS_J");
+            return Task.FromResult(new ProviderActionHistoryPage([record], 0, 10, 1));
+        });
+
+        try
+        {
+            await using (var seed = fixture.CreateDbContext())
+            {
+                seed.Users.AddRange(actor, assignee);
+                await seed.SaveChangesAsync(ct);
+            }
+
+            Guid actionId;
+            await using (var initial = fixture.CreateDbContext())
+            {
+                var result = await CreateService(initial, reader).ImportAsync(product, 10, ct);
+                Assert.Equal(1, result.Inserted);
+                Assert.Equal(0, result.Refreshed);
+                actionId = await initial.ProviderParkingActions
+                    .Where(x => x.ProviderActionId == providerId)
+                    .Select(x => x.Id).SingleAsync(ct);
+            }
+
+            await using (var assignment = fixture.CreateDbContext())
+            {
+                Assert.True(await new ProviderHistoryAssignmentService(assignment, TimeProvider.System)
+                    .AssignAsync(actionId, actor.Id, assignee.Id, ct));
+            }
+
+            await using (var repeat = fixture.CreateDbContext())
+            {
+                var result = await CreateService(repeat, reader).ImportAsync(product, 10, ct);
+                Assert.Equal(0, result.Inserted);
+                Assert.Equal(1, result.Refreshed);
+            }
+
+            revised = true;
+            await using (var correction = fixture.CreateDbContext())
+            {
+                var result = await CreateService(correction, reader).ImportAsync(product, 10, ct);
+                Assert.Equal(0, result.Inserted);
+                Assert.Equal(1, result.Refreshed);
+            }
+
+            await using var verify = fixture.CreateDbContext();
+            var action = await verify.ProviderParkingActions.AsNoTracking()
+                .SingleAsync(x => x.Id == actionId, ct);
+            Assert.Equal(ProviderActionOrigin.Imported, action.Origin);
+            Assert.Null(action.VisitId);
+            Assert.Equal(assignee.Id, action.AssignedUserId);
+            Assert.Equal(ProviderActionAssignmentSource.ManuallyAssigned, action.AssignmentSource);
+            Assert.Equal(start.AddMinutes(35), action.ActualEndAt);
+            Assert.Equal(0.45m, action.ProviderCostAmount);
+            Assert.Equal(1, await verify.ProviderParkingActions.CountAsync(
+                x => x.ProviderActionId == providerId, ct));
+            Assert.Equal(1, await verify.AdminAuditEvents.CountAsync(
+                x => x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                     x.TargetId == actionId.ToString("D"), ct));
+            Assert.Equal(3, await verify.ProviderHistorySyncRuns.CountAsync(
+                x => x.ProviderProductId == product &&
+                     x.Status == ProviderHistorySyncRunStatus.Succeeded, ct));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateDbContext();
+            var actionIds = await cleanup.ProviderParkingActions
+                .Where(x => x.ProviderActionId == providerId)
+                .Select(x => x.Id).ToListAsync(ct);
+            foreach (var id in actionIds)
+                await cleanup.AdminAuditEvents.Where(x =>
+                    x.TargetType == ProviderActionAssignmentAudit.TargetName &&
+                    x.TargetId == id.ToString("D")).ExecuteDeleteAsync(ct);
+            await cleanup.ProviderParkingActions.Where(x => x.ProviderActionId == providerId)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncRuns.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(ct);
+            await cleanup.Users.Where(x => x.Id == actor.Id || x.Id == assignee.Id)
                 .ExecuteDeleteAsync(ct);
         }
     }
