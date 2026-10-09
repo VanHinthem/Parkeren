@@ -127,6 +127,47 @@ public sealed class ProviderParkingAction
         LastSyncedAt = observedAt;
     }
 
+    /// <summary>
+    /// Refreshes finalized provider facts for an already completed managed action.
+    /// This is intentionally separate from the initial pending-history reconciliation path.
+    /// </summary>
+    public void RefreshFinalizedManagedHistory(
+        DateTimeOffset actualStartAt,
+        DateTimeOffset actualEndAt,
+        decimal? providerCostAmount,
+        string providerStatus,
+        DateTimeOffset observedAt)
+    {
+        if (Origin != ProviderActionOrigin.Managed || VisitId is null || State != ProviderActionState.Completed)
+            throw new InvalidOperationException("Only completed managed provider actions can be refreshed from finalized history.");
+        if (Health != ProviderActionHealth.Healthy)
+            throw new InvalidOperationException("An unhealthy managed provider action cannot be refreshed from history.");
+        if (HistoryStatus is not (ProviderHistoryStatus.Reconciled or ProviderHistoryStatus.Incomplete))
+            throw new InvalidOperationException("Managed history can only be refreshed after initial reconciliation is terminal.");
+        if (string.IsNullOrWhiteSpace(ProviderActionId))
+            throw new InvalidOperationException("A managed provider action must have a provider action id before history can be refreshed.");
+        if (actualEndAt < actualStartAt)
+            throw new ArgumentOutOfRangeException(nameof(actualEndAt));
+        if (providerCostAmount is < 0m)
+            throw new ArgumentOutOfRangeException(nameof(providerCostAmount));
+        if (string.IsNullOrWhiteSpace(providerStatus))
+            throw new ArgumentException("Provider status is required.", nameof(providerStatus));
+        if (LastSyncedAt.HasValue && observedAt < LastSyncedAt.Value)
+            throw new ArgumentOutOfRangeException(nameof(observedAt), "Sync observation cannot predate the last sync.");
+
+        ActualStartAt = actualStartAt;
+        ActualEndAt = actualEndAt;
+        if (providerCostAmount.HasValue)
+            ProviderCostAmount = providerCostAmount.Value;
+        ProviderStatus = providerStatus.Trim();
+        HistoryStatus = providerCostAmount.HasValue
+            ? ProviderHistoryStatus.Reconciled
+            : ProviderHistoryStatus.Incomplete;
+        if (FirstObservedAt is null)
+            FirstObservedAt = observedAt;
+        LastSyncedAt = observedAt;
+    }
+
     public void SetImportedAttribution(
         ProviderActionOrigin origin,
         Guid vehicleId,
