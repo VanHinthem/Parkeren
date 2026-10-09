@@ -259,6 +259,38 @@ export async function getAdminProviderActionHistory(filter:AdminProviderActionHi
     await apiFetch("/api/admin/provider/actions?"+params.toString()));
 }
 
+export type AdminProviderHistorySyncRun={
+  id:string;providerProductId:string;mode:"Bootstrap"|"Incremental"|"Manual";
+  status:"Running"|"Succeeded"|"Failed"|"Cancelled";
+  startedAt:string;finishedAt:string|null;readCount:number;insertedCount:number;
+  refreshedCount:number;skippedCount:number;error:string|null;
+};
+export type AdminProviderHistorySyncState={
+  id:string;providerProductId:string;nextPageNumber:number;pageSize:number;
+  lastSuccessfulSyncAt:string|null;lastAttemptAt:string|null;lastError:string|null;
+};
+export type AdminProviderHistorySyncStatus={
+  states:AdminProviderHistorySyncState[];runs:AdminProviderHistorySyncRun[];
+};
+export async function getAdminProviderHistorySyncStatus(providerProductId?:string){
+  const query=providerProductId?"?providerProductId="+encodeURIComponent(providerProductId):"";
+  return json<AdminProviderHistorySyncStatus>(await apiFetch("/api/admin/provider-history/sync-status"+query));
+}
+export async function startAdminProviderHistorySync(providerProductId:string){
+  const response=await apiFetch("/api/admin/provider-history/sync",{
+    method:"POST",body:JSON.stringify({providerProductId})
+  });
+  if(!response.ok)throw await visitError(response,"Synchronisatie starten is mislukt");
+  return json<{id:string;providerProductId:string;status:string}>(response);
+}
+export async function cancelAdminProviderHistorySync(runId:string){
+  const response=await apiFetch(`/api/admin/provider-history/sync/${encodeURIComponent(runId)}/cancel`,{
+    method:"POST"
+  });
+  if(!response.ok)throw await visitError(response,"Synchronisatie annuleren is mislukt");
+  return json<{runId:string;status:string}>(response);
+}
+
 export type AdminProviderAssignmentAuditEntry={
   id:string;createdAt:string;actorUserId:string;actorUsername:string|null;contextJson:string|null;
 };
