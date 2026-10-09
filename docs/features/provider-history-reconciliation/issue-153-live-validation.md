@@ -107,3 +107,34 @@ used to identify which action is missing.
 
 This analysis documents risks; it does not change production pagination
 or establish a universal 2Park API contract from one provider dataset.
+
+
+## Resume safety decision — 2026-10-09
+
+The integration test for shifting indices demonstrates a real model limitation:
+page-number-only checkpoints cannot guarantee completeness when the provider
+inserts, removes, or reorders actions between interrupted runs. Comparing
+`maxindex` is insufficient because a reordering may preserve the count. The
+existing `ProviderHistoryImportPlan` deduplicates identical action IDs within a
+page and the persistence layer is idempotent for previously saved provider IDs,
+but neither proves that every index was visited.
+
+**Recommended implementation:** On a newly started recovery attempt whose durable
+checkpoint has `NextPageNumber > 0`, restart the *read traversal* at page zero
+rather than trust the old index offset. Keep all previously committed provider
+actions, and use provider action IDs to reapply them idempotently. This is safer
+than interpreting a changed total as proof of an index shift, and works even
+if the provider count remains the same. The resume reset must be atomic and
+serialized under the existing per-product advisory lock, not an ad-hoc update
+of the checkpoint row. Preserve existing run/audit semantics and do not
+reset progress on a mere per-page retry within the same running traversal.
+
+Before changing production code, cover: (1) interrupted run -> restart page 0;
+(2) stable provider snapshot -> no duplicate stored actions; (3) insertion at
+head with unchanged or increased maxindex -> no lost action; (4) failure during
+restart -> checkpoint persists correctly; (5) reserved/cancelled runs and
+concurrency locks retain their lifecycle behavior.
+
+A final full traversal alone does not guarantee completeness if the provider
+changes order *during* that traversal. This separate consistency limitation
+remains for #153 and should not be described as solved by the restart rule.
