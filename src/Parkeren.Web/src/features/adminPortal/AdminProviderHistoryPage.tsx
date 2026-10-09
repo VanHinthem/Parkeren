@@ -9,6 +9,16 @@ import { AdminProviderSubnav } from "./AdminProviderSubnav";
 import "./adminFieldPresentation.css";
 import "./AdminProvider.css";
 
+function syncRunStatusLabel(status:string) {
+  switch (status) {
+    case "Running": return "Bezig";
+    case "Succeeded": return "Voltooid";
+    case "Failed": return "Mislukt";
+    case "Cancelled": return "Geannuleerd";
+    default: return status;
+  }
+}
+
 function assignmentChange(contextJson:string|null, users:UserSummary[]) {
   if (!contextJson) return "Toewijzing gewijzigd";
   try {
@@ -164,12 +174,14 @@ export function AdminProviderHistoryPage() {
           <p>Laatste synchronisatieruns</p>
           {syncStatus.runs.length === 0 ? <p>Nog geen synchronisaties uitgevoerd.</p> :
             <div className="admin-table-wrap"><table className="admin-table">
-              <thead><tr><th>Product</th><th>Gestart</th><th>Status</th><th>Gelezen</th><th>Toegevoegd</th><th>Bijgewerkt</th><th>Acties</th></tr></thead>
+              <thead><tr><th>Product</th><th>Gestart</th><th>Status</th><th>Gelezen</th><th>Toegevoegd</th><th>Bijgewerkt</th><th>Overgeslagen</th><th>Afgerond</th><th>Foutmelding</th><th>Acties</th></tr></thead>
               <tbody>{syncStatus.runs.slice(0, 5).map(run => <tr key={run.id}>
                 <td>{products.find(product => product.providerProductId === run.providerProductId)?.name ?? run.providerProductId}</td>
                 <td>{formatAdminDateTime(run.startedAt)}</td>
-                <td>{run.status}</td>
+                <td>{syncRunStatusLabel(run.status)}</td>
                 <td>{run.readCount}</td><td>{run.insertedCount}</td><td>{run.refreshedCount}</td>
+                <td>{run.skippedCount}</td><td>{run.finishedAt ? formatAdminDateTime(run.finishedAt) : "—"}</td>
+                <td>{run.error || "—"}</td>
                 <td>{run.status === "Running" && <Button variant="secondary"
                   disabled={cancellingRunId === run.id}
                   onClick={() => void cancelSync(run.id)}>
