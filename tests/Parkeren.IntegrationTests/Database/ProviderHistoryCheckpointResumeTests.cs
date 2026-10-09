@@ -134,6 +134,87 @@ public sealed class ProviderHistoryCheckpointResumeTests(PostgreSqlFixture fixtu
         }
     }
 
+    [Fact]
+    public async Task Shifted_indices_on_resume_are_reconciled_by_next_full_sync()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var suffix = Guid.NewGuid().ToString("N");
+        var product = $"shift-resume-{suffix}";
+        var plate = $"SR{suffix[..6].ToUpperInvariant()}";
+        var start = DateTimeOffset.UnixEpoch.AddDays(20000);
+        var records = Enumerable.Range(0, 3).Select(index =>
+            new ProviderActionHistoryRecord($"shift-{index}-{suffix}", "COMPLETED",
+                start.AddMinutes(index * 20), start.AddMinutes(index * 20 + 10),
+                0.2m, "EUR", plate)).ToArray();
+
+        try
+        {
+            // Original provider order: A, B. Page zero (A) commits.
+            await using (var db = fixture.CreateDbContext())
+            {
+                await CreateImporter(db).ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[0]], 0, 1, 2),
+                    start.AddHours(1), token);
+            }
+
+            // A newly inserted leading action shifts the provider order to C, A, B.
+            // Resuming at page one sees A again, then B; C is not visited.
+            await using (var db = fixture.CreateDbContext())
+            {
+                var importer = CreateImporter(db);
+                await importer.ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[0]], 1, 1, 3),
+                    start.AddHours(2), token);
+                await importer.ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[1]], 2, 1, 3),
+                    start.AddHours(2), token);
+                Assert.Equal(2, await db.ProviderParkingActions.CountAsync(
+                    x => x.ProviderProductId == product, token));
+
+                // A completed run resets the page checkpoint, making a later full
+                // reread possible. The resumed run alone cannot detect the gap.
+                await new ProviderHistorySyncStateStore(db)
+                    .RecordSyncCompletedAsync(product, start.AddHours(2), token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var checkpoint = await new ProviderHistorySyncStateStore(db)
+                    .GetOrCreateAsync(product, 1, token);
+                Assert.Equal(0, checkpoint.NextPageNumber);
+
+                var importer = CreateImporter(db);
+                await importer.ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[2]], 0, 1, 3),
+                    start.AddHours(3), token);
+                await importer.ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[0]], 1, 1, 3),
+                    start.AddHours(3), token);
+                await importer.ImportPageAsync(product,
+                    new ProviderActionHistoryPage([records[1]], 2, 1, 3),
+                    start.AddHours(3), token);
+            }
+
+            await using (var db = fixture.CreateDbContext())
+            {
+                var ids = records.Select(record => record.ProviderActionId).ToArray();
+                Assert.Equal(3, await db.ProviderParkingActions.CountAsync(
+                    x => ids.Contains(x.ProviderActionId), token));
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateDbContext();
+            var ids = records.Select(record => record.ProviderActionId).ToArray();
+            await db.ProviderParkingActions.Where(x => ids.Contains(x.ProviderActionId))
+                .ExecuteDeleteAsync(token);
+            await db.Vehicles.Where(x => x.NormalizedLicensePlate == plate)
+                .ExecuteDeleteAsync(token);
+            await db.ProviderHistorySyncStates.Where(x => x.ProviderProductId == product)
+                .ExecuteDeleteAsync(token);
+        }
+    }
+
     private static ProviderHistoryTransactionalPageImporter CreateImporter(
         Parkeren.Infrastructure.Persistence.ParkerenDbContext db) =>
         new(db, new ProviderHistoryPageImporter(
