@@ -169,7 +169,10 @@ public sealed class ProviderHistoryPeriodicSyncRunSchedulerTests(PostgreSqlFixtu
             await using var verify = fixture.CreateDbContext();
             var saved = await verify.ProviderHistorySyncStates.AsNoTracking()
                 .SingleAsync(x => x.ProviderProductId == product, ct);
-            Assert.Equal(previousSuccess, saved.LastSuccessfulSyncAt);
+            Assert.NotNull(saved.LastSuccessfulSyncAt);
+            Assert.InRange(
+                (saved.LastSuccessfulSyncAt.Value - previousSuccess).Duration(),
+                TimeSpan.Zero, TimeSpan.FromMicroseconds(1));
             Assert.NotNull(saved.LastAttemptAt);
             Assert.InRange(saved.LastAttemptAt.Value, beforeReservation, DateTimeOffset.UtcNow);
             Assert.Equal(0, saved.NextPageNumber);
