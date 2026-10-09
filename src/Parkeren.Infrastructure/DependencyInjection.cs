@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<ProviderHistorySyncRunStarter>();
         services.AddScoped<ProviderHistoryPeriodicSyncCandidateQuery>();
         services.AddScoped<ProviderHistoryPeriodicSyncRunScheduler>();
+        services.AddScoped<ExternalActiveProviderActionCounter>();
         services.AddScoped<ProviderHistorySyncRunCanceller>();
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IAdminSystemDiagnosticsService, AdminSystemDiagnosticsService>();
