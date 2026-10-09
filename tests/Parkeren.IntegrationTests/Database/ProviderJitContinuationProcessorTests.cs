@@ -33,7 +33,7 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
         (await http.PostAsJsonAsync("api/test/clock/set", new { UtcNow = now }, cancellationToken)).EnsureSuccessStatusCode();
         var boundary = now.AddMinutes(4);
         var startAt = boundary.AddHours(-4);
-        var desiredEndAt = boundary.AddHours(2);
+        var desiredEndAt = boundary.AddHours(6);
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var user = new User(Guid.NewGuid(), $"jit-processor-{suffix}", $"JIT-PROCESSOR-{suffix}", "hash", UserRole.Visitor);
         var vehicle = new Vehicle(Guid.NewGuid(), $"JP-{suffix[..2]}-{suffix[2..4]}", $"JP{suffix[..4]}", null);
@@ -116,7 +116,8 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
             });
             var services = new ServiceCollection();
             services.AddInfrastructure(configuration);
-            services.AddSingleton<TimeProvider>(new FixedTimeProvider(now));
+            var clock = new MutableTimeProvider(now);
+            services.AddSingleton<TimeProvider>(clock);
             services.AddSingleton<IParkingProvider>(parkingProvider);
             services.AddLogging();
             await using var provider = services.BuildServiceProvider();
@@ -197,6 +198,45 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                         cancellationToken)).Status);
                 Assert.Equal(2, (await parkingProvider.GetActionsForProductAsync(product.ProviderProductId, cancellationToken)).Count);
             }
+
+            // A second four-hour boundary must create another adjacent action.
+            var secondBoundary = boundary.AddSeconds(1).AddHours(4);
+            var secondPrecheck = secondBoundary.AddMinutes(-4);
+            clock.SetUtcNow(secondPrecheck);
+            (await http.PostAsJsonAsync(
+                "api/test/clock/set",
+                new { UtcNow = secondPrecheck },
+                cancellationToken)).EnsureSuccessStatusCode();
+
+            await using (var claimContext = fixture.CreateDbContext())
+            {
+                var retry = await claimContext.VisitSchedulerWork.SingleAsync(
+                    x => x.Id == duplicateWork.Id, cancellationToken);
+                retry.Claim("jit-second-successor-test", secondPrecheck);
+                await claimContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await using (var secondScope = provider.CreateAsyncScope())
+            {
+                var context = secondScope.ServiceProvider.GetRequiredService<Parkeren.Infrastructure.Persistence.ParkerenDbContext>();
+                var claimed = await context.VisitSchedulerWork.SingleAsync(
+                    x => x.Id == duplicateWork.Id, cancellationToken);
+                await secondScope.ServiceProvider.GetRequiredService<IVisitSchedulerWorkProcessor>()
+                    .ProcessAsync(claimed, cancellationToken);
+            }
+
+            await using (var finalVerify = fixture.CreateDbContext())
+            {
+                var actions = await finalVerify.ProviderParkingActions
+                    .Where(x => x.VisitId == visit.Id)
+                    .OrderBy(x => x.PlannedStartAt)
+                    .ToListAsync(cancellationToken);
+                Assert.Equal(3, actions.Count);
+                Assert.Equal(secondBoundary.AddSeconds(1), actions[2].PlannedStartAt);
+                Assert.Equal(ProviderActionState.Scheduled, actions[2].State);
+                Assert.Equal(VisitStatus.Active,
+                    (await finalVerify.Visits.SingleAsync(x => x.Id == visit.Id, cancellationToken)).Status);
+            }
         }
         finally
         {
@@ -228,9 +268,11 @@ public sealed class ProviderJitContinuationProcessorTests(PostgreSqlFixture fixt
                 .ExecuteDeleteAsync(cancellationToken);
         }
     }
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    private sealed class MutableTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => now;
+        private DateTimeOffset utcNow = initialUtcNow;
+        public override DateTimeOffset GetUtcNow() => utcNow;
+        public void SetUtcNow(DateTimeOffset value) => utcNow = value;
     }
 
 }
